@@ -8,7 +8,7 @@ interface GameChromeProps {
   phase: string;
   dataLabel?: string;
   onSave?: (slot?: 1 | 2 | 3) => Promise<void>;
-  onLoad?: (slot?: 1 | 2 | 3) => Promise<void>;
+  onLoad?: (slot?: 1 | 2 | 3) => Promise<boolean>;
   activeSlot?: 1 | 2 | 3;
   onSlotChange?: (slot: 1 | 2 | 3) => void;
   onHome?: () => void;
@@ -23,13 +23,12 @@ const NAV_ITEMS = [
   { id: "season-career", icon: "award", label: "生涯" },
 ] as const;
 
-type IconName = "home" | "save" | "rotate" | "calendar" | "users" | "briefcase" | "basketball" | "award";
+type IconName = "home" | "save" | "calendar" | "users" | "briefcase" | "basketball" | "award";
 
 export function UiIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
     home: <><path d="M3 10.8 12 3l9 7.8"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-6h5v6"/></>,
     save: <><path d="M5 3h12l4 4v14H3V3h2Z"/><path d="M7 3v6h9V3"/><path d="M7 21v-7h10v7"/></>,
-    rotate: <><path d="M20 7h-6V1"/><path d="M20 7a9 9 0 1 0 1 8"/></>,
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></>,
     users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
     briefcase: <><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V4h8v3M3 12h18M10 12v2h4v-2"/></>,
@@ -56,7 +55,6 @@ export function GameChrome({ phase, dataLabel = "本地球员数据已载入", o
         </div>
         <div className="chrome-actions" title={dataLabel}>
           <button className="sync-chip" type="button" onClick={() => openDrawer("save")}><UiIcon name="save" />存/读档</button>
-          <span className="sync-chip"><UiIcon name="rotate" />模式</span>
         </div>
       </header>
       {drawerOpen && <div className="save-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawerOpen(false); }}>
@@ -73,14 +71,14 @@ export function GameChrome({ phase, dataLabel = "本地球员数据已载入", o
               <span className="save-slot-badge">自动存档</span>
               <b>当前进度</b>
               <small>{phaseLabel(phase)} · {dataLabel}</small>
-              {drawerTab === "load" && <button className="save-drawer-primary" onClick={() => void onLoad?.(activeSlot).then(() => setDrawerOpen(false))}>加载当前自动存档</button>}
+              {drawerTab === "load" && <button className="save-drawer-primary" onClick={() => void onLoad?.(activeSlot).then((loaded) => { if (loaded) setDrawerOpen(false); })}>加载当前自动存档</button>}
             </article>
             {([1, 2, 3] as const).map((slot) => <article className={`save-slot-card ${slot === activeSlot ? "featured" : ""}`} key={slot}>
               <div className="save-slot-card-heading"><b>▮ 槽位 0{slot}</b>{slot === activeSlot && <span>当前槽位</span>}</div>
               <div className="save-slot-summary"><b>{slot === activeSlot ? phaseLabel(phase) : "可保存进度"}</b><small>{slot === activeSlot ? dataLabel : "点击按钮写入或读取该槽位"}</small></div>
               {drawerTab === "save"
                 ? <button className="save-drawer-primary" onClick={() => { onSlotChange?.(slot); void onSave?.(slot).then(() => setDrawerOpen(false)); }}>{slot === activeSlot ? "覆盖保存" : "存入此位置"}</button>
-                : <button className="save-drawer-dark" onClick={() => { onSlotChange?.(slot); void onLoad?.(slot).then(() => setDrawerOpen(false)); }}>读取此存档</button>}
+                : <button className="save-drawer-dark" onClick={() => { onSlotChange?.(slot); void onLoad?.(slot).then((loaded) => { if (loaded) setDrawerOpen(false); }); }}>读取此存档</button>}
             </article>)}
           </div>
         </section>

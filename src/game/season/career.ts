@@ -8,7 +8,7 @@ import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
 import { runAiTradeEvaluation } from "../trade/AITradeService";
 import { finalizeOptionPhase, resolveTeamOption, rolloverLeagueYear, shouldPickUpTeamOption } from "../contracts/ContractLifecycleService";
 import { lockOpeningRoster, waivePlayer } from "../roster/RosterService";
-import { draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../draft/DraftService";
+import { advanceRookieDraftAiPick, draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../draft/DraftService";
 import { publicPlayerValue } from "../ai/AIValueService";
 import { finalizeFinalsAwards, finalizeRegularSeasonAwards } from "../awards/AwardsService";
 import { generateSchedule, validateSchedule } from "../schedule/schedule";
@@ -472,9 +472,10 @@ export function advanceSeason(input: GameState): GameState {
   state = prepareRookieDraft(state);
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
-    const prospect = getAvailableDraftProspects(state)[0];
-    if (!pick || !prospect) throw new Error("Headless season advance could not resolve the rookie draft");
-    state = draftPlayer(state, prospect.id, pick.pickNumber);
+    if (!pick) throw new Error("Headless season advance could not resolve the rookie draft");
+    state = pick.ownerTeamId === state.userTeamId
+      ? draftPlayer(state, getAvailableDraftProspects(state)[0].id, pick.pickNumber)
+      : advanceRookieDraftAiPick(state, pick.pickNumber);
   }
   while (state.teams[state.userTeamId].playerIds.length > LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum) {
     const cut = state.teams[state.userTeamId].playerIds.map((id) => state.players[id])

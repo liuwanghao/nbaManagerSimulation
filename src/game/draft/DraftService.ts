@@ -14,6 +14,7 @@ import { emptyPlayerSeasonStats, type ExpansionCityId, type GameState, type Play
 
 export type DraftCommand =
   | { commandId: string; type: "PREPARE_ROOKIE_DRAFT"; payload: Record<string, never> }
+  | { commandId: string; type: "ADVANCE_ROOKIE_DRAFT_AI_PICK"; payload: { expectedPickNumber: number } }
   | { commandId: string; type: "DRAFT_PLAYER"; payload: { playerId: string; expectedPickNumber: number } };
 
 export type DraftProspectView = Pick<Player,
@@ -457,28 +458,21 @@ function completeDraft(state: GameState): void {
   state.league.currentPhase = "OFFSEASON_POST_DRAFT";
 }
 
-function autoAdvanceAiPicks(state: GameState): void {
-  const draft = state.rookieDraft as RookieDraftState;
-  while (draft.currentPickIndex < draft.pickOrder.length) {
-    const pick = draft.pickOrder[draft.currentPickIndex];
-    if (pick.ownerTeamId === state.userTeamId) break;
-    const available = availableProspects(state);
-    const scripted = pick.scriptedPlayerId ? state.players[pick.scriptedPlayerId] : undefined;
-    const nextRealProspect = REAL_2026_DRAFT
-      .map((entry) => state.players[entry.playerId])
-      .find((player) => player?.teamId === "FREE_AGENT");
-    const prospect = scripted?.teamId === "FREE_AGENT"
-      ? scripted
-      : pick.scriptedPlayerId && nextRealProspect
-        ? nextRealProspect
-        : available.sort((left, right) =>
-          publicDraftScore(right, pick.ownerTeamId, state) - publicDraftScore(left, pick.ownerTeamId, state)
-          || left.id.localeCompare(right.id))[0];
-    if (!prospect) throw new Error("No eligible prospect remains");
-    signRookie(state, prospect, pick);
-    draft.currentPickIndex += 1;
-  }
-  if (draft.currentPickIndex === draft.pickOrder.length) completeDraft(state);
+function selectAiProspect(state: GameState, pick: RookieDraftPick): Player {
+  const available = availableProspects(state);
+  const scripted = pick.scriptedPlayerId ? state.players[pick.scriptedPlayerId] : undefined;
+  const nextRealProspect = REAL_2026_DRAFT
+    .map((entry) => state.players[entry.playerId])
+    .find((player) => player?.teamId === "FREE_AGENT");
+  const prospect = scripted?.teamId === "FREE_AGENT"
+    ? scripted
+    : pick.scriptedPlayerId && nextRealProspect
+      ? nextRealProspect
+      : available.sort((left, right) =>
+        publicDraftScore(right, pick.ownerTeamId, state) - publicDraftScore(left, pick.ownerTeamId, state)
+        || left.id.localeCompare(right.id))[0];
+  if (!prospect) throw new Error("No eligible prospect remains");
+  return prospect;
 }
 
 export function prepareRookieDraft(input: GameState): GameState {
@@ -524,7 +518,30 @@ export function prepareRookieDraft(input: GameState): GameState {
       : historicalByRank.size > 0 ? "MIXED_FUTURE" : "PROCEDURAL_FUTURE",
   };
   state.league.currentPhase = "DRAFT";
-  autoAdvanceAiPicks(state);
+  validateRookieDraftState(state);
+  return state;
+}
+
+export function getNextAiDraftProspect(state: GameState): DraftProspectView | undefined {
+  const draft = state.rookieDraft;
+  const pick = draft?.pickOrder[draft.currentPickIndex];
+  if (!draft || !pick || pick.ownerTeamId === state.userTeamId) return undefined;
+  return publicProspect(selectAiProspect(state, pick));
+}
+
+export function advanceRookieDraftAiPick(input: GameState, expectedPickNumber: number): GameState {
+  assertPhaseAllowed(input, "Advance rookie draft AI pick", ["DRAFT"]);
+  const draft = input.rookieDraft;
+  if (!draft) throw new Error("Rookie Draft is not prepared");
+  const pick = draft.pickOrder[draft.currentPickIndex];
+  if (!pick || pick.pickNumber !== expectedPickNumber) throw new Error("Draft pick has changed; refresh and try again");
+  if (pick.ownerTeamId === input.userTeamId) throw new Error("Current pick is controlled by the player team");
+  const state = structuredClone(input);
+  const nextDraft = state.rookieDraft as RookieDraftState;
+  const nextPick = nextDraft.pickOrder[nextDraft.currentPickIndex];
+  signRookie(state, selectAiProspect(state, nextPick), nextPick);
+  nextDraft.currentPickIndex += 1;
+  if (nextDraft.currentPickIndex === nextDraft.pickOrder.length) completeDraft(state);
   validateRookieDraftState(state);
   return state;
 }
@@ -541,7 +558,7 @@ export function draftPlayer(input: GameState, playerId: string, expectedPickNumb
   const nextDraft = state.rookieDraft as RookieDraftState;
   signRookie(state, state.players[playerId], nextDraft.pickOrder[nextDraft.currentPickIndex]);
   nextDraft.currentPickIndex += 1;
-  autoAdvanceAiPicks(state);
+  if (nextDraft.currentPickIndex === nextDraft.pickOrder.length) completeDraft(state);
   validateRookieDraftState(state);
   return state;
 }
@@ -591,7 +608,9 @@ export function executeDraftCommand(state: GameState, command: DraftCommand): Ga
   }
   const next = command.type === "PREPARE_ROOKIE_DRAFT"
     ? prepareRookieDraft(state)
-    : draftPlayer(state, command.payload.playerId, command.payload.expectedPickNumber);
+    : command.type === "ADVANCE_ROOKIE_DRAFT_AI_PICK"
+      ? advanceRookieDraftAiPick(state, command.payload.expectedPickNumber)
+      : draftPlayer(state, command.payload.playerId, command.payload.expectedPickNumber);
   next.commandReceipts[command.commandId] = { payloadHash };
   return next;
 }

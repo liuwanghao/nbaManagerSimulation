@@ -3,7 +3,7 @@ import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { EXPANSION_BRAND_PRESETS } from "../data/expansionBrands";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
 import { chooseRightsPackage, createExpansionTeam, getSelectableExpansionPlayers, prepareExpansionTrade, resolveOptionPhase, selectExpansionPlayer, startExpansionDraft } from "../game/expansion/ExpansionService";
-import { draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../game/draft/DraftService";
+import { advanceRookieDraftAiPick, draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../game/draft/DraftService";
 import { enterFreeAgency } from "../game/freeAgency/FreeAgencyService";
 import { rolloverLeagueYear } from "../game/contracts/ContractLifecycleService";
 import { applyInjuryEvents } from "../game/simulation/injuries";
@@ -38,10 +38,11 @@ function createStage4Fixture(mode: string): GameState {
   visual = prepareRookieDraft(visual);
   if (mode === "rookie-draft") return visual;
   while (visual.league.currentPhase === "DRAFT") {
-    const prospect = getAvailableDraftProspects(visual)[0];
     const pick = visual.rookieDraft?.pickOrder[visual.rookieDraft.currentPickIndex];
-    if (!prospect || !pick) break;
-    visual = draftPlayer(visual, prospect.id, pick.pickNumber);
+    if (!pick) break;
+    visual = pick.ownerTeamId === visual.userTeamId
+      ? draftPlayer(visual, getAvailableDraftProspects(visual)[0].id, pick.pickNumber)
+      : advanceRookieDraftAiPick(visual, pick.pickNumber);
   }
   return mode === "free-agency" ? enterFreeAgency(visual) : visual;
 }

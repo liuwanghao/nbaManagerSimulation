@@ -5,6 +5,8 @@ import { NBA_PLAYER_DATASET } from "./nbaPlayerDataset";
 import { CURRENT_NBA_ROSTER, CURRENT_NBA_ROSTER_BY_ID } from "./currentNbaRoster";
 import { REAL_2026_CLASS_ROSTER_EXCLUSIONS } from "./real2026Draft";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
+import { EXPANSION_BRAND_PRESETS } from "./expansionBrands";
+import { chooseRightsPackage, createExpansionTeam, resolveOptionPhase } from "../game/expansion/ExpansionService";
 
 function mockSnapshots(): HupuTeamSnapshot[] {
   return TEAM_DEFINITIONS.filter((team) => team.sourceTeamId).map((team, teamIndex) => ({
@@ -60,6 +62,29 @@ describe("Hupu live roster mapping", () => {
     expect(klay?.teamId).toBe("MIA");
     expect(cj?.teamId).toBe("ATL");
     expect(CURRENT_NBA_ROSTER.players).toHaveLength(597);
+  });
+
+  it("does not invent contract options that release signed snapshot players", () => {
+    const preset = EXPANSION_BRAND_PRESETS.SEA[0];
+    let state = createExpansionCareerFromBundledDataset("signed-roster-contract-test");
+    const reaves = state.players["nba:1630559"];
+    expect(reaves?.name).toBe("Austin Reaves");
+    expect(reaves?.teamId).toBe("LAL");
+    expect(reaves?.contract.optionType).toBe("NONE");
+    expect(reaves?.contract.yearsRemaining).toBe(4);
+    expect(reaves?.contract.guaranteedAmount).toBe(185_000_000);
+    state = createExpansionTeam(state, {
+      cityId: "SEA",
+      presetId: preset.presetId,
+      teamName: preset.teamName,
+      primaryColor: preset.primaryColor,
+      secondaryColor: preset.secondaryColor,
+    });
+    state = chooseRightsPackage(state, "A");
+    state = resolveOptionPhase(state);
+    expect(state.players[reaves.id].contract.status).toBe("STANDARD");
+    expect(state.players[reaves.id].teamId).toBe("LAL");
+    expect(state.teams.LAL.playerIds).toContain(reaves.id);
   });
 
   it("carries the production-calibrated OVR into the playable roster", () => {

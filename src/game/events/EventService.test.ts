@@ -38,9 +38,33 @@ describe("data-driven event engine", () => {
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
     const event = enqueueEvent(state, "morale_role_unhappy_001", { player_id: player.id, player_name: player.name });
     const before = player.morale;
-    const resolved = executeEventCommand(state, { commandId: "resolve-morale", type: "RESOLVE_EVENT", payload: { eventInstanceId: event?.eventInstanceId as string, choiceId: "acknowledge" } });
-    expect(resolved.players[player.id].morale).toBe(before + 6);
-    expect(resolved.eventState.executedEffectIds).toContain(`${event?.eventInstanceId}:morale_response`);
+    const resolved = executeEventCommand(state, { commandId: "resolve-morale", type: "RESOLVE_EVENT", payload: { eventInstanceId: event?.eventInstanceId as string, choiceId: "increase_role" } });
+    expect(resolved.players[player.id].morale).toBe(before + 12);
+    expect(resolved.eventState.executedEffectIds).toContain(`${event?.eventInstanceId}:morale_role_up`);
+  });
+
+  it("gives player morale and role events a consequential manager choice", () => {
+    const state = createCareer("event-manager-choice");
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    const event = enqueueEvent(state, "morale_minutes_001", { player_id: player.id, player_name: player.name });
+    expect(event?.choices.map((choice) => choice.id)).toEqual(["increase_role", "maintain_plan"]);
+    const promoted = executeEventCommand(state, { commandId: "resolve-manager-up", type: "RESOLVE_EVENT", payload: { eventInstanceId: event?.eventInstanceId as string, choiceId: "increase_role" } });
+    expect(promoted.players[player.id].morale).toBe(player.morale + 12);
+
+    const declinedState = createCareer("event-manager-choice-decline");
+    const declinedPlayer = declinedState.players[declinedState.teams[declinedState.userTeamId].playerIds[0]];
+    const declinedEvent = enqueueEvent(declinedState, "morale_minutes_001", { player_id: declinedPlayer.id, player_name: declinedPlayer.name });
+    const declined = executeEventCommand(declinedState, { commandId: "resolve-manager-down", type: "RESOLVE_EVENT", payload: { eventInstanceId: declinedEvent?.eventInstanceId as string, choiceId: "maintain_plan" } });
+    expect(declined.players[declinedPlayer.id].morale).toBe(declinedPlayer.morale - 8);
+  });
+
+  it("upgrades an already-saved acknowledgement-only morale event when resolving it", () => {
+    const state = createCareer("event-legacy-choice");
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    const event = enqueueEvent(state, "morale_minutes_001", { player_id: player.id, player_name: player.name });
+    if (event) event.choices = [{ id: "acknowledge", label: "确认", effects: [{ effectId: "legacy", type: "PLAYER_MORALE", target: player.id, value: 6, executionPhase: "ON_CHOICE" }] }];
+    const resolved = executeEventCommand(state, { commandId: "resolve-legacy-choice", type: "RESOLVE_EVENT", payload: { eventInstanceId: event?.eventInstanceId as string, choiceId: "maintain_plan" } });
+    expect(resolved.players[player.id].morale).toBe(player.morale - 8);
   });
 
   it("safely skips unknown definitions", () => {

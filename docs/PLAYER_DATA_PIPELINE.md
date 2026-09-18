@@ -35,7 +35,7 @@ NBA2K_API_KEY="..." npm run data:sync-players
 
 1. 把 API camelCase 属性标准化为稳定的 35 项离线字段。
 2. 复用旧快照已有的精确分类能力；新增球员则由 35 项属性确定性推导分类能力。
-3. 为可映射到本地数据集的真实球员下载 NBA 官方 CDN 真人头像（按 NBA Player ID），保存到 `public/player-portraits/nba-{playerId}.png`；官方源暂缺头像时才保留本地 2K 图片兜底。已存在官方文件会复用，失败不会阻断其余球员更新。
+3. 为可映射到本地数据集的真实球员下载 NBA 官方 CDN 真人头像（按 NBA Player ID），保存到维护目录 `tools/data/portrait-source/nba-{playerId}.png`；随后执行 `npm run data:build-portrait-atlas` 合成为发布用的横向精灵图组 `public/player-portraits/nba-atlas-*.jpg`。官方源暂缺头像时才保留本地 2K 图片兜底。已存在官方文件会复用，失败不会阻断其余球员更新。
 4. 更新 OVR、八维能力、耐伤和本地照片路径，但不使用 API 的球队归属覆盖 `nba-current-roster.json`。
 5. 校验快照人数、官方名单覆盖率、联盟 OVR 分布、90+ 人数与官方 Top 100 误差。
 6. 生成 `player-data-sync-report.json`，记录评分覆盖率、照片下载结果与内容指纹。

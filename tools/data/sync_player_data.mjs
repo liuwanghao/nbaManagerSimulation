@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import {
   applyRatingsSnapshot,
   createRatingsSnapshot,
@@ -16,7 +17,7 @@ const ratingsPath = new URL("../../src/data/nba2k27-current-ratings.json", impor
 const mappingPath = new URL("../../src/data/nba2k27-rating-map.json", import.meta.url);
 const officialTop100Path = new URL("../../src/data/nba2k27-top100-ratings.json", import.meta.url);
 const reportPath = new URL("../../src/data/player-data-sync-report.json", import.meta.url);
-const portraitDirectory = new URL("../../public/player-portraits/", import.meta.url);
+const portraitDirectory = new URL("./portrait-source/", import.meta.url);
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
@@ -162,6 +163,7 @@ if (!dryRun) {
     writeJsonAtomic(datasetPath, applied.dataset),
     writeJsonAtomic(reportPath, report),
   ]);
+  execFileSync(process.execPath, [new URL("./build_portrait_atlas.mjs", import.meta.url).pathname], { stdio: "inherit" });
 }
 
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

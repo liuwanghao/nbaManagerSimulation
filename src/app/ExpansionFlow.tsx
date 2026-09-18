@@ -16,7 +16,7 @@ interface ExpansionFlowProps {
   status: string;
   onCommand: (command: ExpansionCommand) => Promise<void>;
   onSave: (slot?: 1 | 2 | 3) => Promise<void>;
-  onLoad: (slot?: 1 | 2 | 3) => Promise<void>;
+  onLoad: (slot?: 1 | 2 | 3) => Promise<boolean>;
   onRestoreCheckpoint: () => Promise<void>;
   activeSlot: 1 | 2 | 3;
   onSlotChange: (slot: 1 | 2 | 3) => void;

@@ -36,8 +36,10 @@ function run(seed: string, cityId: ExpansionCityId): GameState {
   let state = executeDraftCommand(finishExpansion(seed, cityId), { commandId: "prepare-rookies", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
-    const player = getAvailableDraftProspects(state)[0];
-    state = executeDraftCommand(state, { commandId: `rookie-${pick?.pickNumber}`, type: "DRAFT_PLAYER", payload: { playerId: player.id, expectedPickNumber: pick?.pickNumber as number } });
+    if (!pick) throw new Error(`${seed}: rookie draft pick missing`);
+    state = pick.ownerTeamId === state.userTeamId
+      ? executeDraftCommand(state, { commandId: `rookie-${pick.pickNumber}`, type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: pick.pickNumber } })
+      : executeDraftCommand(state, { commandId: `rookie-ai-${pick.pickNumber}`, type: "ADVANCE_ROOKIE_DRAFT_AI_PICK", payload: { expectedPickNumber: pick.pickNumber } });
   }
   const undraftedBeforeFreeAgency = state.rookieDraft?.classPlayerIds.filter((id) => state.players[id].teamId === "FREE_AGENT").length ?? 0;
   if (undraftedBeforeFreeAgency !== 16) throw new Error(`${seed}: expected 16 undrafted prospects before free agency`);
@@ -70,7 +72,10 @@ function runSecondManagerLoop(input: GameState): GameState {
   state = executeDraftCommand(state, { commandId: `prepare-${state.league.seasonId}`, type: "PREPARE_ROOKIE_DRAFT", payload: {} });
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
-    state = executeDraftCommand(state, { commandId: `rookie-${state.league.seasonId}-${pick?.pickNumber}`, type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: pick?.pickNumber as number } });
+    if (!pick) throw new Error(`${state.league.seasonId}: rookie draft pick missing`);
+    state = pick.ownerTeamId === state.userTeamId
+      ? executeDraftCommand(state, { commandId: `rookie-${state.league.seasonId}-${pick.pickNumber}`, type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: pick.pickNumber } })
+      : executeDraftCommand(state, { commandId: `rookie-ai-${state.league.seasonId}-${pick.pickNumber}`, type: "ADVANCE_ROOKIE_DRAFT_AI_PICK", payload: { expectedPickNumber: pick.pickNumber } });
   }
   state = executeFreeAgencyCommand(state, { commandId: `open-${state.league.seasonId}`, type: "ENTER_FREE_AGENCY", payload: {} });
   for (let day = 1; day <= 3; day += 1) state = executeFreeAgencyCommand(state, { commandId: `fa-${state.league.seasonId}-${day}`, type: "ADVANCE_FA_DAY", payload: {} });

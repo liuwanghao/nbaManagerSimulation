@@ -1,7 +1,7 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   createExpansionCareer,
-  simulateNextGameDay,
+  simulateLeagueDay,
   simulatePostseason,
   simulateRegularSeason,
   simulateToNextEvent,
@@ -16,7 +16,7 @@ import { executeContractLifecycleCommand, type ContractLifecycleCommand } from "
 import { executeInjuryCommand, type InjuryCommand } from "../game/injuries/InjuryService";
 import { executeEmergencyRosterCommand, type EmergencyRosterCommand } from "../game/injuries/EmergencyRosterService";
 import { ACHIEVEMENT_LABELS } from "../game/career/AchievementService";
-import { blockingEvent, executeEventCommand, nextPendingEvent, type EventCommand } from "../game/events/EventService";
+import { blockingEvent, choicesForEvent, executeEventCommand, nextPendingEvent, type EventCommand } from "../game/events/EventService";
 import type { GameResult, GameState, Player, PlayerBoxScore, TeamRole } from "../game/state/types";
 import { createBrowserPlatform } from "../platform/PlatformAdapter";
 import { SaveService, type SaveEnvelope } from "../storage/SaveService";
@@ -73,6 +73,18 @@ interface SimulationSummary {
   queuedEvents: number;
 }
 
+interface FiveGameAnimation {
+  frames: Array<{ date: string; game?: GameResult }>;
+  completed: number;
+  totalGames: number;
+}
+
+function calendarDateAtIndex(openingDate: string, dateIndex: number): string {
+  const date = new Date(`${openingDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + dateIndex);
+  return date.toISOString().slice(0, 10);
+}
+
 function buildSimulationSummary(before: GameState, after: GameState): SimulationSummary | null {
   const beforeIds = new Set(Object.keys(before.userGameDetails));
   const games = Object.values(after.userGameDetails).filter((game) => !beforeIds.has(game.gameId));
@@ -107,6 +119,7 @@ function buildSimulationSummary(before: GameState, after: GameState): Simulation
 
 function App({ initialState = createExpansionCareer("expansion-era-demo"), openSaveOnStart = false, onExitToHome }: { initialState?: GameState; openSaveOnStart?: boolean; onExitToHome?: () => void }) {
   const [state, setState] = useState<GameState>(() => initialState);
+  const [openLoadDrawer, setOpenLoadDrawer] = useState(openSaveOnStart);
   const [conference, setConference] = useState<"WEST" | "EAST">("WEST");
   const [status, setStatus] = useState(() => ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"].includes(initialState.league.currentPhase)
     ? "新赛季已开始 · 等待下一项经理决策"
@@ -116,6 +129,8 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [simulationSummary, setSimulationSummary] = useState<SimulationSummary | null>(null);
+  const [fiveGameAnimation, setFiveGameAnimation] = useState<FiveGameAnimation | null>(null);
+  const fiveGameTimer = useRef<number | null>(null);
   const [activeTab, setActiveTab] = useState<SeasonTab>("home");
   const [manageSubTab, setManageSubTab] = useState<"trade" | "cap">("trade");
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -164,6 +179,10 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
       : state.gmCareer.championships >= 1 ? "冠军经理"
         : state.gmCareer.dynastyScore >= 1_500 ? "联盟精英"
           : state.gmCareer.seasons >= 2 ? "优秀经理" : "新手经理";
+
+  useEffect(() => () => {
+    if (fiveGameTimer.current !== null) window.clearTimeout(fiveGameTimer.current);
+  }, []);
 
   useEffect(() => {
     const expansionFlow = ["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
@@ -271,11 +290,18 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         pending: state.eventState.queue.filter((event) => event.status === "PENDING").map((event) => ({ id: event.eventInstanceId, definition: event.definitionId, priority: event.priority, pauses: event.effectivePause })),
         blocking: simulationBlockingEvent?.eventInstanceId ?? null,
       },
+      fiveGameAnimation: fiveGameAnimation ? {
+        completed: fiveGameAnimation.completed,
+        totalDays: fiveGameAnimation.frames.length,
+        totalGames: fiveGameAnimation.totalGames,
+        currentDate: fiveGameAnimation.frames[Math.min(fiveGameAnimation.completed, fiveGameAnimation.frames.length - 1)]?.date ?? null,
+        completedGames: fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).filter((frame) => frame.game).length,
+      } : null,
         topStandings: standings.slice(0, 10).map((record) => ({ team: record.teamId, wins: record.wins, losses: record.losses })),
       });
     };
     window.advanceTime = async () => Promise.resolve();
-  }, [state, standings, myRecord, myTeam, myTeamFit, myFreeAgentAttraction, nextGame, latestUserGame, latestAwards, hallOfFamers.length, gmLevel, unlockedAchievements.length, simulationBlockingEvent?.eventInstanceId, activeSlot]);
+  }, [state, standings, myRecord, myTeam, myTeamFit, myFreeAgentAttraction, nextGame, latestUserGame, latestAwards, hallOfFamers.length, gmLevel, unlockedAchievements.length, simulationBlockingEvent?.eventInstanceId, activeSlot, fiveGameAnimation]);
 
   const persistState = async (next: GameState, slot: 1 | 2 | 3 = activeSlot): Promise<"LOCAL" | "SYNCED" | "CONFLICT"> => {
     if (!saveService) return "LOCAL";
@@ -315,11 +341,99 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     }, 0);
   };
 
-  const simulateFive = () => run("正在模拟接下来 5 场本队比赛…", (current) => {
-    let next = current;
-    for (let index = 0; index < 5 && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next); index += 1) next = simulateNextGameDay(next);
-    return next;
-  });
+  const focusCalendarAtCurrentDate = (next: GameState) => {
+    const currentDate = calendarDateAtIndex(next.calendar.openingDate, next.calendar.currentDateIndex);
+    setCalendarMonth(currentDate.slice(0, 7));
+    const nextUserGame = next.schedule.find((game) => game.status === "SCHEDULED"
+      && (game.homeTeamId === next.userTeamId || game.awayTeamId === next.userTeamId)
+      && game.dateIndex >= next.calendar.currentDateIndex);
+    setSelectedCalendarGameId(nextUserGame?.id ?? null);
+    return currentDate;
+  };
+
+  const simulateNextDay = () => {
+    if (busy) return;
+    setBusy(true);
+    setStatus("正在结算下一联盟日…");
+    window.setTimeout(() => {
+      void (async () => {
+        try {
+          const next = simulateLeagueDay(state);
+          if (next === state) {
+            setStatus("当前有待处理的经理事件，无法继续推进");
+            return;
+          }
+          await persistState(next);
+          const currentDate = focusCalendarAtCurrentDate(next);
+          startTransition(() => {
+            setState(next);
+            setSimulationSummary(buildSimulationSummary(state, next));
+            setStatus(`完成 · 已推进至 ${currentDate} 并自动保存${slotLabel(activeSlot)}`);
+          });
+        } catch (error) {
+          setStatus(error instanceof Error ? humanizeUiText(error.message) : "模拟失败，状态未改变");
+        } finally {
+          setBusy(false);
+        }
+      })();
+    }, 0);
+  };
+
+  const simulateFive = () => {
+    if (busy || fiveGameAnimation) return;
+    let next = state;
+    const frames: FiveGameAnimation["frames"] = [];
+    let completedGames = 0;
+    while (completedGames < 5 && next.calendar.currentDateIndex < next.calendar.finalDateIndex && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next)) {
+      const dateIndex = next.calendar.currentDateIndex;
+      const knownGames = new Set(Object.keys(next.userGameDetails));
+      const day = simulateLeagueDay(next);
+      const game = Object.values(day.userGameDetails).find((entry) => !knownGames.has(entry.gameId));
+      frames.push({ date: calendarDateAtIndex(next.calendar.openingDate, dateIndex), game });
+      if (game) completedGames += 1;
+      next = day;
+    }
+    if (!completedGames || !frames.length) {
+      setStatus("没有可推进的本队比赛，或有待处理的经理事件");
+      return;
+    }
+    const focusAnimationDate = (date: string) => {
+      setCalendarMonth(date.slice(0, 7));
+    };
+    setBusy(true);
+    setFiveGameAnimation({ frames, completed: 0, totalGames: completedGames });
+    focusAnimationDate(frames[0].date);
+    setStatus(`赛程推进中 · ${frames[0].date} · 0 / ${completedGames} 场`);
+    const advance = (completed: number) => {
+      if (completed < frames.length) {
+        const current = frames[Math.min(completed, frames.length - 1)];
+        const finishedGames = frames.slice(0, completed).filter((frame) => frame.game).length;
+        setFiveGameAnimation({ frames, completed, totalGames: completedGames });
+        focusAnimationDate(current.date);
+        setStatus(`赛程推进中 · ${current.date} · ${finishedGames} / ${completedGames} 场`);
+        fiveGameTimer.current = window.setTimeout(() => advance(completed + 1), 380);
+        return;
+      }
+      void (async () => {
+        try {
+          await persistState(next);
+          focusCalendarAtCurrentDate(next);
+          startTransition(() => {
+            setState(next);
+            setSimulationSummary(buildSimulationSummary(state, next));
+            setStatus(`完成 · 已逐日推进 ${completedGames} 场并自动保存${slotLabel(activeSlot)}`);
+          });
+        } catch (error) {
+          setStatus(error instanceof Error ? humanizeUiText(error.message) : "赛程推进保存失败，状态未改变");
+        } finally {
+          setFiveGameAnimation(null);
+          setBusy(false);
+          fiveGameTimer.current = null;
+        }
+      })();
+    };
+    fiveGameTimer.current = window.setTimeout(() => advance(1), 380);
+  };
 
   const save = async (slot: 1 | 2 | 3 = activeSlot) => {
     setActiveSlot(slot);
@@ -333,10 +447,14 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     const loaded = await saveService?.load(slot);
     if (loaded && initialState.meta.dataVersion.startsWith("hupu.nba.live-roster") && !loaded.meta.dataVersion.startsWith("hupu.nba.live-roster")) {
       setStatus("旧版虚构名单存档与真实阵容版本不兼容，请重新开局");
-      return;
+      return false;
     }
-    if (loaded) setState(loaded);
+    if (loaded) {
+      setOpenLoadDrawer(false);
+      setState(loaded);
+    }
     setStatus(loaded ? `已载入${slotLabel(slot)}` : `${slotLabel(slot)}暂无存档`);
+    return Boolean(loaded);
   };
 
   const runExpansionCommand = async (command: ExpansionCommand) => {
@@ -365,7 +483,13 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
       const next = executeDraftCommand(state, command);
       await persistState(next);
       setState(next);
-      setStatus(next.league.currentPhase === "OFFSEASON_POST_DRAFT" ? "新秀选秀完成 · 64 份合同已结算" : "电脑球队选秀已结算 · 轮到你的签位");
+      const nextPick = next.rookieDraft?.pickOrder[next.rookieDraft.currentPickIndex];
+      const completedPickNumber = command.type === "PREPARE_ROOKIE_DRAFT" ? 0 : command.payload.expectedPickNumber;
+      setStatus(next.league.currentPhase === "OFFSEASON_POST_DRAFT"
+        ? "新秀选秀完成 · 64 份合同已结算"
+        : nextPick?.ownerTeamId === next.userTeamId
+          ? `第 #${nextPick.pickNumber} 顺位 · 轮到你的球队选择`
+          : completedPickNumber > 0 ? `第 #${completedPickNumber} 顺位已结算 · 等待继续模拟` : "选秀大厅已就绪 · 开始模拟电脑签位");
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "选秀操作失败，状态未改变");
     } finally {
@@ -493,27 +617,35 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
   if (["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
     && !(state.league.currentPhase === "OPTION_PHASE" && state.contractLifecycle)) {
-    return <><ExpansionFlow state={state} busy={busy} status={status} onCommand={runExpansionCommand} onSave={save} onLoad={load} onRestoreCheckpoint={restoreExpansionCheckpoint} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openSaveOnStart ? "load" : undefined} />{conflictModal}</>;
+    return <><ExpansionFlow state={state} busy={busy} status={status} onCommand={runExpansionCommand} onSave={save} onLoad={load} onRestoreCheckpoint={restoreExpansionCheckpoint} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{conflictModal}</>;
   }
 
   if (["ROOKIE_DRAFT_PENDING", "OPTION_PHASE", "OFFSEASON_PRE_DRAFT", "DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON"].includes(state.league.currentPhase)) {
-    return <><Stage4Flow state={state} busy={busy} status={status} onCommand={runDraftCommand} onContractCommand={runContractCommand} onFreeAgencyCommand={runFreeAgencyCommand} onTradeCommand={runManagerCommand} onRosterCommand={runManagerCommand} onSave={save} onLoad={load} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openSaveOnStart ? "load" : undefined} />{conflictModal}</>;
+    return <><Stage4Flow state={state} busy={busy} status={status} onCommand={runDraftCommand} onContractCommand={runContractCommand} onFreeAgencyCommand={runFreeAgencyCommand} onTradeCommand={runManagerCommand} onRosterCommand={runManagerCommand} onSave={save} onLoad={load} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{conflictModal}</>;
   }
 
   const phaseDone = state.schedule.every((game) => game.status === "FINAL");
+  const visibleRecord = fiveGameAnimation ? {
+    wins: myRecord.wins + fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).flatMap((frame) => frame.game ? [frame.game] : []).filter((game) => game.winnerTeamId === state.userTeamId).length,
+    losses: myRecord.losses + fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).flatMap((frame) => frame.game ? [frame.game] : []).filter((game) => game.winnerTeamId !== state.userTeamId).length,
+  } : myRecord;
+  const animatedCalendarIndex = selectedCalendarGame ? fiveGameAnimation?.frames.findIndex((frame) => frame.game?.gameId === selectedCalendarGame.id) ?? -1 : -1;
+  const animatedCalendarResult = animatedCalendarIndex >= 0 && fiveGameAnimation && animatedCalendarIndex < fiveGameAnimation.completed ? fiveGameAnimation.frames[animatedCalendarIndex].game : undefined;
+  const animatedCalendarDate = fiveGameAnimation?.frames[Math.min(fiveGameAnimation.completed, (fiveGameAnimation.frames.length ?? 1) - 1)]?.date;
+  const displayedCalendarResult = selectedCalendarResult ?? animatedCalendarResult;
   return (
     <main className="app-shell" style={{ "--team-color": myTeam.primaryColor } as React.CSSProperties}>
-      <GameChrome phase={state.league.currentPhase} dataLabel="本地球员数据已载入" onSave={save} onLoad={load} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openSaveOnStart ? "load" : undefined} />
-      <header id="season-home" className="prototype-team-summary" hidden={activeTab !== "home"}>
+      <GameChrome phase={state.league.currentPhase} dataLabel="本地球员数据已载入" onSave={save} onLoad={load} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />
+      <header id="season-home" className="prototype-team-summary regular-team-banner" hidden={activeTab !== "home"}>
         <div>
           <div className="section-kicker">{state.league.seasonId} 常规赛</div>
           <h1>{myTeam.fullName}</h1>
-          <p>{myRecord.wins}胜 - {myRecord.losses}负（{conferenceLabel(myTeam.conference)}第 {standingsForConference(state, myTeam.conference).findIndex((record) => record.teamId === state.userTeamId) + 1}）</p>
+          <p>{visibleRecord.wins}胜 - {visibleRecord.losses}负（{conferenceLabel(myTeam.conference)}第 {standingsForConference(state, myTeam.conference).findIndex((record) => record.teamId === state.userTeamId) + 1}）</p>
         </div>
         <LogoMark team={myTeam} />
       </header>
 
-      <section className="status-strip" aria-live="polite">
+      <section className="status-strip regular-status-strip" aria-live="polite">
         <span className={busy ? "pulse-dot active" : "pulse-dot"} />
         {status}
       </section>
@@ -524,19 +656,23 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         <div className="calendar-grid">{calendarCells(resolvedCalendarMonth).map((date, index) => {
           if (!date) return <span className="calendar-empty" key={`empty-${index}`} />;
           const game = monthGames.get(date);
-          const result = game ? state.userGameDetails[game.id] : undefined;
-          const selected = game?.id === selectedCalendarGame?.id;
+          const animationIndex = game ? fiveGameAnimation?.frames.findIndex((frame) => frame.game?.gameId === game.id) ?? -1 : -1;
+          const animating = date === animatedCalendarDate;
+          const result = game ? state.userGameDetails[game.id] ?? (animationIndex >= 0 && animationIndex < (fiveGameAnimation?.completed ?? 0) ? fiveGameAnimation?.frames[animationIndex].game : undefined) : undefined;
+          // While the five-game sequence is playing, the animation owns the sole calendar focus.
+          // Leaving the manually selected game highlighted as well produces two competing boxes.
+          const selected = !fiveGameAnimation && game?.id === selectedCalendarGame?.id;
           const won = result?.winnerTeamId === state.userTeamId;
           const opponent = game ? state.teams[game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId] : undefined;
-          return <button type="button" className={selected ? "selected" : ""} key={date} onClick={() => game && setSelectedCalendarGameId(game.id)}><b>{Number(date.slice(-2))}</b>{game && <small className={result ? (won ? "win" : "loss") : "upcoming"}>{result ? `${won ? "胜" : "负"} ${result.awayScore}-${result.homeScore}` : `${game.homeTeamId === state.userTeamId ? "主" : "客"} 对 ${opponent?.name}`}</small>}</button>;
+          return <button type="button" className={`${selected ? "selected " : ""}${animating ? "simulating" : ""}`} key={date} onClick={() => game && setSelectedCalendarGameId(game.id)}><b>{Number(date.slice(-2))}</b>{game ? <small className={result ? (won ? "win" : "loss") : animating ? "simulating" : "upcoming"}>{result ? `${won ? "胜" : "负"} ${result.awayScore}-${result.homeScore}` : animating ? "模拟中" : `${game.homeTeamId === state.userTeamId ? "主" : "客"} 对 ${opponent?.name}`}</small> : animating && <small className="simulating">休息日</small>}</button>;
         })}</div>
       </section>
 
       {activeTab === "home" && selectedCalendarGame && <section className="prototype-game-day-card">
-        <header><b>比赛日：{selectedCalendarGame.date.slice(5).replace("-", "月")}日</b><span>{selectedCalendarResult ? "比赛已结束" : "即将进行的赛事"}</span></header>
-        <div className="prototype-matchup"><div><LogoMark team={state.teams[selectedCalendarGame.awayTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.awayTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.awayTeamId].wins, state.standings[selectedCalendarGame.awayTeamId].losses)}</small></div><strong>{selectedCalendarResult ? `${selectedCalendarResult.awayScore} - ${selectedCalendarResult.homeScore}` : "VS"}</strong><div><LogoMark team={state.teams[selectedCalendarGame.homeTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.homeTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.homeTeamId].wins, state.standings[selectedCalendarGame.homeTeamId].losses)}</small></div></div>
+        <header><b>比赛日：{selectedCalendarGame.date.slice(5).replace("-", "月")}日</b><span>{displayedCalendarResult ? "比赛已结束" : animatedCalendarIndex >= 0 ? "正在模拟" : "即将进行的赛事"}</span></header>
+        <div className="prototype-matchup"><div><LogoMark team={state.teams[selectedCalendarGame.awayTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.awayTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.awayTeamId].wins, state.standings[selectedCalendarGame.awayTeamId].losses)}</small></div><strong>{displayedCalendarResult ? `${displayedCalendarResult.awayScore} - ${displayedCalendarResult.homeScore}` : "VS"}</strong><div><LogoMark team={state.teams[selectedCalendarGame.homeTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.homeTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.homeTeamId].wins, state.standings[selectedCalendarGame.homeTeamId].losses)}</small></div></div>
         <div className="prototype-game-actions">
-          {state.league.currentPhase === "OFFSEASON" ? <button disabled={busy} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button> : phaseDone ? <button disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", simulatePostseason)}>结算季后赛</button> : <>{selectedCalendarResult ? <button onClick={() => setSelectedGameId(selectedCalendarGame.id)}>查看比赛详情</button> : <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在结算下一个联盟比赛日…", simulateNextGameDay)}>模拟本日比赛</button>}<button className="secondary" data-testid="simulate-five" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateFive}>推进 5 场赛程</button></>}
+          {state.league.currentPhase === "OFFSEASON" ? <button disabled={busy} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button> : phaseDone ? <button disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", simulatePostseason)}>结算季后赛</button> : <>{displayedCalendarResult ? <button onClick={() => setSelectedGameId(selectedCalendarGame.id)}>查看比赛详情</button> : <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateNextDay}>模拟下一日</button>}<button className="secondary" data-testid="simulate-five" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateFive}>{fiveGameAnimation ? `逐日推进 · ${fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).filter((frame) => frame.game).length} / ${fiveGameAnimation.totalGames} 场` : "逐日推进 5 场赛程"}</button></>}
         </div>
         {!phaseDone && state.league.currentPhase !== "OFFSEASON" && <details className="prototype-more-actions"><summary>更多模拟选项</summary><div><button data-testid="simulate-next-event" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在模拟到下一经理事件…", simulateToNextEvent)}>模拟到下一事件</button><button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在结算完整常规赛…", simulateRegularSeason)}>模拟至季后赛</button></div></details>}
       </section>}
@@ -547,14 +683,15 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         <details><summary>查看完整球队适配报告</summary><div className="fit-breakdown">{[
           ["组织", myTeamFit.creation], ["空间", myTeamFit.spacing], ["侧翼防守", myTeamFit.perimeterDefense], ["护框", myTeamFit.rimProtection],
           ["篮板", myTeamFit.rebounding], ["位置尺寸", myTeamFit.sizeBalance], ["替补深度", myTeamFit.benchDepth], ["球权兼容", myTeamFit.usageConflict],
-        ].map(([label, value]) => <span key={label as string}><small>{label}</small><b>{fitGrade(value as number)}</b><i><u style={{ width: `${value as number}%` }} /></i></span>)}</div><div className="team-core-metrics"><span><small>市场评级</small><b>{myTeam.marketRating.toFixed(0)}</b></span><span><small>球队声望</small><b>{myTeam.franchiseReputation.toFixed(0)}</b></span><span><small>球迷支持</small><b>{myTeam.fanSupport.toFixed(0)}</b></span><span><small>自由球员吸引力</small><b>{myFreeAgentAttraction.toFixed(0)}</b></span></div></details>
+        ].map(([label, value]) => <span key={label as string}><small>{label}</small><b>{fitGrade(value as number)}</b><i><u style={{ width: `${value as number}%` }} /></i></span>)}</div></details>
+        <div className="team-core-metrics regular-team-metrics"><span><small>市场评级</small><b>{myTeam.marketRating.toFixed(0)}</b></span><span><small>球队声望</small><b>{myTeam.franchiseReputation.toFixed(0)}</b></span><span><small>球迷支持</small><b>{myTeam.fanSupport.toFixed(0)}</b></span><span><small>自由球员吸引力</small><b>{myFreeAgentAttraction.toFixed(0)}</b></span></div>
       </section>
 
       <section hidden={activeTab !== "roster"} id="season-roster" data-testid="team-roster-card" className="prototype-roster-list">
         {myRoster.map((player) => <button type="button" className="prototype-roster-player" data-player-id={player.id} onClick={() => setSelectedPlayerId(player.id)} key={player.id}><span className="prototype-position-mark">{positionLabel(player.position)}</span><span className="prototype-player-copy"><b>{playerNameZh(player.name, player.id)}{!player.available && <em>伤病</em>}</b><small>{player.age}岁 ｜ {shortMoney(player.contract.salary)} ｜ {rotationRoleLabel(player.rotationRole)}</small></span><span className="prototype-player-overall"><b>{playerOverall(player).toFixed(0)}</b><small>综合</small></span></button>)}
       </section>
 
-      {activeTab === "home" && recentUserGames.length > 0 && <section className="recent-games-card legacy-season-block"><div className="section-heading"><div><span className="section-kicker">我的球队赛程</span><h2>最近比赛</h2></div><small>{Object.keys(state.userGameDetails).length} / 82</small></div><div className="recent-game-list">{recentUserGames.map((game, index) => { const won = game.winnerTeamId === state.userTeamId; const opponent = game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId; return <button data-testid={index === 0 ? "latest-game-detail" : undefined} key={game.gameId} onClick={() => setSelectedGameId(game.gameId)}><span className={won ? "game-result win" : "game-result loss"}>{won ? "胜" : "负"}</span><b>{state.teams[opponent].name}</b><small>{game.homeTeamId === state.userTeamId ? "主" : "客"}</small><strong>{game.awayScore}–{game.homeScore}</strong></button>; })}</div></section>}
+      {activeTab === "home" && recentUserGames.length > 0 && <section className="recent-games-card regular-recent-games"><div className="section-heading"><div><span className="section-kicker">比赛归档</span><h2>最近赛果</h2></div><small>{Object.keys(state.userGameDetails).length} / 82</small></div><div className="recent-game-list">{recentUserGames.map((game, index) => { const won = game.winnerTeamId === state.userTeamId; const opponent = game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId; return <button data-testid={index === 0 ? "latest-game-detail" : undefined} key={game.gameId} onClick={() => setSelectedGameId(game.gameId)}><span className={won ? "game-result win" : "game-result loss"}>{won ? "胜" : "负"}</span><b>{state.teams[opponent].name}</b><small>{game.homeTeamId === state.userTeamId ? "主场" : "客场"}</small><strong>{game.awayScore}–{game.homeScore}</strong></button>; })}</div></section>}
 
       <details hidden={activeTab !== "roster"} className="history-card season-calendar-card legacy-season-block">
         <summary><span><small className="section-kicker">完整赛程</small><b>我的球队 · 82 场日历</b></span><strong>{playedGames} / 82</strong></summary>
@@ -602,7 +739,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
           <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button>
         ) : !phaseDone ? (
           <>
-            <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在结算下一个联盟比赛日…", simulateNextGameDay)}>模拟下一比赛日</button>
+            <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateNextDay}>模拟下一日</button>
             <button data-testid="simulate-five" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="secondary" onClick={simulateFive}>模拟 5 场</button>
             <button data-testid="simulate-next-event" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="ghost" onClick={() => run("正在模拟到下一经理事件…", simulateToNextEvent)}>模拟到下一事件</button>
             <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="ghost" onClick={() => run("正在结算完整常规赛…", simulateRegularSeason)}>模拟至季后赛</button>
@@ -700,11 +837,51 @@ function PlayerDetailModal({ player, teamName, busy, tradeAllowed, onClose, onSe
   return <div className="player-detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="reference-player-dialog with-actions" role="dialog" aria-modal="true" aria-label={`${displayName} 球员详情`}><button className="detail-close" onClick={onClose} aria-label="关闭">×</button><ReferencePlayerCard player={player} teamName={teamName} /><div className="player-manager-actions"><label>球队角色<select disabled={busy} value={player.teamRole} onChange={(event) => onSetRole(event.target.value as TeamRole)}>{roles.map((role) => <option key={role} value={role}>{teamRoleLabel(role)}</option>)}</select></label><button disabled={busy || !tradeAllowed} onClick={onTrade}>{tradeAllowed ? "加入交易 · 获取报价" : "交易截止日已过"}</button></div></section></div>;
 }
 
+function PostgamePlayerName({ name }: { name: string }) {
+  const nameRef = useRef<HTMLElement>(null);
+  const [fontSize, setFontSize] = useState(12);
+
+  useLayoutEffect(() => {
+    const updateSize = () => {
+      const nameElement = nameRef.current;
+      const cell = nameElement?.parentElement;
+      if (!nameElement || !cell) return;
+      const badge = cell.querySelector<HTMLElement>(".postgame-position-badge");
+      const availableWidth = cell.clientWidth - (badge?.offsetWidth ?? 0) - 18;
+      const context = document.createElement("canvas").getContext("2d");
+      if (!context || availableWidth <= 0) return;
+      const style = window.getComputedStyle(nameElement);
+      context.font = `${style.fontWeight} 12px ${style.fontFamily}`;
+      const fullSizeWidth = context.measureText(name).width;
+      const nextSize = fullSizeWidth > availableWidth
+        ? Math.max(8, Math.floor((12 * availableWidth / fullSizeWidth) * 10) / 10)
+        : 12;
+      setFontSize((current) => current === nextSize ? current : nextSize);
+    };
+
+    updateSize();
+    const cell = nameRef.current?.parentElement;
+    const observer = cell ? new ResizeObserver(updateSize) : null;
+    if (cell) observer?.observe(cell);
+    return () => observer?.disconnect();
+  }, [name]);
+
+  return <b ref={nameRef} className="postgame-player-name" style={{ fontSize: `${fontSize}px` }}>{name}</b>;
+}
+
 function GameDetailModal({ game, state, onClose }: { game: GameResult; state: GameState; onClose: () => void }) {
   const boxes = [game.awayBoxScore, game.homeBoxScore].filter(Boolean) as NonNullable<GameResult["homeBoxScore"]>[];
   const best = boxes.flatMap((box) => box.playerStats).sort((left, right) => playerGameImpact(right) - playerGameImpact(left) || left.playerId.localeCompare(right.playerId))[0];
   const periods = Math.max(game.homePeriodScores?.length ?? 0, game.awayPeriodScores?.length ?? 0);
-  return <div className="game-detail-backdrop stage-modal-backdrop"><section className="game-detail-card stage-detail-card" role="dialog" aria-modal="true" aria-label="比赛详情"><span className="prototype-sheet-grabber" aria-hidden="true" /><button className="detail-close" onClick={onClose} aria-label="关闭">×</button><header className="prototype-sheet-title"><span className="section-kicker">比赛详情 · {game.date}</span><h2>赛后数据中心</h2></header><div className="game-detail-score"><div className={game.winnerTeamId === game.awayTeamId ? "winner" : ""}><LogoMark team={state.teams[game.awayTeamId]} variant="compact" /><b>{state.teams[game.awayTeamId].name}</b><strong>{game.awayScore}</strong></div><span>比赛结束{game.overtimePeriods ? ` · ${game.overtimePeriods} 个加时` : ""}</span><div className={game.winnerTeamId === game.homeTeamId ? "winner" : ""}><LogoMark team={state.teams[game.homeTeamId]} variant="compact" /><b>{state.teams[game.homeTeamId].name}</b><strong>{game.homeScore}</strong></div></div>{periods > 0 && <><div className="prototype-section-bar"><b>分节比分</b><span>{periods > 4 ? `${periods - 4} 个加时` : "常规时间"}</span></div><div className="period-grid" style={{ gridTemplateColumns: `64px repeat(${periods}, minmax(28px, 1fr))` }}><span>球队</span>{Array.from({ length: periods }, (_, index) => <span key={index}>{index < 4 ? `第${index + 1}节` : `加时${index - 3}`}</span>)}<b>{state.teams[game.awayTeamId].name}</b>{game.awayPeriodScores?.map((score, index) => <i key={index}>{score}</i>)}<b>{state.teams[game.homeTeamId].name}</b>{game.homePeriodScores?.map((score, index) => <i key={index}>{score}</i>)}</div></>}{best && <div className="game-best"><span>本场最佳</span><b>{state.players[best.playerId] ? playerNameZh(state.players[best.playerId].name, state.players[best.playerId].id) : best.playerId}</b><small>{best.pts} 分 · {best.reb} 篮板 · {best.ast} 助攻</small></div>}<div className="prototype-section-bar"><b>球员数据</b><span>按上场时间排序</span></div><div className="boxscore-columns">{boxes.map((box) => <div key={box.teamId}><h3>{state.teams[box.teamId].name}球员数据</h3>{[...box.playerStats].sort((left, right) => right.seconds - left.seconds).map((stat) => <div className="boxscore-row" key={stat.playerId}><span>{state.players[stat.playerId] ? playerNameZh(state.players[stat.playerId].name, state.players[stat.playerId].id) : stat.playerId}</span><small>{Math.round(stat.seconds / 60)} 分钟</small><b>{stat.pts} 分</b><i>{stat.reb} 篮板 / {stat.ast} 助攻</i></div>)}</div>)}</div></section></div>;
+  const displayedPeriods = Math.max(periods, 4);
+  const teams = [state.teams[game.awayTeamId], state.teams[game.homeTeamId]];
+  const fgPercent = (stat: PlayerBoxScore) => stat.fga ? `${Math.round(stat.fgm / stat.fga * 100)}%` : "—";
+  const boxRows = (box: NonNullable<GameResult["homeBoxScore"]>) => [...box.playerStats].sort((left, right) => right.seconds - left.seconds || right.pts - left.pts || left.playerId.localeCompare(right.playerId));
+  const TeamBox = ({ team, score }: { team: typeof teams[number]; score: number }) => {
+    const won = game.winnerTeamId === team.id;
+    return <div className="postgame-team-box"><LogoMark team={team} variant="compact" /><b>{team.name}{won && <em>胜</em>}</b><strong className={won ? "score-win" : "score-lose"}>{score}</strong></div>;
+  };
+  return <div className="game-detail-backdrop stage-modal-backdrop"><section className="game-detail-card stage-detail-card postgame-data-center" role="dialog" aria-modal="true" aria-label="比赛详情"><header className="postgame-modal-header"><div><span>比赛详情 · {game.date}</span><h2>赛后数据中心</h2></div><button className="detail-close" onClick={onClose} aria-label="关闭">✕</button></header><div className="postgame-modal-body"><section className="postgame-score-banner"><TeamBox team={teams[0]} score={game.awayScore} /><div className="postgame-status"><b>比赛结束</b><small>{game.overtimePeriods ? `${game.overtimePeriods} 个加时` : "常规时间"}</small></div><TeamBox team={teams[1]} score={game.homeScore} /></section><section className="postgame-quarter-section"><header><b>分节比分</b><small>{periods ? (periods > 4 ? `${periods - 4} 个加时` : "常规时间") : "历史记录未保存"}</small></header><div className="postgame-table-scroll"><table className="postgame-quarter-table"><thead><tr><th>球队</th>{Array.from({ length: displayedPeriods }, (_, index) => <th key={index}>{index < 4 ? `第${index + 1}节` : `加时${index - 3}`}</th>)}<th>总分</th></tr></thead><tbody>{[[teams[0], game.awayPeriodScores ?? [], game.awayScore], [teams[1], game.homePeriodScores ?? [], game.homeScore]].map(([team, scores, total]) => <tr key={(team as typeof teams[number]).id}><td>{(team as typeof teams[number]).name}</td>{Array.from({ length: displayedPeriods }, (_, index) => { const score = (scores as number[])[index]; return <td className={score !== undefined && score === Math.max(...(scores as number[])) ? "high" : ""} key={index}>{score ?? "—"}</td>; })}<td>{total as number}</td></tr>)}</tbody></table></div></section>{best && <section className="postgame-mvp-card"><div><span>MVP</span><div><small>本场最佳球员</small><b>{state.players[best.playerId] ? playerNameZh(state.players[best.playerId].name, state.players[best.playerId].id) : best.playerId}</b></div></div><strong>{best.pts}分 · {best.reb}篮板 · {best.ast}助攻</strong></section>}<section className="postgame-roster-section">{boxes.map((box) => { const team = state.teams[box.teamId]; return <article className="postgame-roster-card" key={box.teamId}><header><b><i style={{ background: team.primaryColor }} />{team.name}球员数据</b></header><div className="postgame-table-scroll"><table className="postgame-box-table"><thead><tr><th>球员</th><th>时间</th><th>得分</th><th>篮板</th><th>助攻</th><th>抢断</th><th>盖帽</th><th>FG%</th><th>+/-</th></tr></thead><tbody>{boxRows(box).map((stat) => { const player = state.players[stat.playerId]; const name = player ? playerNameZh(player.name, player.id) : stat.playerId; return <tr key={stat.playerId}><td><span className="postgame-position-badge">{player ? positionLabel(player.position) : "—"}</span><PostgamePlayerName name={name} /></td><td>{Math.round(stat.seconds / 60)}′</td><td className={stat.pts >= 18 ? "scoring" : ""}>{stat.pts}</td><td>{stat.reb}</td><td>{stat.ast}</td><td>{stat.stl}</td><td>{stat.blk}</td><td>{fgPercent(stat)}</td><td className="postgame-pm-neutral">—</td></tr>; })}</tbody></table></div></article>; })}</section></div></section></div>;
 }
 
 function EventCard({ event, busy, onResolve, mode }: {
@@ -714,10 +891,11 @@ function EventCard({ event, busy, onResolve, mode }: {
   mode: "inline" | "modal";
 }) {
   const specialImage = event.definitionId === "playoffs_champion_001" ? "./story/championship-celebration.jpg" : event.definitionId === "expansion_complete_001" ? "./story/opening-arena.jpg" : null;
+  const choices = choicesForEvent(event);
   const card = <section data-testid="event-card" className={`event-card category-${event.category.toLowerCase()}${specialImage ? " special-event-card" : ""}${mode === "modal" || specialImage ? " stage-event-card" : ""}`} role={event.effectivePause ? "alertdialog" : "status"}>
     <span className="prototype-sheet-grabber" aria-hidden="true" />
     <div className="event-visual">{specialImage ? <img src={specialImage} alt="" /> : <span>{eventCategoryLabel(event.category).slice(0, 2)}</span>}</div>
-    <div className="event-copy"><div className="prototype-event-meta"><span>{eventCategoryLabel(event.category)}</span><b>优先级 {event.priority}</b></div><h2>{event.title}</h2><p>{humanizeUiText(event.description)}</p><div className="prototype-section-bar"><b>经理决策</b><span>{event.choices.length} 个选项</span></div><div className="event-choices">{event.choices.map((choice) => <button key={choice.id} disabled={busy} onClick={() => onResolve({ commandId: `event-${event.eventInstanceId}-${choice.id}`, type: "RESOLVE_EVENT", payload: { eventInstanceId: event.eventInstanceId, choiceId: choice.id } })}>{choice.label}</button>)}</div></div>
+    <div className="event-copy"><div className="prototype-event-meta"><span>{eventCategoryLabel(event.category)}</span><b>优先级 {event.priority}</b></div><h2>{event.title}</h2><p>{humanizeUiText(event.description)}</p><div className="prototype-section-bar"><b>{choices.length > 1 ? "经理决策" : "事件通知"}</b><span>{choices.length} 个选项</span></div><div className="event-choices">{choices.map((choice) => <button key={choice.id} disabled={busy} onClick={() => onResolve({ commandId: `event-${event.eventInstanceId}-${choice.id}`, type: "RESOLVE_EVENT", payload: { eventInstanceId: event.eventInstanceId, choiceId: choice.id } })}>{choice.label}</button>)}</div></div>
   </section>;
   return mode === "modal" ? <div className="event-modal-backdrop stage-modal-backdrop">{card}</div> : card;
 }
