@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { phaseLabel } from "./uiText";
 
-export type SeasonTab = "home" | "roster" | "manage" | "league" | "career";
+export type SeasonTab = "home" | "manage" | "market" | "league" | "career";
 
 interface GameChromeProps {
   phase: string;
@@ -16,14 +16,14 @@ interface GameChromeProps {
 }
 
 const NAV_ITEMS = [
-  { id: "season-home", icon: "calendar", label: "赛程" },
-  { id: "season-roster", icon: "users", label: "阵容" },
-  { id: "season-manage", icon: "briefcase", label: "管理" },
-  { id: "season-league", icon: "basketball", label: "联盟" },
-  { id: "season-career", icon: "award", label: "生涯" },
+  { id: "season-home", icon: "calendar", label: "赛季" },
+  { id: "season-manage", icon: "users", label: "管理" },
+  { id: "season-market", icon: "arrows", label: "市场" },
+  { id: "season-league", icon: "trophy", label: "联盟" },
+  { id: "season-career", icon: "flag", label: "生涯" },
 ] as const;
 
-type IconName = "home" | "save" | "calendar" | "users" | "briefcase" | "basketball" | "award";
+type IconName = "home" | "save" | "calendar" | "users" | "arrows" | "trophy" | "flag";
 
 export function UiIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -31,9 +31,9 @@ export function UiIcon({ name }: { name: IconName }) {
     save: <><path d="M5 3h12l4 4v14H3V3h2Z"/><path d="M7 3v6h9V3"/><path d="M7 21v-7h10v7"/></>,
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/></>,
     users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
-    briefcase: <><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V4h8v3M3 12h18M10 12v2h4v-2"/></>,
-    basketball: <><circle cx="12" cy="12" r="9"/><path d="M3.5 9.5c5 1 8.5 4.5 11 10M20.5 14.5c-5-1-8.5-4.5-11-10M12 3c2.5 5.4 2.5 12.6 0 18M3 12h18"/></>,
-    award: <><circle cx="12" cy="8" r="5"/><path d="m8.5 12-1 9 4.5-2 4.5 2-1-9"/></>,
+    arrows: <><path d="M7 7h11l-3-3M18 7l-3 3M17 17H6l3 3M6 17l3-3"/></>,
+    trophy: <><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v1a4 4 0 0 0 4 4M16 6h3v1a4 4 0 0 1-4 4M12 13v4M8 21h8M9 17h6"/></>,
+    flag: <><path d="M5 21V4M5 5c4-3 6 3 11 0v9c-5 3-7-3-11 0"/></>,
   };
   return <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
@@ -87,12 +87,13 @@ export function GameChrome({ phase, dataLabel = "本地球员数据已载入", o
   );
 }
 
-export function SeasonNavigation({ activeTab, onChange }: { activeTab: SeasonTab; onChange: (tab: SeasonTab) => void }) {
+export function SeasonNavigation({ activeTab, onChange, disabledTabs = [] }: { activeTab: SeasonTab; onChange: (tab: SeasonTab) => void; disabledTabs?: SeasonTab[] }) {
   return (
     <nav className="season-navigation" aria-label="赛季页面导航">
       {NAV_ITEMS.map((item) => {
         const tab = item.id.replace("season-", "") as SeasonTab;
-        return <button key={item.id} className={activeTab === tab ? "active" : ""} aria-current={activeTab === tab ? "page" : undefined} onClick={() => onChange(tab)}>
+        const disabled = disabledTabs.includes(tab);
+        return <button id={`nav-${item.id}`} key={item.id} disabled={disabled} className={activeTab === tab ? "active" : ""} aria-current={activeTab === tab ? "page" : undefined} onClick={() => onChange(tab)}>
           <span aria-hidden="true"><UiIcon name={item.icon} /></span>
           <small>{item.label}</small>
         </button>;

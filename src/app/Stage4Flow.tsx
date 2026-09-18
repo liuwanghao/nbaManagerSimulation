@@ -9,7 +9,7 @@ import type { GameState, TrainingFocus } from "../game/state/types";
 import type { ContractLifecycleCommand } from "../game/contracts/ContractLifecycleService";
 import { calculateTeamFitForPlayers } from "../game/team/TeamFitService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
-import { GameChrome } from "./GameChrome";
+import { GameChrome, SeasonNavigation, type SeasonTab } from "./GameChrome";
 import { contractStatusLabel, humanizeUiText, moneyLabel, phaseLabel, positionLabel, positionPairLabel, slotLabel } from "./uiText";
 import { playerNameZh } from "./playerNameZh";
 import { ReferencePlayerCard } from "./ReferencePlayerCard";
@@ -54,6 +54,8 @@ export function Stage4Flow({ state, busy, status, onCommand, onContractCommand, 
   const spotlightPhase = ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT", "DRAFT"].includes(phase);
   const rookieDraftScreen = ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT", "DRAFT"].includes(phase);
   const offseasonTerminalScreen = ["OFFSEASON_POST_DRAFT", "PRESEASON"].includes(phase);
+  const currentNavTab: SeasonTab = state.freeAgency?.opened ? "market" : phase === "PRESEASON" ? "manage" : "home";
+  const disabledNavTabs = (["home", "manage", "market", "league", "career"] as SeasonTab[]).filter((tab) => tab !== currentNavTab);
   return (
     <main className={`app-shell expansion-shell${spotlightPhase ? " scene-stage" : ""}${rookieDraftScreen ? " rookie-draft-shell" : ""}${offseasonTerminalScreen ? " stage4-terminal-shell" : ""}`}>
       <GameChrome phase={phase} onSave={onSave} onLoad={onLoad} activeSlot={activeSlot} onSlotChange={onSlotChange} onHome={onHome} initialDrawerTab={initialDrawerTab} />
@@ -73,6 +75,7 @@ export function Stage4Flow({ state, busy, status, onCommand, onContractCommand, 
         <button className="footer-action" onClick={() => void onLoad()}>读取{slotLabel(activeSlot)}</button>
         <span>选秀选择、合同生成与电脑球队选秀均通过引擎指令原子提交</span>
       </footer>
+      <SeasonNavigation activeTab={currentNavTab} onChange={() => undefined} disabledTabs={disabledNavTabs} />
     </main>
   );
 }
