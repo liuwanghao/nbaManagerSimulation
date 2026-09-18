@@ -5,7 +5,7 @@ import { executeExpansionCommand, getSelectableExpansionPlayers } from "../expan
 import { stableHash, stableSerialize } from "../random/hash";
 import { createExpansionCareer } from "../season/career";
 import type { GameState } from "../state/types";
-import { executeDraftCommand, getAvailableDraftProspects } from "./DraftService";
+import { executeDraftCommand, getAvailableDraftProspects, getNextAiDraftProspect } from "./DraftService";
 
 function finishExpansionState(initial: GameState): GameState {
   const preset = EXPANSION_BRAND_PRESETS.SEA[0];
@@ -29,23 +29,63 @@ function finishExpansion(seed: string): GameState {
   return finishExpansionState(createExpansionCareer(seed));
 }
 
-function finishRookieDraft(seed: string): GameState {
-  let state = executeDraftCommand(finishExpansion(seed), { commandId: "prepare-rookies", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+function advanceAiPicksUntilUserTurn(input: GameState, commandPrefix: string): GameState {
+  let state = input;
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
-    const prospect = getAvailableDraftProspects(state)[0];
+    if (!pick || pick.ownerTeamId === state.userTeamId) break;
     state = executeDraftCommand(state, {
-      commandId: `rookie-${pick?.pickNumber}`,
-      type: "DRAFT_PLAYER",
-      payload: { playerId: prospect.id, expectedPickNumber: pick?.pickNumber as number },
+      commandId: `${commandPrefix}-ai-${pick.pickNumber}`,
+      type: "ADVANCE_ROOKIE_DRAFT_AI_PICK",
+      payload: { expectedPickNumber: pick.pickNumber },
     });
   }
   return state;
 }
 
+function finishRookieDraft(seed: string): GameState {
+  let state = executeDraftCommand(finishExpansion(seed), { commandId: "prepare-rookies", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+  while (state.league.currentPhase === "DRAFT") {
+    const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
+    if (!pick) throw new Error("rookie pick missing");
+    state = pick.ownerTeamId === state.userTeamId
+      ? executeDraftCommand(state, {
+        commandId: `rookie-${pick.pickNumber}`,
+        type: "DRAFT_PLAYER",
+        payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: pick.pickNumber },
+      })
+      : executeDraftCommand(state, {
+        commandId: `rookie-ai-${pick.pickNumber}`,
+        type: "ADVANCE_ROOKIE_DRAFT_AI_PICK",
+        payload: { expectedPickNumber: pick.pickNumber },
+      });
+  }
+  return state;
+}
+
 describe("Stage 4 rookie draft", () => {
+  it("advances one AI pick per command and stops at the player turn", () => {
+    const prepared = executeDraftCommand(finishExpansion("draft-live-sim"), { commandId: "prepare-live", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const firstPick = prepared.rookieDraft?.pickOrder[0];
+    const preview = getNextAiDraftProspect(prepared);
+    if (!firstPick || !preview) throw new Error("first AI pick missing");
+    const command = { commandId: "live-ai-1", type: "ADVANCE_ROOKIE_DRAFT_AI_PICK" as const, payload: { expectedPickNumber: firstPick.pickNumber } };
+    const advanced = executeDraftCommand(prepared, command);
+    expect(advanced.rookieDraft?.currentPickIndex).toBe(1);
+    expect(advanced.rookieDraft?.pickOrder[0].playerId).toBe(preview.id);
+    expect(executeDraftCommand(advanced, command)).toEqual(advanced);
+    const playerTurn = advanceAiPicksUntilUserTurn(advanced, "live");
+    const userPick = playerTurn.rookieDraft?.pickOrder[playerTurn.rookieDraft.currentPickIndex];
+    expect(userPick?.ownerTeamId).toBe(playerTurn.userTeamId);
+    expect(() => executeDraftCommand(playerTurn, {
+      commandId: "live-ai-user-turn",
+      type: "ADVANCE_ROOKIE_DRAFT_AI_PICK",
+      payload: { expectedPickNumber: userPick?.pickNumber as number },
+    })).toThrow("player team");
+  });
+
   it("creates the 80-player curated 2026 class and inserts expansion picks at 5/6 and 37/38", () => {
-    const state = executeDraftCommand(finishExpansion("draft-prepare"), { commandId: "prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    let state = executeDraftCommand(finishExpansion("draft-prepare"), { commandId: "prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
     expect(state.league.currentPhase).toBe("DRAFT");
     expect(state.rookieDraft?.classPlayerIds).toHaveLength(80);
     expect(state.rookieDraft?.pickOrder).toHaveLength(64);
@@ -60,8 +100,11 @@ describe("Stage 4 rookie draft", () => {
     expect(draft.pickOrder[32].scriptedPlayerId).toBe(REAL_2026_DRAFT[30].playerId);
     expect(new Set(draft.pickOrder.slice(36, 38).map((pick) => pick.ownerTeamId))).toEqual(new Set(["SEA", "LVG"]));
     expect(draft.pickOrder[38].scriptedPlayerId).toBe(REAL_2026_DRAFT[34].playerId);
-    expect(draft.pickOrder[draft.currentPickIndex].ownerTeamId).toBe("SEA");
-    expect([5, 6]).toContain(draft.currentPickIndex + 1);
+    expect(draft.currentPickIndex).toBe(0);
+    expect(draft.pickOrder[draft.currentPickIndex].ownerTeamId).not.toBe("SEA");
+    state = advanceAiPicksUntilUserTurn(state, "prepare");
+    expect(state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex].ownerTeamId).toBe("SEA");
+    expect([5, 6]).toContain((state.rookieDraft?.currentPickIndex ?? -1) + 1);
     const publicProspect = getAvailableDraftProspects(state)[0];
     expect(state.players[publicProspect.id].truePotential).toBeTypeOf("number");
     expect(publicProspect.scoutedPotentialGrade).toBeTruthy();
@@ -70,6 +113,7 @@ describe("Stage 4 rookie draft", () => {
 
   it("removes an intercepted real rookie from the original result and cascades without duplication", () => {
     let state = executeDraftCommand(finishExpansion("draft-intercept"), { commandId: "prepare-intercept", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    state = advanceAiPicksUntilUserTurn(state, "intercept");
     const intercepted = REAL_2026_DRAFT.find((entry) => entry.realPickNumber === 30);
     if (!intercepted) throw new Error("missing real pick 30");
     const firstUserPick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
@@ -80,13 +124,22 @@ describe("Stage 4 rookie draft", () => {
     });
     while (state.league.currentPhase === "DRAFT") {
       const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
+      if (!pick) throw new Error("missing draft pick");
+      if (pick.ownerTeamId !== state.userTeamId) {
+        state = executeDraftCommand(state, {
+          commandId: `finish-intercept-ai-${pick.pickNumber}`,
+          type: "ADVANCE_ROOKIE_DRAFT_AI_PICK",
+          payload: { expectedPickNumber: pick.pickNumber },
+        });
+        continue;
+      }
       const prospects = getAvailableDraftProspects(state);
       const filler = prospects.find((player) => player.id.startsWith("DRAFT-")) ?? prospects.at(-1);
       if (!filler) throw new Error("missing user prospect");
       state = executeDraftCommand(state, {
-        commandId: `finish-intercept-${pick?.pickNumber}`,
+        commandId: `finish-intercept-${pick.pickNumber}`,
         type: "DRAFT_PLAYER",
-        payload: { playerId: filler.id, expectedPickNumber: pick?.pickNumber as number },
+        payload: { playerId: filler.id, expectedPickNumber: pick.pickNumber },
       });
     }
 

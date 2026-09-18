@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import type { Player } from "../game/state/types";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { playerNameZh } from "./playerNameZh";
+import { portraitSpriteMeta } from "./portraitSprite";
 import { moneyLabel } from "./uiText";
 
 const ATTRIBUTE_LABELS: Array<[keyof Player["attributes"], string]> = [
@@ -31,14 +33,37 @@ function ratingClass(value: number): "high" | "mid" | "low" {
 
 export function ReferencePlayerCard({ player, teamName }: { player: Player; teamName: string }) {
   const displayName = playerNameZh(player.name, player.id);
+  const portrait = portraitSpriteMeta(player.id, player.portraitPath);
+  const [portraitUnavailable, setPortraitUnavailable] = useState(!portrait);
+  useEffect(() => {
+    if (!portrait) {
+      setPortraitUnavailable(true);
+      return;
+    }
+    let cancelled = false;
+    const image = new Image();
+    image.onload = () => {
+      const cellWidth = image.naturalWidth / 25;
+      const column = portrait.index % 25;
+      const canvas = document.createElement("canvas");
+      canvas.width = 12;
+      canvas.height = 12;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return;
+      context.drawImage(image, column * cellWidth, 0, cellWidth, image.naturalHeight, 0, 0, canvas.width, canvas.height);
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let luminance = 0;
+      for (let index = 0; index < pixels.length; index += 4) luminance += pixels[index] * .2126 + pixels[index + 1] * .7152 + pixels[index + 2] * .0722;
+      if (!cancelled) setPortraitUnavailable(luminance / (pixels.length / 4) < 20);
+    };
+    image.onerror = () => { if (!cancelled) setPortraitUnavailable(true); };
+    image.src = portrait.source;
+    return () => { cancelled = true; };
+  }, [portrait?.index, portrait?.source]);
   return (
     <article className="reference-player-card" data-player-id={player.id}>
       <header className="reference-player-header">
-        {player.portraitPath && (
-          <div className="reference-player-portrait" aria-hidden="true">
-            <img src={player.portraitPath} alt="" onError={(event) => { event.currentTarget.parentElement?.remove(); }} />
-          </div>
-        )}
+        <div className={`reference-player-portrait ${portraitUnavailable ? "portrait-fallback" : "portrait-sprite"}`} aria-hidden="true" style={portraitUnavailable ? undefined : portrait?.style}><span>{displayName.slice(0, 2)}</span></div>
         <div>
           <h2 className="reference-player-name">{displayName}</h2>
           <div className="reference-player-team">

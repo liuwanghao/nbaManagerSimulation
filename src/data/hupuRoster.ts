@@ -167,6 +167,11 @@ function projectionStat(player: NbaPlayerProjection, group: string, key: string)
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const BUNDLED_CONTRACT_SNAPSHOT_OVERRIDES: Record<string, { salary: number; yearsRemaining: number }> = {
+  // NBA/Lakers announced a four-year re-signing in July 2026; reported value $185M.
+  "nba:1630559": { salary: 46_250_000, yearsRemaining: 4 },
+};
+
 function bundledContract(player: NbaPlayerProjection, rank: number): Player["contract"] {
   const overall = player.projection.overall;
   const baseSalary = overall >= 90 ? 42_000_000
@@ -176,16 +181,19 @@ function bundledContract(player: NbaPlayerProjection, rank: number): Player["con
           : overall >= 70 ? 7_000_000
             : rank < 12 ? 3_500_000 : 2_000_000;
   const contractSeed = Number.parseInt(stableHash(player.canonicalPlayerId, "bundled_contract").slice(-4), 16);
-  const yearsRemaining = 1 + contractSeed % 4;
-  const optionRoll = contractSeed % 12;
-  const optionType = optionRoll === 0 ? "TEAM" : optionRoll === 1 ? "PLAYER" : "NONE";
+  const snapshot = BUNDLED_CONTRACT_SNAPSHOT_OVERRIDES[player.canonicalPlayerId];
+  const salary = snapshot?.salary ?? baseSalary;
+  const yearsRemaining = snapshot?.yearsRemaining ?? 1 + contractSeed % 4;
   return {
-    salary: baseSalary,
+    salary,
     yearsRemaining,
-    guaranteedAmount: baseSalary * yearsRemaining,
+    guaranteedAmount: salary * yearsRemaining,
     status: "STANDARD",
-    optionType,
-    optionDecision: optionType === "NONE" ? "NOT_APPLICABLE" : "PENDING",
+    // The bundled roster snapshot confirms team membership, but it does not
+    // contain contract-option data. Do not invent an option that can release a
+    // currently signed player during the opening expansion option phase.
+    optionType: "NONE",
+    optionDecision: "NOT_APPLICABLE",
   };
 }
 

@@ -103,6 +103,20 @@ function definition(category: string, seed: EventSeed): EventDefinition {
         : category === "STREAK" || category === "FRANCHISE" || category === "EXPANSION" || category === "PLAYOFFS"
           ? [{ effectId: "fan_response", type: "TEAM_FAN_SUPPORT", value: id.includes("losing") ? -1 : 1, executionPhase: "ON_CHOICE" }]
           : [{ effectId: "event_log", type: "LEAGUE_LOG", value: title, executionPhase: "ON_CHOICE" }];
+  const choices = category === "MORALE" || category === "ROLE"
+    ? [
+      {
+        id: "increase_role",
+        label: "回应诉求 · 提升角色",
+        effects: [{ effectId: "morale_role_up", type: "PLAYER_MORALE" as const, target: "{{player_id}}", value: 12, executionPhase: "ON_CHOICE" as const }],
+      },
+      {
+        id: "maintain_plan",
+        label: "维持当前轮换",
+        effects: [{ effectId: "morale_role_down", type: "PLAYER_MORALE" as const, target: "{{player_id}}", value: -8, executionPhase: "ON_CHOICE" as const }],
+      },
+    ]
+    : [{ id: "acknowledge", label: "确认", effects: choiceEffects }];
   return {
     id,
     version: 1,
@@ -121,7 +135,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     visual: { useIllustration: true, illustrationKey: id.replace(/_\d+$/u, "") },
     content: { title, description },
     autoEffects: [],
-    choices: [{ id: "acknowledge", label: "确认", effects: choiceEffects }],
+    choices,
     aiChoice: { strategy: "FIRST" },
     tags: [category.toLowerCase()],
   };

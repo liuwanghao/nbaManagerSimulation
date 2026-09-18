@@ -131,17 +131,38 @@ export function blockingEvent(state: GameState): EventInstance | undefined {
   return state.eventState.queue.find((event) => event.status === "PENDING" && event.effectivePause);
 }
 
+/** Keeps saves made before V1.43 actionable instead of trapping them on a notification-only morale event. */
+export function choicesForEvent(event: EventInstance): EventInstance["choices"] {
+  const legacyAcknowledgement = event.choices.length === 1 && event.choices[0]?.id === "acknowledge";
+  if (!legacyAcknowledgement || !["MORALE", "ROLE"].includes(event.category)) return event.choices;
+  const target = event.choices[0]?.effects.find((effect) => effect.type === "PLAYER_MORALE")?.target;
+  return [
+    {
+      id: "increase_role",
+      label: "回应诉求 · 提升角色",
+      effects: [{ effectId: "morale_role_up", type: "PLAYER_MORALE", target, value: 12, executionPhase: "ON_CHOICE" }],
+    },
+    {
+      id: "maintain_plan",
+      label: "维持当前轮换",
+      effects: [{ effectId: "morale_role_down", type: "PLAYER_MORALE", target, value: -8, executionPhase: "ON_CHOICE" }],
+    },
+  ];
+}
+
 export function resolveEvent(input: GameState, eventInstanceId: string, choiceId: string): GameState {
   const state = structuredClone(input);
   const event = state.eventState.queue.find((candidate) => candidate.eventInstanceId === eventInstanceId && candidate.status === "PENDING");
   if (!event) throw new Error("EVENT_NOT_PENDING");
-  if (!event.choices.some((choice) => choice.id === choiceId)) throw new Error("EVENT_CHOICE_INVALID");
+  const choices = choicesForEvent(event);
+  event.choices = choices;
+  if (!choices.some((choice) => choice.id === choiceId)) throw new Error("EVENT_CHOICE_INVALID");
   event.status = "RESOLVED";
   event.selectedChoiceId = choiceId;
-  const choice = event.choices.find((candidate) => candidate.id === choiceId) as EventInstance["choices"][number];
+  const choice = choices.find((candidate) => candidate.id === choiceId) as EventInstance["choices"][number];
   applyEffects(state, event, choice.effects ?? []);
   state.eventState.resolvedInstanceIds.push(event.eventInstanceId);
-  state.eventState.leagueLog.unshift(`${event.title} · ${event.choices.find((choice) => choice.id === choiceId)?.label ?? choiceId}`);
+  state.eventState.leagueLog.unshift(`${event.title} · ${choices.find((choice) => choice.id === choiceId)?.label ?? choiceId}`);
   state.eventState.leagueLog = state.eventState.leagueLog.slice(0, BALANCE_CONFIG.randomEvents.leagueLogLimit);
   state.eventState.queue = state.eventState.queue.filter((candidate) => candidate.status === "PENDING");
   return state;

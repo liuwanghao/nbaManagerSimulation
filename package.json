@@ -13,6 +13,7 @@
     "data:sync-players": "node tools/data/sync_player_data.mjs",
     "data:sync-players:dry-run": "node tools/data/sync_player_data.mjs --dry-run",
     "data:sync-official-portraits": "node tools/data/sync_player_data.mjs --official-portraits-only",
+    "data:build-portrait-atlas": "node tools/data/build_portrait_atlas.mjs",
     "headless:career": "tsx tools/headless/run-career.ts",
     "headless:expansion": "tsx tools/headless/run-expansion.ts",
     "headless:stage4": "tsx tools/headless/run-stage4.ts",

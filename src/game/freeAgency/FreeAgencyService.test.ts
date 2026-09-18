@@ -24,7 +24,10 @@ function postDraftState(seed: string): GameState {
   state = executeDraftCommand(state, { commandId: "prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
-    state = executeDraftCommand(state, { commandId: `rookie-${pick?.pickNumber}`, type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: pick?.pickNumber as number } });
+    if (!pick) throw new Error("rookie draft pick missing");
+    state = pick.ownerTeamId === state.userTeamId
+      ? executeDraftCommand(state, { commandId: `rookie-${pick.pickNumber}`, type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: pick.pickNumber } })
+      : executeDraftCommand(state, { commandId: `rookie-ai-${pick.pickNumber}`, type: "ADVANCE_ROOKIE_DRAFT_AI_PICK", payload: { expectedPickNumber: pick.pickNumber } });
   }
   return state;
 }
