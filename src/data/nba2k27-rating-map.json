@@ -1,0 +1,38 @@
+{
+  "version": "nba2k27-eight-attribute-map.v1",
+  "perimeterDefense": {
+    "Perimeter Defense": 0.4,
+    "Steal": 0.2,
+    "Pass Perception": 0.15,
+    "Defensive Consistency": 0.15,
+    "Help Defense IQ": 0.1
+  },
+  "interiorDefense": {
+    "Interior Defense": 0.35,
+    "Block": 0.25,
+    "Help Defense IQ": 0.2,
+    "Defensive Consistency": 0.1,
+    "Strength": 0.1
+  },
+  "basketballIq": {
+    "Shot IQ": 0.2,
+    "Pass IQ": 0.2,
+    "Help Defense IQ": 0.2,
+    "Offensive Consistency": 0.15,
+    "Defensive Consistency": 0.15,
+    "Pass Perception": 0.1
+  },
+  "potentialByGrade": {
+    "A+": 97,
+    "A": 93,
+    "A-": 89,
+    "B+": 85,
+    "B": 81,
+    "B-": 77,
+    "C+": 73,
+    "C": 69,
+    "C-": 65,
+    "D": 60,
+    "F": 50
+  }
+}

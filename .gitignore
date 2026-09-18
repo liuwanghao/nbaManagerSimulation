@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+output/
+*.log
+*.tsbuildinfo
+.omx/
+.agents/
+.DS_Store
+.env
+.env.*
+!.env.example
