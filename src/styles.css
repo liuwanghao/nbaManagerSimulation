@@ -2899,6 +2899,103 @@ footer > span { width: 100%; text-align: center; }
   .reference-card-footer { padding: 8px; font-size: 10px; }
 }
 
+/* V1.52 — fixed five-tab cyber terminal shell.  These overrides intentionally sit last so
+   every regular-season surface shares the supplied reference's dark, high-contrast language. */
+html, body, #root { background: #07090e; }
+body { color: #e2e8f0; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.app-shell {
+  --team-color: #00f0ff;
+  width: min(100%, 430px);
+  max-width: 430px;
+  height: 100dvh;
+  max-height: none;
+  padding: 0 12px calc(82px + env(safe-area-inset-bottom));
+  color: #e2e8f0;
+  border-radius: 0;
+  background-color: #07090e;
+  background-image: linear-gradient(to right, rgba(0,240,255,.035) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,240,255,.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+  box-shadow: none;
+}
+.game-chrome {
+  min-height: calc(54px + env(safe-area-inset-top));
+  margin: 0 -12px 12px;
+  padding: env(safe-area-inset-top) 12px 0;
+  color: #e2e8f0;
+  border-bottom-color: rgba(0,240,255,.28);
+  background: rgba(3,4,7,.93);
+  box-shadow: 0 1px 20px rgba(0,240,255,.06);
+}
+.game-chrome-title > span:last-child, .chrome-home, .sync-chip { color: #e2e8f0; border-color: rgba(0,240,255,.34); background: rgba(11,17,30,.9); }
+.chrome-home { color: #00f0ff; border-radius: 7px; }
+.sync-chip { color: #00f0ff; border-radius: 7px; box-shadow: none; }
+.sync-chip .ui-icon { color: #00f0ff; }
+.season-navigation {
+  width: min(100%, 430px);
+  bottom: 0;
+  min-height: calc(65px + env(safe-area-inset-bottom));
+  border-top-color: rgba(0,240,255,.3);
+  background: rgba(3,4,7,.95);
+  box-shadow: 0 -8px 24px rgba(0,0,0,.35);
+}
+.season-navigation button { color: #748096; border-radius: 8px; }
+.season-navigation button.active, .season-navigation button:hover { color: #00f0ff; background: rgba(0,240,255,.1); text-shadow: 0 0 8px rgba(0,240,255,.7); }
+.season-navigation button.active span { filter: drop-shadow(0 0 5px rgba(0,240,255,.8)); }
+.prototype-team-summary, .prototype-calendar-card, .prototype-game-day-card, .prototype-roster-summary, .prototype-roster-list, .next-card, .standings-card, .history-card, .recent-games-card, .simulation-summary, .prototype-cap-overview, .cyber-panel {
+  color: #e2e8f0;
+  border-color: rgba(0,240,255,.24);
+  border-radius: 12px;
+  background: rgba(11,17,30,.9);
+  box-shadow: none;
+}
+.prototype-team-summary h1, .section-heading h2, .prototype-roster-player b, .standings-list li, .prototype-cap-overview, .history-card, .recent-games-card b, .recent-games-card strong, .career-metrics b, .league-leader-grid b, .cyber-panel b { color: #f8fafc; }
+.section-kicker, .eyebrow, .step-label, .prototype-team-summary p, .prototype-roster-player small, .recent-games-card small, .career-metrics small, .league-leader-grid small, .league-leader-grid i, .cyber-panel p { color: #8f9bb0; }
+.prototype-calendar-card header, .prototype-calendar-card .calendar-week { color: #00f0ff; }
+.calendar-grid button { color: #cbd5e1; border-color: rgba(100,116,139,.35); background: rgba(15,23,42,.78); }
+.calendar-grid button.selected, .calendar-grid button.simulating { color: #fff; border-color: #00f0ff; background: rgba(0,240,255,.16); box-shadow: 0 0 12px rgba(0,240,255,.42); }
+.prototype-game-day-card, .next-card { border-left: 3px solid #00f0ff; }
+.prototype-game-actions button, .action-grid button, .prototype-more-actions button { color: #071016; border-color: #00f0ff; border-radius: 7px; background: #00f0ff; box-shadow: 0 0 14px rgba(0,240,255,.28); }
+.prototype-game-actions button.secondary, .action-grid button.secondary, .prototype-more-actions button { color: #ff4d8d; border: 1px solid rgba(255,0,85,.55); background: rgba(11,17,30,.9); box-shadow: none; }
+.prototype-more-actions button { color: #ffe600; border-color: rgba(255,230,0,.5); }
+.recent-game-list button, .season-calendar-list button, .cyber-list-row { color: #e2e8f0; border-color: rgba(100,116,139,.32); background: rgba(15,23,42,.78); }
+.game-result.win { color: #34d399; background: rgba(16,185,129,.13); }
+.game-result.loss { color: #fb7185; background: rgba(244,63,94,.13); }
+.prototype-roster-player { color: #e2e8f0; border-color: rgba(100,116,139,.32); background: rgba(15,23,42,.78); }
+.prototype-position-mark, .prototype-player-overall b, .team-derived span, .trade-fit { color: #00f0ff !important; }
+.team-core-metrics span, .career-metrics span, .summary-grid span, .league-leader-grid span, .cyber-metric-grid span { color: #e2e8f0; border-color: rgba(100,116,139,.32); background: rgba(15,23,42,.78); }
+.team-core-metrics b, .summary-grid b, .league-leader-grid b, .cyber-metric-grid b { color: #f8fafc; }
+.cyber-subnav { display: flex; gap: 6px; margin: 0 0 12px; padding: 0 1px 8px; overflow-x: auto; border-bottom: 1px solid rgba(100,116,139,.3); scrollbar-width: none; }
+.cyber-subnav::-webkit-scrollbar { display: none; }
+.cyber-subnav button { min-height: 30px; padding: 0 11px; color: #94a3b8; border: 1px solid rgba(71,85,105,.5); border-radius: 6px; background: rgba(15,23,42,.8); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.cyber-subnav button.selected { color: #00f0ff; border-color: #00f0ff; background: rgba(0,240,255,.12); box-shadow: inset 0 0 10px rgba(0,240,255,.08); }
+.cyber-metric-grid { display: grid; margin: 0 0 12px; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.cyber-metric-grid span { display: grid; min-height: 64px; padding: 8px 4px; place-items: center; text-align: center; }
+.cyber-metric-grid small { color: #8f9bb0; font-size: 9px; }
+.cyber-metric-grid b { color: #00f0ff; font-size: 18px; }
+.cyber-panel { display: grid; gap: 8px; margin: 0 0 12px; padding: 12px; }
+.cyber-panel > header, .prototype-cap-overview > header { display: flex; justify-content: space-between; color: #00f0ff; }
+.cyber-list-row { display: flex; min-height: 38px; padding: 8px; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid rgba(100,116,139,.32); border-radius: 7px; font-size: 11px; text-align: left; }
+button.cyber-list-row { width: 100%; cursor: pointer; }
+.cyber-list-row small { color: #8f9bb0; text-align: right; }
+.cyber-list-row.muted { opacity: .52; }
+.disabled-feature { border-color: rgba(255,230,0,.3); }
+.disabled-feature b { color: #ffe600; }
+.disabled-feature button { min-height: 36px; color: #64748b; border: 1px solid rgba(100,116,139,.45); border-radius: 6px; background: rgba(15,23,42,.8); }
+.cyber-market-status { margin: 0 0 10px; padding: 8px 10px; border: 1px solid rgba(100,116,139,.35); border-radius: 7px; font-size: 11px; font-weight: 700; }
+.cyber-market-status.open { color: #34d399; border-color: rgba(52,211,153,.45); background: rgba(16,185,129,.1); }
+.cyber-market-status.closed { color: #fbbf24; border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.08); }
+.standings-list li { border-color: rgba(100,116,139,.32); background: rgba(15,23,42,.78); }
+.standings-list li.mine { border-left-color: #00f0ff; background: rgba(0,240,255,.1); }
+.segmented { background: rgba(15,23,42,.85); }
+.segmented button { color: #94a3b8; }
+.segmented button.selected { color: #00f0ff; background: rgba(0,240,255,.13); box-shadow: none; }
+.achievement-grid span, .hall-list span, .award-grid span, .league-team-list span, .awards-race-list span { color: #e2e8f0; border-color: rgba(100,116,139,.32); background: rgba(15,23,42,.78); }
+.achievement-grid .unlocked { border-color: rgba(0,240,255,.45); background: rgba(0,240,255,.1); }
+.achievement-grid .unlocked b { color: #00f0ff; }
+.champion-banner { color: #ffe600; border-color: rgba(255,230,0,.45); background: rgba(255,230,0,.08); }
+.trade-desk, .trade-desk * { color-scheme: dark; }
+@media (max-width: 360px) { .cyber-metric-grid b { font-size: 15px; } .cyber-metric-grid small { font-size: 8px; } }
+
 .reference-trade-desk .reference-deal-card .offer-impact,
 .prototype-trade-flow .prototype-offer-card .offer-impact {
   overflow: hidden;
