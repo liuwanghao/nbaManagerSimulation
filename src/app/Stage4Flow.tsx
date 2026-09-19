@@ -9,7 +9,7 @@ import type { GameState, TrainingFocus } from "../game/state/types";
 import type { ContractLifecycleCommand } from "../game/contracts/ContractLifecycleService";
 import { calculateTeamFitForPlayers } from "../game/team/TeamFitService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
-import { GameChrome, SeasonNavigation, type SeasonTab } from "./GameChrome";
+import { GameChrome } from "./GameChrome";
 import { contractStatusLabel, humanizeUiText, moneyLabel, phaseLabel, positionLabel, positionPairLabel, slotLabel } from "./uiText";
 import { playerNameZh } from "./playerNameZh";
 import { ReferencePlayerCard } from "./ReferencePlayerCard";
@@ -54,8 +54,6 @@ export function Stage4Flow({ state, busy, status, onCommand, onContractCommand, 
   const spotlightPhase = ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT", "DRAFT"].includes(phase);
   const rookieDraftScreen = ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT", "DRAFT"].includes(phase);
   const offseasonTerminalScreen = ["OFFSEASON_POST_DRAFT", "PRESEASON"].includes(phase);
-  const currentNavTab: SeasonTab = state.freeAgency?.opened ? "market" : phase === "PRESEASON" ? "manage" : "home";
-  const disabledNavTabs = (["home", "manage", "market", "league", "career"] as SeasonTab[]).filter((tab) => tab !== currentNavTab);
   return (
     <main className={`app-shell expansion-shell${spotlightPhase ? " scene-stage" : ""}${rookieDraftScreen ? " rookie-draft-shell" : ""}${offseasonTerminalScreen ? " stage4-terminal-shell" : ""}`}>
       <GameChrome phase={phase} onSave={onSave} onLoad={onLoad} activeSlot={activeSlot} onSlotChange={onSlotChange} onHome={onHome} initialDrawerTab={initialDrawerTab} />
@@ -75,7 +73,6 @@ export function Stage4Flow({ state, busy, status, onCommand, onContractCommand, 
         <button className="footer-action" onClick={() => void onLoad()}>读取{slotLabel(activeSlot)}</button>
         <span>选秀选择、合同生成与电脑球队选秀均通过引擎指令原子提交</span>
       </footer>
-      <SeasonNavigation activeTab={currentNavTab} onChange={() => undefined} disabledTabs={disabledNavTabs} />
     </main>
   );
 }
@@ -124,7 +121,7 @@ function OptionPhase({ state, busy, onContractCommand }: Pick<Stage4FlowProps, "
 }
 
 function DraftBoard({ state, busy, onCommand }: Pick<Stage4FlowProps, "state" | "busy" | "onCommand">) {
-  const [simulationMode, setSimulationMode] = useState<"PAUSED" | "LIVE" | "TO_NEXT_USER_PICK">("PAUSED");
+  const [simulationMode, setSimulationMode] = useState<"PAUSED" | "LIVE">("PAUSED");
   const [exitingPlayerId, setExitingPlayerId] = useState<string | null>(null);
   const draft = state.rookieDraft!;
   const pick = draft.pickOrder[draft.currentPickIndex]!;
@@ -142,7 +139,6 @@ function DraftBoard({ state, busy, onCommand }: Pick<Stage4FlowProps, "state" | 
   }, [pick.pickNumber, playerTurn]);
   useEffect(() => {
     if (simulationMode === "PAUSED" || playerTurn || busy || !nextAiProspect) return;
-    const fastForwarding = simulationMode === "TO_NEXT_USER_PICK";
     let commitTimer: number | undefined;
     const exitTimer = window.setTimeout(() => {
       setExitingPlayerId(nextAiProspect.id);
@@ -152,8 +148,8 @@ function DraftBoard({ state, busy, onCommand }: Pick<Stage4FlowProps, "state" | 
           type: "ADVANCE_ROOKIE_DRAFT_AI_PICK",
           payload: { expectedPickNumber: pick.pickNumber },
         }).finally(() => setExitingPlayerId(null));
-      }, fastForwarding ? 60 : 400);
-    }, fastForwarding ? 90 : 1_800);
+      }, 400);
+    }, 1_800);
     return () => {
       window.clearTimeout(exitTimer);
       if (commitTimer !== undefined) window.clearTimeout(commitTimer);
@@ -162,15 +158,12 @@ function DraftBoard({ state, busy, onCommand }: Pick<Stage4FlowProps, "state" | 
   const simulationLabel = playerTurn
     ? "▶ 轮到你的选择"
     : simulationMode === "LIVE" ? "❚❚ 暂停模拟"
-      : simulationMode === "TO_NEXT_USER_PICK" ? "❚❚ 停止快进"
-        : draftedCount === 0 ? "▶ 开始选秀模拟" : "▶ 继续自动模拟";
+      : draftedCount === 0 ? "▶ 开始选秀模拟" : "▶ 继续自动模拟";
   const feedText = playerTurn
     ? `[ACTION REQUIRED] 第 #${pick.pickNumber} 顺位轮到 ${state.teams[state.userTeamId].fullName} 选择。`
     : exitingPlayerId && nextAiProspect
       ? `[PICK #${pick.pickNumber}] ${state.teams[pick.ownerTeamId].fullName} 选择了 ${playerNameZh(nextAiProspect.name, nextAiProspect.id)}`
-      : simulationMode === "TO_NEXT_USER_PICK"
-        ? `[FAST FORWARD] 正在跳转至${nextUserPick ? `你的第 #${nextUserPick.pickNumber} 顺位` : "选秀结束"}…`
-        : simulationMode === "LIVE"
+      : simulationMode === "LIVE"
         ? `[PICK #${pick.pickNumber}] ${state.teams[pick.ownerTeamId].fullName} 正在提交选择…`
         : `[PAUSED] 第 #${pick.pickNumber} 顺位等待开始模拟。`;
   return (
@@ -178,7 +171,15 @@ function DraftBoard({ state, busy, onCommand }: Pick<Stage4FlowProps, "state" | 
       <header className="draft-sim-bar">
         <span>DRAFT SIMULATOR · {state.league.seasonId}</span>
         <div className="draft-top-actions">
-          {!playerTurn && <button data-testid="draft-fast-forward" className="draft-fast-forward-compact" disabled={busy || simulationMode === "TO_NEXT_USER_PICK"} onClick={() => setSimulationMode("TO_NEXT_USER_PICK")} title={nextUserPick ? `快速模拟至我的第 #${nextUserPick.pickNumber} 顺位` : "快速模拟至选秀结束"}>{nextUserPick ? `» 我的 #${nextUserPick.pickNumber}` : "» 完成选秀"}</button>}
+          {!playerTurn && <button data-testid="draft-fast-forward" className="draft-fast-forward-compact" disabled={busy} onClick={() => {
+            setSimulationMode("PAUSED");
+            setExitingPlayerId(null);
+            void onCommand({
+              commandId: `stage4-fast-forward-draft-${state.league.seasonId}-${pick.pickNumber}`,
+              type: "FAST_FORWARD_ROOKIE_DRAFT",
+              payload: { expectedPickNumber: pick.pickNumber },
+            });
+          }} title={nextUserPick ? `直接跳到我的第 #${nextUserPick.pickNumber} 顺位` : "直接完成选秀"}>{nextUserPick ? `» 我的 #${nextUserPick.pickNumber}` : "» 完成选秀"}</button>}
           <button data-testid="draft-simulation-toggle" className={playerTurn ? "action" : ""} disabled={busy || playerTurn} onClick={() => setSimulationMode((mode) => mode === "PAUSED" ? "LIVE" : "PAUSED")}>{simulationLabel}</button>
         </div>
       </header>

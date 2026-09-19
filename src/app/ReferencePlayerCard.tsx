@@ -43,18 +43,7 @@ export function ReferencePlayerCard({ player, teamName }: { player: Player; team
     let cancelled = false;
     const image = new Image();
     image.onload = () => {
-      const cellWidth = image.naturalWidth / 25;
-      const column = portrait.index % 25;
-      const canvas = document.createElement("canvas");
-      canvas.width = 12;
-      canvas.height = 12;
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return;
-      context.drawImage(image, column * cellWidth, 0, cellWidth, image.naturalHeight, 0, 0, canvas.width, canvas.height);
-      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-      let luminance = 0;
-      for (let index = 0; index < pixels.length; index += 4) luminance += pixels[index] * .2126 + pixels[index + 1] * .7152 + pixels[index + 2] * .0722;
-      if (!cancelled) setPortraitUnavailable(luminance / (pixels.length / 4) < 20);
+      if (!cancelled) setPortraitUnavailable(false);
     };
     image.onerror = () => { if (!cancelled) setPortraitUnavailable(true); };
     image.src = portrait.source;
@@ -63,7 +52,7 @@ export function ReferencePlayerCard({ player, teamName }: { player: Player; team
   return (
     <article className="reference-player-card" data-player-id={player.id}>
       <header className="reference-player-header">
-        <div className={`reference-player-portrait ${portraitUnavailable ? "portrait-fallback" : "portrait-sprite"}`} aria-hidden="true" style={portraitUnavailable ? undefined : portrait?.style}><span>{displayName.slice(0, 2)}</span></div>
+        <div className={`reference-player-portrait ${portraitUnavailable ? "portrait-fallback" : "portrait-sprite"}`} aria-hidden="true" style={portraitUnavailable ? undefined : portrait?.style} />
         <div>
           <h2 className="reference-player-name">{displayName}</h2>
           <div className="reference-player-team">

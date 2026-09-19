@@ -14,14 +14,14 @@ export interface CurrentNbaRoster {
   schemaVersion: 1;
   rosterVersion: string;
   retrievedAt: string;
-  sourceUrl: string;
+  sourceId: string;
   players: CurrentNbaRosterPlayer[];
 }
 
 function validateCurrentNbaRoster(value: unknown): CurrentNbaRoster {
   if (!value || typeof value !== "object") throw new Error("Current NBA roster must be an object");
   const roster = value as CurrentNbaRoster;
-  if (roster.schemaVersion !== 1 || !roster.rosterVersion || roster.sourceUrl !== "https://www.nba.com/players") {
+  if (roster.schemaVersion !== 1 || !roster.rosterVersion || roster.sourceId !== "embedded-current-roster-snapshot") {
     throw new Error("Current NBA roster metadata is invalid");
   }
   if (!Array.isArray(roster.players) || roster.players.length < 450) throw new Error("Current NBA roster is incomplete");

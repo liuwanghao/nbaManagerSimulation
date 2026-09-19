@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { EXPANSION_BRAND_PRESETS, EXPANSION_CITY_NAMES, SAFE_TEAM_COLORS } from "../data/expansionBrands";
+import { EXPANSION_BRAND_PRESETS, EXPANSION_CITY_NAMES } from "../data/expansionBrands";
 import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 import { getCapSheet } from "../game/cap/CapSheetService";
 import { getSelectableExpansionPlayers, normalizeAndValidateTeamName, type ExpansionCommand } from "../game/expansion/ExpansionService";
@@ -63,8 +63,6 @@ export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, 
 function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "state" | "busy" | "onCommand">) {
   const [cityId, setCityId] = useState<ExpansionCityId>("SEA");
   const [teamName, setTeamName] = useState("");
-  const [primaryColor, setPrimaryColor] = useState(EXPANSION_BRAND_PRESETS.SEA[0].primaryColor);
-  const [secondaryColor, setSecondaryColor] = useState(EXPANSION_BRAND_PRESETS.SEA[0].secondaryColor);
   const selectedBrand = EXPANSION_BRAND_PRESETS[cityId][0];
   const normalizedName = teamName.trim();
   let teamNameError = "";
@@ -78,10 +76,7 @@ function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "stat
   const teamNameValid = Boolean(normalizedName) && !teamNameError;
 
   const chooseCity = (nextCity: ExpansionCityId) => {
-    const preset = EXPANSION_BRAND_PRESETS[nextCity][0];
     setCityId(nextCity);
-    setPrimaryColor(preset.primaryColor);
-    setSecondaryColor(preset.secondaryColor);
   };
 
   return (
@@ -118,16 +113,8 @@ function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "stat
       <button className="primary-cta" disabled={busy || !teamNameValid} onClick={() => onCommand({
         commandId: "stage3-create-team",
         type: "CREATE_EXPANSION_TEAM",
-        payload: { cityId, presetId: selectedBrand.presetId, teamName, primaryColor, secondaryColor },
+        payload: { cityId, presetId: selectedBrand.presetId, teamName, primaryColor: selectedBrand.primaryColor, secondaryColor: selectedBrand.secondaryColor },
       })}>创建球队并进入联盟 →</button>
-      <details className="advanced-color-controls">
-        <summary>高级配色</summary>
-        <p className="field-help">队徽保持固定；主辅色可从安全色板中调整。球队名称支持 2～20 个中英文、数字、空格、连字符或撇号。</p>
-        <div className="color-row">
-          <label>主色<select value={primaryColor} onChange={(event) => setPrimaryColor(event.target.value)}>{SAFE_TEAM_COLORS.map((color) => <option key={color} value={color}>{color}</option>)}</select><i style={{ background: primaryColor }} /></label>
-          <label>辅色<select value={secondaryColor} onChange={(event) => setSecondaryColor(event.target.value)}>{SAFE_TEAM_COLORS.map((color) => <option key={color} value={color}>{color}</option>)}</select><i style={{ background: secondaryColor }} /></label>
-        </div>
-      </details>
     </section>
   );
 }
@@ -329,14 +316,14 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
       <div className="draft-roster-scroll">
         <details className="draft-protected-panel" open>
           <summary><span>🔒 球队被保护球员（{protectedPlayers.length} 人）</span><small>点击展开 / 收起</small></summary>
-          <div className="protected-player-grid">{protectedPlayers.map((player) => <article key={player.id}><div><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} ｜ 综合 {calculatePlayerOverall(player).toFixed(0)}</small></div><span>🔒</span></article>)}</div>
+          <div className="protected-player-grid">{protectedPlayers.map((player) => <article key={player.id}><div><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · {calculatePlayerOverall(player).toFixed(0)}</small></div><span>🔒</span></article>)}</div>
         </details>
         <section className="draft-available-player-panel" aria-label="选秀池可用球员">
           <div className="draft-section-label available">🌐 选秀池可用球员（{availablePlayers.length} 人）</div>
           <div className="player-pool">
           {availablePlayers.map((player) => (
             <article className="player-row prototype-draft-player" key={player.id} onClick={() => setSelectedPlayerId(player.id)}>
-              <div className="draft-player-copy"><div className="draft-player-title"><em>{positionPairLabel(player.position, player.secondaryPosition)}</em><b>{playerNameZh(player.name, player.id)}</b></div><div className="draft-player-stats"><span>综合 <strong>{calculatePlayerOverall(player).toFixed(0)}</strong></span><i>｜</i><span>年龄 <strong>{player.age} 岁</strong></span><i>｜</i><span>年薪 <strong>{money(player.contract.salary)}</strong></span><i>｜</i><span>剩余 <strong>{player.contract.yearsRemaining} 年</strong></span></div></div>
+              <div className="draft-player-copy"><div className="draft-player-title"><b>{playerNameZh(player.name, player.id)}</b><em>{positionPairLabel(player.position, player.secondaryPosition)}</em></div><div className="draft-player-stats"><span>综合 <strong>{calculatePlayerOverall(player).toFixed(0)}</strong></span><i>｜</i><span>年龄 <strong>{player.age} 岁</strong></span><i>｜</i><span>年薪 <strong>{money(player.contract.salary)}</strong></span><i>｜</i><span>剩余 <strong>{player.contract.yearsRemaining} 年</strong></span></div></div>
               <span className="player-actions"><button data-testid={`draft-player-select-${player.id}`} disabled={busy} onClick={(event) => { event.stopPropagation(); void selectPlayerAndAdvance(player.id); }}>选中球员</button></span>
             </article>
           ))}

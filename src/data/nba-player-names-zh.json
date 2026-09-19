@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "nba-china-current-2026-09-17",
   "retrievedAt": "2026-09-17T17:30:00+08:00",
-  "sourceUrl": "https://china.nba.cn/playerindex",
+  "sourceId": "embedded-current-player-names-zh",
   "namesByNbaPlayerId": {
     "2544": "勒布朗·詹姆斯",
     "200768": "凯尔·洛瑞",

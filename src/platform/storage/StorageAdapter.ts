@@ -34,6 +34,7 @@ export async function decodeStoredString(value: string): Promise<string> {
 }
 
 export class LocalStorageAdapter implements StorageAdapter {
+  // Only anonymous career saves and checkpoints are stored locally; no phone number or account identifiers.
   async get(key: string): Promise<string | null> {
     const value = window.localStorage.getItem(key);
     return value === null ? null : decodeStoredString(value);

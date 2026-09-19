@@ -1,4 +1,4 @@
-import { ColorboxStorageAdapter, IndexedDbStorageAdapter, LocalStorageAdapter, type StorageAdapter } from "./storage/StorageAdapter";
+import { LocalStorageAdapter, type StorageAdapter } from "./storage/StorageAdapter";
 
 export interface PlatformUser {
   id: string;
@@ -17,10 +17,8 @@ export interface PlatformAdapter {
 }
 
 export function createBrowserPlatform(): PlatformAdapter {
-  const colorboxStorage = window.ColorboxAI?.storage;
   return {
-    storage: colorboxStorage ? new IndexedDbStorageAdapter() : new LocalStorageAdapter(),
-    cloudStorage: colorboxStorage ? new ColorboxStorageAdapter(colorboxStorage) : undefined,
+    storage: new LocalStorageAdapter(),
     async getCurrentUser() {
       return { id: "anonymous", nickname: "访客经理", authenticated: false };
     },
