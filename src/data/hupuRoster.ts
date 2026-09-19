@@ -7,15 +7,38 @@ import { stableHash } from "../game/random/hash";
 import { createExpansionCareer } from "../game/season/career";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { emptyPlayerSeasonStats, type GameState, type Player, type PlayerAttributes, type Position, type RotationRole, type TeamRole } from "../game/state/types";
-import {
-  requestTeamPlayers,
-  requestTeamSalaryInfo,
-  type HupuRosterPlayer,
-  type HupuSalaryPlayer,
-} from "../platform/hupuBasketball";
 
-const LOAD_BATCH_SIZE = 15;
-const REQUEST_WINDOW_PAUSE_MS = 5_200;
+export interface HupuRosterPlayer {
+  playerId?: string;
+  player_name?: string;
+  player_name_en?: string;
+  en_name?: string;
+  number?: string;
+  position?: string;
+  salary?: string;
+  salary_str?: string;
+  is_injured?: number;
+  min?: string;
+  pts?: string;
+  reb?: string;
+  asts?: string;
+  fgp?: string;
+  tpp?: string;
+  stl?: string;
+  to?: string;
+  blk?: string;
+}
+
+export interface HupuSalaryPlayer {
+  playerName?: string;
+  playerId?: string;
+  age?: string;
+  seasonSalaryInfos?: Array<{
+    restrictedType?: string | null;
+    salaryOption?: string | null;
+    seasonSalary?: string;
+  }>;
+}
 
 export interface HupuTeamSnapshot {
   internalTeamId: string;
@@ -24,11 +47,6 @@ export interface HupuTeamSnapshot {
   players: HupuRosterPlayer[];
   salaries: HupuSalaryPlayer[];
   updatedAt?: string;
-}
-
-export interface HupuRosterProgress {
-  loadedTeams: number;
-  totalTeams: number;
 }
 
 const clampRating = (value: number): number => Math.max(25, Math.min(99, Math.round(value)));
@@ -328,47 +346,4 @@ export function createExpansionCareerFromHupu(careerSeed: string, snapshots: Hup
   state.meta.dataVersion = `hupu.nba.live-roster.${freshestUpdate}+${NBA_PLAYER_DATASET.datasetVersion}`;
   state.meta.gameVersion = "0.5.0";
   return state;
-}
-
-function waitForRequestWindow(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, REQUEST_WINDOW_PAUSE_MS));
-}
-
-async function loadTeam(team: (typeof TEAM_DEFINITIONS)[number]): Promise<HupuTeamSnapshot> {
-  const sourceTeamId = team.sourceTeamId as string;
-  try {
-    const [roster, salary] = await Promise.all([requestTeamPlayers(sourceTeamId), requestTeamSalaryInfo(sourceTeamId)]);
-    return {
-      internalTeamId: team.id,
-      sourceTeamId,
-      teamName: roster?.info?.full_name || roster?.info?.name || team.fullName,
-      players: roster?.list ?? [],
-      salaries: salary?.salaryPlayerTable?.items ?? [],
-      updatedAt: salary?.lastUpdateDate || salary?.lastModifyDate || salary?.version,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "未知错误";
-    throw new Error(`${team.fullName}数据加载失败：${message}`);
-  }
-}
-
-let liveCareerPromise: Promise<GameState> | null = null;
-
-export function loadHupuExpansionCareer(careerSeed: string, onProgress?: (progress: HupuRosterProgress) => void): Promise<GameState> {
-  if (liveCareerPromise) return liveCareerPromise;
-  liveCareerPromise = (async () => {
-    const teams = TEAM_DEFINITIONS.filter((team) => team.sourceTeamId);
-    const snapshots: HupuTeamSnapshot[] = [];
-    onProgress?.({ loadedTeams: 0, totalTeams: teams.length });
-    for (let start = 0; start < teams.length; start += LOAD_BATCH_SIZE) {
-      snapshots.push(...await Promise.all(teams.slice(start, start + LOAD_BATCH_SIZE).map(loadTeam)));
-      onProgress?.({ loadedTeams: snapshots.length, totalTeams: teams.length });
-      if (start + LOAD_BATCH_SIZE < teams.length) await waitForRequestWindow();
-    }
-    return createExpansionCareerFromHupu(careerSeed, snapshots);
-  })().catch((error) => {
-    liveCareerPromise = null;
-    throw error;
-  });
-  return liveCareerPromise;
 }

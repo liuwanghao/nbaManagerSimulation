@@ -4,14 +4,14 @@ export interface CurrentPlayerNamesZh {
   schemaVersion: 1;
   version: string;
   retrievedAt: string;
-  sourceUrl: "https://china.nba.cn/playerindex";
+  sourceId: "embedded-current-player-names-zh";
   namesByNbaPlayerId: Record<string, string>;
 }
 
 function validateCurrentPlayerNamesZh(value: unknown): CurrentPlayerNamesZh {
   if (!value || typeof value !== "object") throw new Error("Current player Chinese names must be an object");
   const snapshot = value as CurrentPlayerNamesZh;
-  if (snapshot.schemaVersion !== 1 || !snapshot.version || snapshot.sourceUrl !== "https://china.nba.cn/playerindex") {
+  if (snapshot.schemaVersion !== 1 || !snapshot.version || snapshot.sourceId !== "embedded-current-player-names-zh") {
     throw new Error("Current player Chinese name metadata is invalid");
   }
   const entries = Object.entries(snapshot.namesByNbaPlayerId ?? {});

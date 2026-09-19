@@ -57,7 +57,7 @@ export interface NbaPlayerDataset {
     nba2k?: {
       snapshotVersion: string;
       provider: string;
-      url: string;
+      sourceId: string;
       official: boolean;
       mappingVersion: string;
       syncedAt?: string;

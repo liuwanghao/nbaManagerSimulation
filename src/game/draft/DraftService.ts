@@ -15,6 +15,7 @@ import { emptyPlayerSeasonStats, type ExpansionCityId, type GameState, type Play
 export type DraftCommand =
   | { commandId: string; type: "PREPARE_ROOKIE_DRAFT"; payload: Record<string, never> }
   | { commandId: string; type: "ADVANCE_ROOKIE_DRAFT_AI_PICK"; payload: { expectedPickNumber: number } }
+  | { commandId: string; type: "FAST_FORWARD_ROOKIE_DRAFT"; payload: { expectedPickNumber: number } }
   | { commandId: string; type: "DRAFT_PLAYER"; payload: { playerId: string; expectedPickNumber: number } };
 
 export type DraftProspectView = Pick<Player,
@@ -546,6 +547,27 @@ export function advanceRookieDraftAiPick(input: GameState, expectedPickNumber: n
   return state;
 }
 
+export function fastForwardRookieDraft(input: GameState, expectedPickNumber: number): GameState {
+  assertPhaseAllowed(input, "Fast forward rookie draft", ["DRAFT"]);
+  const draft = input.rookieDraft;
+  if (!draft) throw new Error("Rookie Draft is not prepared");
+  const pick = draft.pickOrder[draft.currentPickIndex];
+  if (!pick || pick.pickNumber !== expectedPickNumber) throw new Error("Draft pick has changed; refresh and try again");
+  if (pick.ownerTeamId === input.userTeamId) throw new Error("Current pick is controlled by the player team");
+
+  const state = structuredClone(input);
+  const nextDraft = state.rookieDraft as RookieDraftState;
+  while (nextDraft.currentPickIndex < nextDraft.pickOrder.length) {
+    const nextPick = nextDraft.pickOrder[nextDraft.currentPickIndex];
+    if (nextPick.ownerTeamId === state.userTeamId) break;
+    signRookie(state, selectAiProspect(state, nextPick), nextPick);
+    nextDraft.currentPickIndex += 1;
+  }
+  if (nextDraft.currentPickIndex === nextDraft.pickOrder.length) completeDraft(state);
+  validateRookieDraftState(state);
+  return state;
+}
+
 export function draftPlayer(input: GameState, playerId: string, expectedPickNumber: number): GameState {
   assertPhaseAllowed(input, "Draft player", ["DRAFT"]);
   const draft = input.rookieDraft;
@@ -610,6 +632,8 @@ export function executeDraftCommand(state: GameState, command: DraftCommand): Ga
     ? prepareRookieDraft(state)
     : command.type === "ADVANCE_ROOKIE_DRAFT_AI_PICK"
       ? advanceRookieDraftAiPick(state, command.payload.expectedPickNumber)
+      : command.type === "FAST_FORWARD_ROOKIE_DRAFT"
+        ? fastForwardRookieDraft(state, command.payload.expectedPickNumber)
       : draftPlayer(state, command.payload.playerId, command.payload.expectedPickNumber);
   next.commandReceipts[command.commandId] = { payloadHash };
   return next;

@@ -64,6 +64,53 @@ function finishRookieDraft(seed: string): GameState {
 }
 
 describe("Stage 4 rookie draft", () => {
+  it("fast-forwards atomically to each player pick and then directly completes the draft", () => {
+    let state = executeDraftCommand(finishExpansion("draft-fast-forward"), { commandId: "prepare-fast-forward", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const firstAiPick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
+    if (!firstAiPick) throw new Error("first AI pick missing");
+    const firstFastForward = {
+      commandId: "fast-forward-first-user-pick",
+      type: "FAST_FORWARD_ROOKIE_DRAFT" as const,
+      payload: { expectedPickNumber: firstAiPick.pickNumber },
+    };
+    state = executeDraftCommand(state, firstFastForward);
+    const firstUserPick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
+    expect(firstUserPick?.ownerTeamId).toBe(state.userTeamId);
+    expect(state.rookieDraft?.currentPickIndex).toBeGreaterThan(1);
+    expect(executeDraftCommand(state, firstFastForward)).toEqual(state);
+
+    state = executeDraftCommand(state, {
+      commandId: "draft-first-user-pick",
+      type: "DRAFT_PLAYER",
+      payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: firstUserPick?.pickNumber as number },
+    });
+    const nextAiPick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
+    if (!nextAiPick) throw new Error("next AI pick missing");
+    state = executeDraftCommand(state, {
+      commandId: "fast-forward-second-user-pick",
+      type: "FAST_FORWARD_ROOKIE_DRAFT",
+      payload: { expectedPickNumber: nextAiPick.pickNumber },
+    });
+    const secondUserPick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
+    expect(secondUserPick?.ownerTeamId).toBe(state.userTeamId);
+
+    state = executeDraftCommand(state, {
+      commandId: "draft-second-user-pick",
+      type: "DRAFT_PLAYER",
+      payload: { playerId: getAvailableDraftProspects(state)[0].id, expectedPickNumber: secondUserPick?.pickNumber as number },
+    });
+    const finalAiPick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
+    if (!finalAiPick) throw new Error("final AI pick missing");
+    state = executeDraftCommand(state, {
+      commandId: "fast-forward-finish-draft",
+      type: "FAST_FORWARD_ROOKIE_DRAFT",
+      payload: { expectedPickNumber: finalAiPick.pickNumber },
+    });
+    expect(state.league.currentPhase).toBe("OFFSEASON_POST_DRAFT");
+    expect(state.rookieDraft?.completed).toBe(true);
+    expect(state.rookieDraft?.pickOrder.filter((pick) => pick.playerId)).toHaveLength(64);
+  });
+
   it("advances one AI pick per command and stops at the player turn", () => {
     const prepared = executeDraftCommand(finishExpansion("draft-live-sim"), { commandId: "prepare-live", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
     const firstPick = prepared.rookieDraft?.pickOrder[0];
