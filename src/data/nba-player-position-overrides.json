@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "version": "nba2k27-position-overrides-2026-09-20.2",
+  "sourceId": "curated-player-position-overrides",
+  "players": [
+    {
+      "nbaPlayerId": "1641764",
+      "fullName": "Brandin Podziemski",
+      "positions": ["PG", "SG"],
+      "reason": "Repairs duplicated PG/PG positions in the 2K snapshot."
+    },
+    {
+      "nbaPlayerId": "1641715",
+      "fullName": "Cam Whitmore",
+      "positions": ["SF", "PF"],
+      "reason": "Preserves the verified NBA 2K27 primary and secondary positions for a player outside the API current-team slice."
+    },
+    {
+      "nbaPlayerId": "1643411",
+      "fullName": "Darius Acuff Jr.",
+      "positions": ["PG", "SG"],
+      "reason": "Replaces the invalid PG/S position code in the 2K snapshot."
+    },
+    {
+      "nbaPlayerId": "1643555",
+      "fullName": "Jaron Pierre Jr.",
+      "positions": ["SG"],
+      "reason": "Repairs duplicated SG/SG positions without inventing a secondary position."
+    },
+    {
+      "nbaPlayerId": "1641725",
+      "fullName": "Trey Alexander",
+      "positions": ["PG", "SG"],
+      "reason": "Replaces the invalid PG/S position code in the 2K snapshot."
+    }
+  ]
+}

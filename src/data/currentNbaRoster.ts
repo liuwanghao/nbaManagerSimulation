@@ -21,7 +21,7 @@ export interface CurrentNbaRoster {
 function validateCurrentNbaRoster(value: unknown): CurrentNbaRoster {
   if (!value || typeof value !== "object") throw new Error("Current NBA roster must be an object");
   const roster = value as CurrentNbaRoster;
-  if (roster.schemaVersion !== 1 || !roster.rosterVersion || roster.sourceId !== "embedded-current-roster-snapshot") {
+  if (roster.schemaVersion !== 1 || !roster.rosterVersion || !["embedded-current-roster-snapshot", "nba.com-official-players-directory"].includes(roster.sourceId)) {
     throw new Error("Current NBA roster metadata is invalid");
   }
   if (!Array.isArray(roster.players) || roster.players.length < 450) throw new Error("Current NBA roster is incomplete");

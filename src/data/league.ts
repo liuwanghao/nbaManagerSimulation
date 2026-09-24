@@ -1,7 +1,10 @@
 import type { Conference, Division, Team } from "../game/state/types";
+import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { EXISTING_TEAM_BRANDING } from "./teamBranding";
 
 type TeamDefinition = Omit<Team, "playerIds">;
+
+export const TEAM_MARKET_RATINGS: Record<string, number> = BALANCE_CONFIG.teamCore.marketRatings;
 
 const team = (
   id: string,
@@ -15,10 +18,10 @@ const team = (
   const branding = EXISTING_TEAM_BRANDING[id];
   const dayColor = branding?.dayColor ?? primaryColor.replace("#", "").toUpperCase();
   const nightColor = branding?.nightColor ?? secondaryColor.replace("#", "").toUpperCase();
-  const cityCore = id === "SEA" ? { marketRating: 74, franchiseReputation: 42, fanSupport: 58 }
-    : id === "LVG" ? { marketRating: 82, franchiseReputation: 42, fanSupport: 58 }
+  const cityCore = id === "SEA" ? { marketRating: TEAM_MARKET_RATINGS.SEA, franchiseReputation: 42, fanSupport: 58 }
+    : id === "LVG" ? { marketRating: TEAM_MARKET_RATINGS.LVG, franchiseReputation: 42, fanSupport: 58 }
       : {
-        marketRating: 55 + [...id].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 36,
+        marketRating: TEAM_MARKET_RATINGS[id],
         franchiseReputation: 52 + [...id].reduce((sum, character) => sum + character.charCodeAt(0) * 3, 0) % 34,
         fanSupport: 52 + [...id].reduce((sum, character) => sum + character.charCodeAt(0) * 5, 0) % 35,
       };

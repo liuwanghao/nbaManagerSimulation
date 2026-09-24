@@ -10,16 +10,20 @@ import {
 import { executeExpansionCommand, type ExpansionCommand } from "../game/expansion/ExpansionService";
 import { executeDraftCommand, type DraftCommand } from "../game/draft/DraftService";
 import { executeFreeAgencyCommand, type FreeAgencyCommand } from "../game/freeAgency/FreeAgencyService";
-import { executeTradeCommand, type TradeCommand } from "../game/trade/TradeService";
+import { executeTeamNotificationCommand, getTeamInboxItems } from "../game/notifications/TeamNotificationService";
+import { stableHash } from "../game/random/hash";
+import { executeTradeCommand, isTradePhaseAllowed, type TradeCommand } from "../game/trade/TradeService";
 import { executeRosterCommand, type RosterCommand } from "../game/roster/RosterService";
 import { executeContractLifecycleCommand, type ContractLifecycleCommand } from "../game/contracts/ContractLifecycleService";
 import { executeInjuryCommand, type InjuryCommand } from "../game/injuries/InjuryService";
 import { executeEmergencyRosterCommand, type EmergencyRosterCommand } from "../game/injuries/EmergencyRosterService";
-import { ACHIEVEMENT_LABELS } from "../game/career/AchievementService";
+import { ACHIEVEMENT_LABELS, getGmLevelLabel } from "../game/career/AchievementService";
+import { getAwardRace, getGameMvpStat, getLeagueLeaders } from "../game/awards/AwardsService";
+import { getCapSheet } from "../game/cap/CapSheetService";
 import { blockingEvent, choicesForEvent, executeEventCommand, nextPendingEvent, type EventCommand } from "../game/events/EventService";
 import type { GameResult, GameState, Player, PlayerBoxScore, TeamRole } from "../game/state/types";
 import { createBrowserPlatform } from "../platform/PlatformAdapter";
-import { SaveService, type SaveEnvelope } from "../storage/SaveService";
+import { SaveService, type SaveEnvelope, type SaveSlotSummary } from "../storage/SaveService";
 import { ExpansionFlow } from "./ExpansionFlow";
 import { Stage4Flow, TradeDesk } from "./Stage4Flow";
 import { calculateTeamFit, fitGrade } from "../game/team/TeamFitService";
@@ -32,6 +36,8 @@ import {
   moneyLabel, phaseLabel, positionLabel, rotationRoleLabel, slotLabel, teamRoleLabel,
 } from "./uiText";
 import { ReferencePlayerCard } from "./ReferencePlayerCard";
+import { BALANCE_CONFIG } from "../config/balanceConfig";
+import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 
 declare global {
   interface Window {
@@ -77,6 +83,13 @@ interface FiveGameAnimation {
   frames: Array<{ date: string; game?: GameResult }>;
   completed: number;
   totalGames: number;
+  label: string;
+}
+
+interface SaveConflictState {
+  slotId: 1 | 2 | 3;
+  local: SaveEnvelope;
+  cloud: SaveEnvelope;
 }
 
 function calendarDateAtIndex(openingDate: string, dateIndex: number): string {
@@ -117,7 +130,7 @@ function buildSimulationSummary(before: GameState, after: GameState): Simulation
   };
 }
 
-function App({ initialState = createExpansionCareer("expansion-era-demo"), openSaveOnStart = false, onExitToHome }: { initialState?: GameState; openSaveOnStart?: boolean; onExitToHome?: () => void }) {
+function App({ initialState = createExpansionCareer("expansion-era-demo"), initialActiveSlot = 1, openSaveOnStart = false, onExitToHome }: { initialState?: GameState; initialActiveSlot?: 1 | 2 | 3; openSaveOnStart?: boolean; onExitToHome?: () => void }) {
   const [state, setState] = useState<GameState>(() => initialState);
   const [openLoadDrawer, setOpenLoadDrawer] = useState(openSaveOnStart);
   const [conference, setConference] = useState<"WEST" | "EAST">("WEST");
@@ -125,12 +138,14 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     ? "新赛季已开始 · 等待下一项经理决策"
     : `已进入${phaseLabel(initialState.league.currentPhase)}`);
   const [busy, setBusy] = useState(false);
-  const [activeSlot, setActiveSlot] = useState<1 | 2 | 3>(1);
+  const [activeSlot, setActiveSlot] = useState<1 | 2 | 3>(initialActiveSlot);
+  const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [simulationSummary, setSimulationSummary] = useState<SimulationSummary | null>(null);
   const [fiveGameAnimation, setFiveGameAnimation] = useState<FiveGameAnimation | null>(null);
   const fiveGameTimer = useRef<number | null>(null);
+  const calendarStripRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<SeasonTab>("home");
   const [manageSubTab, setManageSubTab] = useState<"overview" | "roster" | "contracts" | "training" | "assets">("overview");
   const [marketSubTab, setMarketSubTab] = useState<"trade" | "free-agents" | "offers" | "log">("trade");
@@ -141,13 +156,16 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     return firstUserGame?.date.slice(0, 7) ?? "";
   });
   const [selectedCalendarGameId, setSelectedCalendarGameId] = useState<string | null>(() => initialState.schedule.find((game) => game.status === "SCHEDULED" && (game.homeTeamId === initialState.userTeamId || game.awayTeamId === initialState.userTeamId))?.id ?? null);
-  const [saveConflict, setSaveConflict] = useState<{ local: SaveEnvelope; cloud: SaveEnvelope } | null>(null);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+  const [saveConflict, setSaveConflict] = useState<SaveConflictState | null>(null);
+  const refreshSaveSlots = async () => setSaveSlots(await saveService?.listSlotSummaries() ?? []);
+  useEffect(() => { void refreshSaveSlots(); }, []);
   const standings = useMemo(() => standingsForConference(state, conference), [state, conference]);
   const myTeam = state.teams[state.userTeamId];
   const myRecord = state.standings[state.userTeamId];
   const myTeamFit = useMemo(() => calculateTeamFit(state, state.userTeamId), [state]);
   const myRoster = useMemo(() => myTeam.playerIds.map((id) => state.players[id]).filter(Boolean).sort((left, right) => playerOverall(right) - playerOverall(left) || left.id.localeCompare(right.id)), [state, myTeam.playerIds]);
-  const teamPayroll = useMemo(() => myRoster.reduce((total, player) => total + player.contract.salary, 0), [myRoster]);
+  const capSheet = useMemo(() => getCapSheet(state, state.userTeamId), [state]);
   const myFreeAgentAttraction = freeAgentAttraction(state, myTeam);
   const playedGames = myRecord.wins + myRecord.losses;
   const nextGame = state.schedule.find((game) => game.status === "SCHEDULED" && (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId));
@@ -160,13 +178,15 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
   const calendarMonthIndex = Math.max(0, scheduleMonths.indexOf(resolvedCalendarMonth));
   const selectedCalendarGame = (selectedCalendarGameId ? userSchedule.find((game) => game.id === selectedCalendarGameId) : undefined) ?? nextGame ?? userSchedule[0];
   const selectedCalendarResult = selectedCalendarGame ? state.userGameDetails[selectedCalendarGame.id] : undefined;
-  const leagueLeaders = useMemo(() => {
-    const qualified = Object.values(state.players).filter((player) => player.seasonStats.games > 0 && player.teamId !== "FREE_AGENT");
-    const leader = (key: "pts" | "reb" | "ast") => [...qualified].sort((left, right) => right.seasonStats[key] / right.seasonStats.games - left.seasonStats[key] / left.seasonStats.games || left.id.localeCompare(right.id))[0];
-    return { points: leader("pts"), rebounds: leader("reb"), assists: leader("ast") };
-  }, [state.players]);
-  const awardsRace = useMemo(() => Object.values(state.players).filter((player) => player.teamId !== "FREE_AGENT" && player.available)
-    .sort((left, right) => playerOverall(right) - playerOverall(left) || right.seasonStats.pts - left.seasonStats.pts || left.id.localeCompare(right.id)).slice(0, 5), [state.players]);
+  const nextOpponent = nextGame ? state.teams[nextGame.homeTeamId === state.userTeamId ? nextGame.awayTeamId : nextGame.homeTeamId] : undefined;
+  const nextOpponentRoster = nextOpponent?.playerIds.map((id) => state.players[id]).filter(Boolean).sort((left, right) => playerOverall(right) - playerOverall(left) || left.id.localeCompare(right.id)) ?? [];
+  const featuredPlayer = myRoster[0];
+  const featuredOpponent = nextOpponentRoster[0];
+  const currentInjuries = myRoster.filter((player) => !player.available || player.injury).slice(0, 2);
+  const currentCalendarDate = calendarDateAtIndex(state.calendar.openingDate, state.calendar.currentDateIndex);
+  const selectedCalendarDateIsReachable = Boolean(selectedCalendarDate && selectedCalendarDate >= currentCalendarDate);
+  const leagueLeaders = useMemo(() => getLeagueLeaders(state), [state]);
+  const awardsRace = useMemo(() => getAwardRace(state), [state]);
   const selectedGame = selectedGameId ? state.userGameDetails[selectedGameId] : undefined;
   const selectedPlayer = selectedPlayerId ? state.players[selectedPlayerId] : undefined;
   const latestChampion = state.history.champions.at(-1);
@@ -177,15 +197,18 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
   const queuedEvent = nextPendingEvent(state);
   const simulationBlockingEvent = blockingEvent(state);
   const unlockedAchievements = Object.entries(state.achievements).filter(([, achievement]) => achievement.unlocked);
-  const gmLevel = state.gmCareer.championships >= 4 || state.gmCareer.dynastyScore >= 7_500 ? "传奇经理"
-    : state.gmCareer.championships >= 2 || state.gmCareer.dynastyScore >= 4_000 ? "王朝经理"
-      : state.gmCareer.championships >= 1 ? "冠军经理"
-        : state.gmCareer.dynastyScore >= 1_500 ? "联盟精英"
-          : state.gmCareer.seasons >= 2 ? "优秀经理" : "新手经理";
+  const gmLevel = getGmLevelLabel(state);
 
   useEffect(() => () => {
     if (fiveGameTimer.current !== null) window.clearTimeout(fiveGameTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "home") return;
+    const visibleDate = fiveGameAnimation?.frames[Math.min(fiveGameAnimation.completed, Math.max(0, fiveGameAnimation.frames.length - 1))]?.date ?? currentCalendarDate;
+    const currentButton = calendarStripRef.current?.querySelector<HTMLButtonElement>(`[data-calendar-date="${visibleDate}"]`);
+    currentButton?.scrollIntoView({ block: "nearest", inline: "center", behavior: fiveGameAnimation ? "smooth" : "auto" });
+  }, [activeTab, calendarMonth, currentCalendarDate, fiveGameAnimation?.completed, fiveGameAnimation?.frames]);
 
   useEffect(() => {
     const expansionFlow = ["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
@@ -306,14 +329,15 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     window.advanceTime = async () => Promise.resolve();
   }, [state, standings, myRecord, myTeam, myTeamFit, myFreeAgentAttraction, nextGame, latestUserGame, latestAwards, hallOfFamers.length, gmLevel, unlockedAchievements.length, simulationBlockingEvent?.eventInstanceId, activeSlot, fiveGameAnimation]);
 
-  const persistState = async (next: GameState, slot: 1 | 2 | 3 = activeSlot): Promise<"LOCAL" | "SYNCED" | "CONFLICT"> => {
+  const persistState = async (next: GameState, slot: 1 | 2 | 3): Promise<"LOCAL" | "SYNCED" | "CONFLICT"> => {
     if (!saveService) return "LOCAL";
     await saveService.save(slot, next);
+    await refreshSaveSlots();
     if (!cloudStorage) return "LOCAL";
     try {
       const sync = await saveService.syncWithCloud(slot, cloudStorage);
       if (sync?.status === "SAVE_CONFLICT") {
-        setSaveConflict({ local: sync.local, cloud: sync.cloud });
+        setSaveConflict({ slotId: slot, local: sync.local, cloud: sync.cloud });
         return "CONFLICT";
       }
       return "SYNCED";
@@ -322,18 +346,23 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     }
   };
 
+  const changeActiveSlot = (slot: 1 | 2 | 3) => {
+    if (!busy) setActiveSlot(slot);
+  };
+
   const run = (label: string, operation: (current: GameState) => GameState) => {
+    const targetSlot = activeSlot;
     setBusy(true);
     setStatus(label);
     window.setTimeout(() => {
       void (async () => {
         try {
           const next = operation(state);
-          await persistState(next);
+          await persistState(next, targetSlot);
           startTransition(() => {
             setState(next);
             setSimulationSummary(buildSimulationSummary(state, next));
-            setStatus(`完成 · 已自动保存${slotLabel(activeSlot)}`);
+            setStatus(`完成 · 已自动保存${slotLabel(targetSlot)}`);
           });
         } catch (error) {
           setStatus(error instanceof Error ? humanizeUiText(error.message) : "模拟失败，状态未改变");
@@ -347,6 +376,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
   const focusCalendarAtCurrentDate = (next: GameState) => {
     const currentDate = calendarDateAtIndex(next.calendar.openingDate, next.calendar.currentDateIndex);
     setCalendarMonth(currentDate.slice(0, 7));
+    setSelectedCalendarDate(null);
     const nextUserGame = next.schedule.find((game) => game.status === "SCHEDULED"
       && (game.homeTeamId === next.userTeamId || game.awayTeamId === next.userTeamId)
       && game.dateIndex >= next.calendar.currentDateIndex);
@@ -354,77 +384,59 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     return currentDate;
   };
 
-  const simulateNextDay = () => {
-    if (busy) return;
-    setBusy(true);
-    setStatus("正在结算下一联盟日…");
-    window.setTimeout(() => {
-      void (async () => {
-        try {
-          const next = simulateLeagueDay(state);
-          if (next === state) {
-            setStatus("当前有待处理的经理事件，无法继续推进");
-            return;
-          }
-          await persistState(next);
-          const currentDate = focusCalendarAtCurrentDate(next);
-          startTransition(() => {
-            setState(next);
-            setSimulationSummary(buildSimulationSummary(state, next));
-            setStatus(`完成 · 已推进至 ${currentDate} 并自动保存${slotLabel(activeSlot)}`);
-          });
-        } catch (error) {
-          setStatus(error instanceof Error ? humanizeUiText(error.message) : "模拟失败，状态未改变");
-        } finally {
-          setBusy(false);
-        }
-      })();
-    }, 0);
-  };
-
-  const simulateFive = () => {
+  const startCalendarAnimation = (label: string, stopWhen: (next: GameState, completedGames: number, simulatedDays: number) => boolean) => {
     if (busy || fiveGameAnimation) return;
+    const targetSlot = activeSlot;
     let next = state;
     const frames: FiveGameAnimation["frames"] = [];
     let completedGames = 0;
-    while (completedGames < 5 && next.calendar.currentDateIndex < next.calendar.finalDateIndex && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next)) {
+    while (next.calendar.currentDateIndex < next.calendar.finalDateIndex && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next)) {
       const dateIndex = next.calendar.currentDateIndex;
       const knownGames = new Set(Object.keys(next.userGameDetails));
       const day = simulateLeagueDay(next);
+      if (day === next) break;
       const game = Object.values(day.userGameDetails).find((entry) => !knownGames.has(entry.gameId));
       frames.push({ date: calendarDateAtIndex(next.calendar.openingDate, dateIndex), game });
       if (game) completedGames += 1;
       next = day;
+      if (stopWhen(next, completedGames, frames.length)) break;
     }
-    if (!completedGames || !frames.length) {
-      setStatus("没有可推进的本队比赛，或有待处理的经理事件");
+    if (!frames.length) {
+      setStatus("没有可推进的日期，或有待处理的经理事件");
       return;
     }
+    // Single-day feedback should feel immediate; a one-game jump keeps all calendar frames
+    // visible while capping the whole hop to roughly one second.
+    const frameDelay = label === "模拟 1 天"
+      ? 160
+      : label === "模拟 1 场"
+        ? Math.max(90, Math.min(180, Math.floor(900 / frames.length)))
+        : 260;
     const focusAnimationDate = (date: string) => {
       setCalendarMonth(date.slice(0, 7));
     };
     setBusy(true);
-    setFiveGameAnimation({ frames, completed: 0, totalGames: completedGames });
+    setFiveGameAnimation({ frames, completed: 0, totalGames: completedGames, label });
     focusAnimationDate(frames[0].date);
-    setStatus(`赛程推进中 · ${frames[0].date} · 0 / ${completedGames} 场`);
+    setStatus(`${label} · ${frames[0].date} · 0 / ${completedGames} 场`);
     const advance = (completed: number) => {
       if (completed < frames.length) {
         const current = frames[Math.min(completed, frames.length - 1)];
         const finishedGames = frames.slice(0, completed).filter((frame) => frame.game).length;
-        setFiveGameAnimation({ frames, completed, totalGames: completedGames });
+        setFiveGameAnimation({ frames, completed, totalGames: completedGames, label });
         focusAnimationDate(current.date);
-        setStatus(`赛程推进中 · ${current.date} · ${finishedGames} / ${completedGames} 场`);
-        fiveGameTimer.current = window.setTimeout(() => advance(completed + 1), 380);
+        setStatus(`${label} · ${current.date} · ${finishedGames} / ${completedGames} 场`);
+        fiveGameTimer.current = window.setTimeout(() => advance(completed + 1), frameDelay);
         return;
       }
       void (async () => {
         try {
-          await persistState(next);
+          await persistState(next, targetSlot);
           focusCalendarAtCurrentDate(next);
           startTransition(() => {
             setState(next);
             setSimulationSummary(buildSimulationSummary(state, next));
-            setStatus(`完成 · 已逐日推进 ${completedGames} 场并自动保存${slotLabel(activeSlot)}`);
+            setStatus(`完成 · ${label}，共 ${frames.length} 天 / ${completedGames} 场并自动保存${slotLabel(targetSlot)}`);
           });
         } catch (error) {
           setStatus(error instanceof Error ? humanizeUiText(error.message) : "赛程推进保存失败，状态未改变");
@@ -435,17 +447,36 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         }
       })();
     };
-    fiveGameTimer.current = window.setTimeout(() => advance(1), 380);
+    fiveGameTimer.current = window.setTimeout(() => advance(1), frameDelay);
+  };
+
+  const simulateNextDay = () => startCalendarAnimation("模拟 1 天", (_next, _games, simulatedDays) => simulatedDays >= 1);
+
+  const simulateNextGame = () => startCalendarAnimation("模拟 1 场", (_next, completedGames) => completedGames >= 1);
+
+  const simulateFive = () => startCalendarAnimation("快进 5 场", (_next, completedGames) => completedGames >= 5);
+
+  const simulateToSelectedDate = () => {
+    if (!selectedCalendarDate || !selectedCalendarDateIsReachable) return;
+    startCalendarAnimation(`模拟至 ${selectedCalendarDate.slice(5).replace("-", "/")}`, (next) => calendarDateAtIndex(next.calendar.openingDate, next.calendar.currentDateIndex) > selectedCalendarDate);
   };
 
   const save = async (slot: 1 | 2 | 3 = activeSlot) => {
+    if (busy) return;
+    setBusy(true);
     setActiveSlot(slot);
     setStatus(`正在原子保存${slotLabel(slot)}…`);
-    const destination = await persistState(state, slot);
-    setStatus(destination === "SYNCED" ? `${slotLabel(slot)}已保存并同步` : destination === "CONFLICT" ? `${slotLabel(slot)}已保存 · 需要处理云端冲突` : `${slotLabel(slot)}已保存至本机`);
+    try {
+      const destination = await persistState(state, slot);
+      setStatus(destination === "SYNCED" ? `${slotLabel(slot)}已保存并同步` : destination === "CONFLICT" ? `${slotLabel(slot)}已保存 · 需要处理云端冲突` : `${slotLabel(slot)}已保存至本机`);
+    } catch (error) {
+      setStatus(error instanceof Error ? humanizeUiText(error.message) : `${slotLabel(slot)}保存失败`);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const load = async (slot: 1 | 2 | 3 = activeSlot) => {
+  const readSlot = async (slot: 1 | 2 | 3): Promise<boolean> => {
     setActiveSlot(slot);
     const loaded = await saveService?.load(slot);
     if (loaded && initialState.meta.dataVersion.startsWith("hupu.nba.live-roster") && !loaded.meta.dataVersion.startsWith("hupu.nba.live-roster")) {
@@ -460,18 +491,52 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     return Boolean(loaded);
   };
 
+  const load = async (slot: 1 | 2 | 3 = activeSlot) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      return await readSlot(slot);
+    } catch (error) {
+      setStatus(error instanceof Error ? humanizeUiText(error.message) : `${slotLabel(slot)}读取失败`);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadLatest = async () => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      const latest = await saveService?.loadMostRecent();
+      if (!latest) {
+        setStatus("没有可继续的存档");
+        return false;
+      }
+      return await readSlot(latest.slotId);
+    } catch (error) {
+      setStatus(error instanceof Error ? humanizeUiText(error.message) : "读取最近存档失败");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runExpansionCommand = async (command: ExpansionCommand) => {
-    if (!saveService) return;
+    if (!saveService) return false;
+    const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在校验并原子提交…");
     try {
-      if (command.type === "START_EXPANSION_DRAFT") await saveService.saveCheckpoint(activeSlot, "pre-expansion-draft", state);
+      if (command.type === "START_EXPANSION_DRAFT") await saveService.saveCheckpoint(targetSlot, "pre-expansion-draft", state);
       const next = executeExpansionCommand(state, command);
-      await persistState(next);
+      await persistState(next, targetSlot);
       setState(next);
       setStatus(humanizeUiText(next.expansion?.lastNotice) || "操作完成 · 已自动保存");
+      return true;
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "操作失败，状态未改变");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -479,17 +544,18 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
   const runDraftCommand = async (command: DraftCommand) => {
     if (!saveService) return;
+    const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在校验选秀事务并自动保存…");
     try {
-      if (command.type === "PREPARE_ROOKIE_DRAFT") await saveService.saveCheckpoint(activeSlot, "pre-rookie-draft", state);
+      if (command.type === "PREPARE_ROOKIE_DRAFT") await saveService.saveCheckpoint(targetSlot, "pre-rookie-draft", state);
       const next = executeDraftCommand(state, command);
-      await persistState(next);
+      await persistState(next, targetSlot);
       setState(next);
       const nextPick = next.rookieDraft?.pickOrder[next.rookieDraft.currentPickIndex];
-      const completedPickNumber = command.type === "PREPARE_ROOKIE_DRAFT" ? 0 : command.payload.expectedPickNumber;
+      const completedPickNumber = "expectedPickNumber" in command.payload ? command.payload.expectedPickNumber : 0;
       setStatus(next.league.currentPhase === "OFFSEASON_POST_DRAFT"
-        ? "新秀选秀完成 · 64 份合同已结算"
+        ? `新秀选秀完成 · ${next.rookieDraft?.pickOrder.filter((pick) => pick.playerId).length ?? 0} 份合同已结算`
         : nextPick?.ownerTeamId === next.userTeamId
           ? `第 #${nextPick.pickNumber} 顺位 · 轮到你的球队选择`
           : completedPickNumber > 0 ? `第 #${completedPickNumber} 顺位已结算 · 等待继续模拟` : "选秀大厅已就绪 · 开始模拟电脑签位");
@@ -502,12 +568,13 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
   const runFreeAgencyCommand = async (command: FreeAgencyCommand) => {
     if (!saveService) return;
+    const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在校验工资帽、报价与球员决策…");
     try {
-      if (command.type === "ENTER_FREE_AGENCY") await saveService.saveCheckpoint(activeSlot, "pre-free-agency", state);
+      if (command.type === "ENTER_FREE_AGENCY") await saveService.saveCheckpoint(targetSlot, "pre-free-agency", state);
       const next = executeFreeAgencyCommand(state, command);
-      await persistState(next);
+      await persistState(next, targetSlot);
       setState(next);
       setStatus(command.type === "ADVANCE_FA_DAY" ? `自由市场第 ${next.freeAgency?.currentDay} 天 · 今日结算完成` : "报价事务已原子提交并自动保存");
     } catch (error) {
@@ -517,23 +584,44 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
     }
   };
 
+  const markTeamNotificationsRead = async (ids: string[]) => {
+    if (!saveService || busy || ids.length === 0) return;
+    const targetSlot = activeSlot;
+    setBusy(true);
+    try {
+      const next = executeTeamNotificationCommand(state, {
+        commandId: `read-team-notifications-${stableHash(ids)}`,
+        type: "MARK_TEAM_NOTIFICATIONS_READ",
+        payload: { ids },
+      });
+      await persistState(next, targetSlot);
+      setState(next);
+    } catch (error) {
+      setStatus(error instanceof Error ? humanizeUiText(error.message) : "通知状态保存失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runManagerCommand = async (command: TradeCommand | RosterCommand) => {
     if (!saveService) return;
+    const targetSlot = activeSlot;
     setBusy(true); setStatus("正在校验交易、名单与工资帽…");
     try {
       const next = command.type === "GENERATE_TRADE_OFFERS" || command.type === "ACCEPT_TRADE_OFFER" ? executeTradeCommand(state, command) : executeRosterCommand(state, command);
-      await persistState(next); setState(next); setStatus(command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "GENERATE_TRADE_OFFERS" ? "已生成 3 个动态报价 · 适配度变化已计算" : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : "经理事务已原子提交并自动保存");
+      await persistState(next, targetSlot); setState(next); setStatus(command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "GENERATE_TRADE_OFFERS" ? `已生成 ${BALANCE_CONFIG.trade.generatedOfferCount} 个动态报价 · 适配度变化已计算` : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : "经理事务已原子提交并自动保存");
     } catch (error) { setStatus(error instanceof Error ? humanizeUiText(error.message) : "操作失败，状态未改变"); } finally { setBusy(false); }
   };
 
   const runContractCommand = async (command: ContractLifecycleCommand) => {
     if (!saveService) return;
+    const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在统一滚动合同、效力年限与伯德权…");
     try {
-      if (command.type === "ROLLOVER_LEAGUE_YEAR") await saveService.saveCheckpoint(activeSlot, `pre-rollover-${state.league.seasonId}`, state);
+      if (command.type === "ROLLOVER_LEAGUE_YEAR") await saveService.saveCheckpoint(targetSlot, `pre-rollover-${state.league.seasonId}`, state);
       const next = executeContractLifecycleCommand(state, command);
-      await persistState(next);
+      await persistState(next, targetSlot);
       setState(next);
       setStatus(next.league.currentPhase === "OFFSEASON_PRE_DRAFT" ? "合同年度结算完成 · 可以进入新秀选秀" : "合同选项已原子提交并自动保存");
     } catch (error) {
@@ -545,10 +633,11 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
   const runInjuryCommand = async (command: InjuryCommand) => {
     if (!saveService) return;
+    const targetSlot = activeSlot;
     setBusy(true);
     try {
       const next = executeInjuryCommand(state, command);
-      await persistState(next);
+      await persistState(next, targetSlot);
       setState(next);
       setStatus("重大伤病已确认 · 可继续模拟");
     } catch (error) {
@@ -560,13 +649,14 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
   const runEmergencyRosterCommand = async (command: EmergencyRosterCommand) => {
     if (!saveService) return;
+    const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在生成合法紧急名单并核算按日底薪…");
     try {
       const next = executeEmergencyRosterCommand(state, command);
-      await persistState(next);
+      await persistState(next, targetSlot);
       setState(next);
-      setStatus("紧急名单已补足至 8 人 · 可继续模拟");
+      setStatus(`紧急名单已补足至 ${LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget} 人 · 可继续模拟`);
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "紧急名单补员失败，状态未改变");
     } finally {
@@ -576,10 +666,11 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
   const runEventCommand = async (command: EventCommand) => {
     if (!saveService) return;
+    const targetSlot = activeSlot;
     setBusy(true);
     try {
       const next = executeEventCommand(state, command);
-      await persistState(next);
+      await persistState(next, targetSlot);
       setState(next);
       setStatus(nextPendingEvent(next) ? "事件已处理 · 队列还有待确认事件" : "事件队列已清空 · 可继续模拟");
     } catch (error) {
@@ -590,23 +681,34 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
   };
 
   const restoreExpansionCheckpoint = async () => {
-    const checkpoint = await saveService?.loadCheckpoint(activeSlot, "pre-expansion-draft");
-    if (!checkpoint) {
-      setStatus("暂无扩军选秀前检查点");
-      return;
+    if (busy) return;
+    const targetSlot = activeSlot;
+    setBusy(true);
+    try {
+      const checkpoint = await saveService?.loadCheckpoint(targetSlot, "pre-expansion-draft");
+      if (!checkpoint) {
+        setStatus("暂无扩军选秀前检查点");
+        return;
+      }
+      await persistState(checkpoint, targetSlot);
+      setState(checkpoint);
+      setStatus("已恢复扩军选秀前检查点");
+    } catch (error) {
+      setStatus(error instanceof Error ? humanizeUiText(error.message) : "检查点恢复失败，状态未改变");
+    } finally {
+      setBusy(false);
     }
-    await persistState(checkpoint);
-    setState(checkpoint);
-    setStatus("已恢复扩军选秀前检查点");
   };
 
   const resolveSaveConflict = async (choice: "LOCAL" | "CLOUD") => {
-    if (!saveService || !cloudStorage) return;
+    if (!saveService || !cloudStorage || !saveConflict) return;
+    const conflictSlot = saveConflict.slotId;
     setBusy(true);
     try {
-      await saveService.resolveConflict(activeSlot, cloudStorage, choice);
-      const resolved = await saveService.load(activeSlot);
+      await saveService.resolveConflict(conflictSlot, cloudStorage, choice);
+      const resolved = await saveService.load(conflictSlot);
       if (resolved) setState(resolved);
+      setActiveSlot(conflictSlot);
       setSaveConflict(null);
       setStatus(choice === "LOCAL" ? "已使用本机版本并创建新的云端版本" : "已保留本机冲突备份并切换到云端版本");
     } catch (error) {
@@ -620,11 +722,11 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
   if (["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
     && !(state.league.currentPhase === "OPTION_PHASE" && state.contractLifecycle)) {
-    return <><ExpansionFlow state={state} busy={busy} status={status} onCommand={runExpansionCommand} onSave={save} onLoad={load} onRestoreCheckpoint={restoreExpansionCheckpoint} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{conflictModal}</>;
+    return <><ExpansionFlow state={state} busy={busy} status={status} onCommand={runExpansionCommand} onSave={save} onLoad={load} onLoadLatest={loadLatest} saveSlots={saveSlots} onRestoreCheckpoint={restoreExpansionCheckpoint} activeSlot={activeSlot} onSlotChange={changeActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{conflictModal}</>;
   }
 
   if (["ROOKIE_DRAFT_PENDING", "OPTION_PHASE", "OFFSEASON_PRE_DRAFT", "DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON"].includes(state.league.currentPhase)) {
-    return <><Stage4Flow state={state} busy={busy} status={status} onCommand={runDraftCommand} onContractCommand={runContractCommand} onFreeAgencyCommand={runFreeAgencyCommand} onTradeCommand={runManagerCommand} onRosterCommand={runManagerCommand} onSave={save} onLoad={load} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{conflictModal}</>;
+    return <><Stage4Flow state={state} busy={busy} status={status} onCommand={runDraftCommand} onContractCommand={runContractCommand} onFreeAgencyCommand={runFreeAgencyCommand} onTradeCommand={runManagerCommand} onRosterCommand={runManagerCommand} onSave={save} onLoad={load} onLoadLatest={loadLatest} saveSlots={saveSlots} activeSlot={activeSlot} onSlotChange={changeActiveSlot} onHome={onExitToHome} onMarkNotificationsRead={markTeamNotificationsRead} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{conflictModal}</>;
   }
 
   const phaseDone = state.schedule.every((game) => game.status === "FINAL");
@@ -635,11 +737,12 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
   const animatedCalendarIndex = selectedCalendarGame ? fiveGameAnimation?.frames.findIndex((frame) => frame.game?.gameId === selectedCalendarGame.id) ?? -1 : -1;
   const animatedCalendarResult = animatedCalendarIndex >= 0 && fiveGameAnimation && animatedCalendarIndex < fiveGameAnimation.completed ? fiveGameAnimation.frames[animatedCalendarIndex].game : undefined;
   const animatedCalendarDate = fiveGameAnimation?.frames[Math.min(fiveGameAnimation.completed, (fiveGameAnimation.frames.length ?? 1) - 1)]?.date;
+  const visibleCalendarDate = animatedCalendarDate ?? currentCalendarDate;
   const displayedCalendarResult = selectedCalendarResult ?? animatedCalendarResult;
   return (
     <main className="app-shell" style={{ "--team-color": myTeam.primaryColor } as React.CSSProperties}>
-      <GameChrome phase={state.league.currentPhase} dataLabel="本地球员数据已载入" onSave={save} onLoad={load} activeSlot={activeSlot} onSlotChange={setActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />
-      <header id="season-home" className="prototype-team-summary regular-team-banner" hidden={activeTab !== "home"}>
+      <GameChrome phase={state.league.currentPhase} busy={busy} dataLabel="本地球员数据已载入" seasonProfile={activeTab === "home" ? { teamName: myTeam.fullName, record: `${visibleRecord.wins}胜 - ${visibleRecord.losses}负`, rank: `${conferenceLabel(myTeam.conference)}第 ${standingsForConference(state, myTeam.conference).findIndex((record) => record.teamId === state.userTeamId) + 1}` } : undefined} onSave={save} onLoad={load} onLoadLatest={loadLatest} activeSlot={activeSlot} saveSlots={saveSlots} onSlotChange={changeActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} notifications={getTeamInboxItems(state)} onMarkNotificationsRead={markTeamNotificationsRead} onHandlePendingNotification={() => setActiveTab("home")} />
+      <header id="season-home" className="prototype-team-summary regular-team-banner" hidden>
         <div>
           <div className="section-kicker">{state.league.seasonId} 常规赛</div>
           <h1>{myTeam.fullName}</h1>
@@ -653,7 +756,66 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         {status}
       </section>
 
-      <section className="prototype-calendar-card" hidden={activeTab !== "home"}>
+      {activeTab === "home" && <section className="season-demo-home" aria-label="赛季中心">
+        <article className="season-demo-summary clip-corner">
+          <div className="season-demo-summary-head">
+            <div><small>CURRENT SEASON TIMELINE</small><b>{state.league.seasonId} {phaseLabel(state.league.currentPhase)} · 第 {Math.min(playedGames + 1, userSchedule.length)} / {userSchedule.length} 场</b></div>
+            <div><small>球队综合战力</small><strong>OVR {myTeamFit.score.toFixed(0)} · {conferenceLabel(myTeam.conference)}第 {standingsForConference(state, myTeam.conference).findIndex((record) => record.teamId === state.userTeamId) + 1}</strong></div>
+          </div>
+          <div className="season-demo-ticker"><em>快讯</em><span>{simulationBlockingEvent?.title ?? status}</span></div>
+        </article>
+
+        <article className="season-demo-card season-demo-schedule">
+          <header><b>▦ {monthLabel(resolvedCalendarMonth)} 赛程</b><span><button type="button" onClick={() => { setCalendarMonth(currentCalendarDate.slice(0, 7)); setSelectedCalendarDate(null); setSelectedCalendarGameId(nextGame?.id ?? null); }}>今天</button><button type="button" aria-label="上个月" disabled={calendarMonthIndex <= 0} onClick={() => setCalendarMonth(scheduleMonths[calendarMonthIndex - 1])}>‹</button><button type="button" aria-label="下个月" disabled={calendarMonthIndex >= scheduleMonths.length - 1} onClick={() => setCalendarMonth(scheduleMonths[calendarMonthIndex + 1])}>›</button></span></header>
+          <div className="season-demo-date-strip" ref={calendarStripRef} aria-label={`${monthLabel(resolvedCalendarMonth)}赛程`}>
+            {calendarCells(resolvedCalendarMonth).filter(Boolean).map((date) => {
+              const game = monthGames.get(date!);
+              const animationIndex = game ? fiveGameAnimation?.frames.findIndex((frame) => frame.game?.gameId === game.id) ?? -1 : -1;
+              const result = game ? state.userGameDetails[game.id] ?? (animationIndex >= 0 && animationIndex < (fiveGameAnimation?.completed ?? 0) ? fiveGameAnimation?.frames[animationIndex].game : undefined) : undefined;
+              const isPast = date! < visibleCalendarDate;
+              const isCurrent = date === visibleCalendarDate;
+              const selected = date === selectedCalendarDate && date !== visibleCalendarDate && !fiveGameAnimation;
+              const isAnimating = date === animatedCalendarDate;
+              const opponent = game ? state.teams[game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId] : undefined;
+              const resultLabel = result ? `${result.winnerTeamId === state.userTeamId ? "胜" : "负"} · 查看战报` : "";
+              return <button type="button" data-calendar-date={date} key={date} className={`${isPast ? "past " : ""}${isCurrent ? "current " : ""}${selected ? "selected " : ""}${isAnimating ? "simulating " : ""}${result ? (result.winnerTeamId === state.userTeamId ? "win" : "loss") : ""}`} aria-label={`${date}${resultLabel ? ` · ${resultLabel}` : ""}`} onClick={() => {
+                if (fiveGameAnimation) return;
+                setSelectedCalendarDate(date!);
+                if (!game) return;
+                setSelectedCalendarGameId(game.id);
+                if (result) setSelectedGameId(game.id);
+              }}>
+                <small>周{["日", "一", "二", "三", "四", "五", "六"][new Date(`${date}T00:00:00`).getDay()]}</small><b>{Number(date!.slice(-2))}</b><em>{result ? (result.winnerTeamId === state.userTeamId ? "胜" : "负") : isAnimating ? "模拟" : game ? opponent?.name.slice(0, 2) : "休"}</em>
+              </button>;
+            })}
+          </div>
+          <div className="season-demo-sim-actions">
+            <button type="button" aria-label="模拟度过一天" disabled={busy || Boolean(simulationBlockingEvent)} onClick={simulateNextDay}>› 1 天</button>
+            <button type="button" className="primary" aria-label="模拟下一场比赛" disabled={busy || Boolean(simulationBlockingEvent)} onClick={simulateNextGame}>ϟ 1 场</button>
+            <button type="button" aria-label="快进五场比赛" disabled={busy || Boolean(simulationBlockingEvent) || Boolean(fiveGameAnimation)} onClick={simulateFive}>⏭ 5 场</button>
+            <button type="button" aria-label="模拟至日历选中的日期" disabled={busy || Boolean(simulationBlockingEvent) || !selectedCalendarDateIsReachable} data-testid="simulate-next-event" onClick={simulateToSelectedDate}>{selectedCalendarDateIsReachable ? `⚑ 至 ${selectedCalendarDate!.slice(5).replace("-", "/")}` : "⚑ 至节点"}</button>
+          </div>
+        </article>
+
+        <article className="season-demo-card season-demo-tactic disabled-feature" aria-disabled="true"><span>♞</span><div><b>本场战术预设</b><small>战术系统尚未接入；当前由球队适配度自动参与模拟。</small></div><button type="button" disabled>平衡攻防</button></article>
+
+        <article className="season-demo-card season-demo-matchup clip-corner">
+          <header><b>♨ MATCHUP #{playedGames + 1}</b><span>{nextGame ? `${nextGame.date} · ${nextGame.homeTeamId === state.userTeamId ? "主场" : "客场"}` : "常规赛赛程已结束"}</span></header>
+          {nextGame && nextOpponent ? <><div className="season-demo-versus"><div><LogoMark team={myTeam} variant="compact" /><b>{myTeam.name}</b><small>{formatRecord(visibleRecord.wins, visibleRecord.losses)} · {myTeamFit.score.toFixed(0)}</small></div><strong>VS</strong><div><LogoMark team={nextOpponent} variant="compact" /><b>{nextOpponent.name}</b><small>{formatRecord(state.standings[nextOpponent.id].wins, state.standings[nextOpponent.id].losses)} · {calculateTeamFit(state, nextOpponent.id).score.toFixed(0)}</small></div></div><div className="season-demo-matchup-meta"><span>阵容适配 <b>{myTeamFit.score.toFixed(0)}</b></span><span>胜率预测 <b>功能未开放</b></span></div></> : <p className="season-demo-empty">常规赛已结束，等待进入下一阶段。</p>}
+        </article>
+
+        <article className="season-demo-card season-demo-key-matchup">
+          <header><b>♙ 双方焦点球星</b></header>
+          <div className="season-demo-player-duel"><div><b>{featuredPlayer ? `${playerNameZh(featuredPlayer.name, featuredPlayer.id)} (${featuredPlayer.position})` : "暂无"}</b><small>{featuredPlayer?.seasonStats.games ? `场均 ${(featuredPlayer.seasonStats.pts / featuredPlayer.seasonStats.games).toFixed(1)} 分 ${(featuredPlayer.seasonStats.ast / featuredPlayer.seasonStats.games).toFixed(1)} 助攻` : "赛季数据尚未产生"}</small><em>状态：{featuredPlayer?.form && featuredPlayer.form >= 72 ? "火热" : "正常"}</em></div><div><b>{featuredOpponent ? `${playerNameZh(featuredOpponent.name, featuredOpponent.id)} (${featuredOpponent.position})` : "等待对手"}</b><small>{featuredOpponent?.seasonStats.games ? `场均 ${(featuredOpponent.seasonStats.pts / featuredOpponent.seasonStats.games).toFixed(1)} 分 ${(featuredOpponent.seasonStats.reb / featuredOpponent.seasonStats.games).toFixed(1)} 篮板` : "赛季数据尚未产生"}</small><em>状态：{featuredOpponent?.form && featuredOpponent.form >= 72 ? "火热" : "正常"}</em></div></div>
+        </article>
+
+        <div className="season-demo-bottom-grid">
+          <article className="season-demo-card season-demo-results"><header><b>↶ 近期赛果</b><button type="button" disabled={!recentUserGames[0]} onClick={() => recentUserGames[0] && setSelectedGameId(recentUserGames[0].gameId)}>查看战报</button></header><div>{recentUserGames.length ? recentUserGames.slice(0, 3).map((game) => { const won = game.winnerTeamId === state.userTeamId; const opponent = state.teams[game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId]; return <button type="button" key={game.gameId} onClick={() => setSelectedGameId(game.gameId)} className={won ? "win" : "loss"}><b>{won ? "W" : "L"} {game.awayScore} - {game.homeScore}</b><small>{game.homeTeamId === state.userTeamId ? "vs " : "@ "}{opponent.name}</small></button>; }) : <p>尚无已完成比赛</p>}</div></article>
+          <article className="season-demo-card season-demo-health"><header><b>✚ 伤病 / 状态</b><span>详情</span></header><div>{currentInjuries.length ? currentInjuries.map((player) => <div className="injured" key={player.id}><b>{playerNameZh(player.name, player.id)} ({player.position})</b><small>{player.injury ? `${injurySeverityLabel(player.injury.severity)} · 剩余 ${player.injury.gamesRemaining} 场` : "暂不可出战"}</small></div>) : <div className="healthy"><b>{featuredPlayer ? playerNameZh(featuredPlayer.name, featuredPlayer.id) : "球队"}</b><small>{featuredPlayer?.seasonStats.games ? `近况稳定 · 场均 ${(featuredPlayer.seasonStats.pts / featuredPlayer.seasonStats.games).toFixed(1)} 分` : "全员可出战"}</small><em>状态良好</em></div>}</div></article>
+        </div>
+      </section>}
+
+      <section className="prototype-calendar-card" hidden>
         <header><b>▦ {monthLabel(resolvedCalendarMonth)} 赛程表</b><span><button disabled={calendarMonthIndex <= 0} onClick={() => setCalendarMonth(scheduleMonths[calendarMonthIndex - 1])}>‹</button><button disabled={calendarMonthIndex >= scheduleMonths.length - 1} onClick={() => setCalendarMonth(scheduleMonths[calendarMonthIndex + 1])}>›</button></span></header>
         <div className="calendar-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
         <div className="calendar-grid">{calendarCells(resolvedCalendarMonth).map((date, index) => {
@@ -671,7 +833,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         })}</div>
       </section>
 
-      {activeTab === "home" && selectedCalendarGame && <section className="prototype-game-day-card">
+      {activeTab === "home" && selectedCalendarGame && <section className="prototype-game-day-card legacy-season-block">
         <header><b>比赛日：{selectedCalendarGame.date.slice(5).replace("-", "月")}日</b><span>{displayedCalendarResult ? "比赛已结束" : animatedCalendarIndex >= 0 ? "正在模拟" : "即将进行的赛事"}</span></header>
         <div className="prototype-matchup"><div><LogoMark team={state.teams[selectedCalendarGame.awayTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.awayTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.awayTeamId].wins, state.standings[selectedCalendarGame.awayTeamId].losses)}</small></div><strong>{displayedCalendarResult ? `${displayedCalendarResult.awayScore} - ${displayedCalendarResult.homeScore}` : "VS"}</strong><div><LogoMark team={state.teams[selectedCalendarGame.homeTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.homeTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.homeTeamId].wins, state.standings[selectedCalendarGame.homeTeamId].losses)}</small></div></div>
         <div className="prototype-game-actions">
@@ -694,10 +856,10 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         {myRoster.map((player) => <button type="button" className="prototype-roster-player" data-player-id={player.id} onClick={() => setSelectedPlayerId(player.id)} key={player.id}><span className="prototype-position-mark">{positionLabel(player.position)}</span><span className="prototype-player-copy"><b>{playerNameZh(player.name, player.id)}{!player.available && <em>伤病</em>}</b><small>{player.age}岁 ｜ {shortMoney(player.contract.salary)} ｜ {rotationRoleLabel(player.rotationRole)}</small></span><span className="prototype-player-overall"><b>{playerOverall(player).toFixed(0)}</b><small>综合</small></span></button>)}
       </section>
 
-      {activeTab === "home" && recentUserGames.length > 0 && <section className="recent-games-card regular-recent-games"><div className="section-heading"><div><span className="section-kicker">比赛归档</span><h2>最近赛果</h2></div><small>{Object.keys(state.userGameDetails).length} / 82</small></div><div className="recent-game-list">{recentUserGames.map((game, index) => { const won = game.winnerTeamId === state.userTeamId; const opponent = game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId; return <button data-testid={index === 0 ? "latest-game-detail" : undefined} key={game.gameId} onClick={() => setSelectedGameId(game.gameId)}><span className={won ? "game-result win" : "game-result loss"}>{won ? "胜" : "负"}</span><b>{state.teams[opponent].name}</b><small>{game.homeTeamId === state.userTeamId ? "主场" : "客场"}</small><strong>{game.awayScore}–{game.homeScore}</strong></button>; })}</div></section>}
+      {activeTab === "home" && recentUserGames.length > 0 && <section className="recent-games-card regular-recent-games legacy-season-block"><div className="section-heading"><div><span className="section-kicker">比赛归档</span><h2>最近赛果</h2></div><small>{Object.keys(state.userGameDetails).length} / {userSchedule.length}</small></div><div className="recent-game-list">{recentUserGames.map((game, index) => { const won = game.winnerTeamId === state.userTeamId; const opponent = game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId; return <button data-testid={index === 0 ? "latest-game-detail" : undefined} key={game.gameId} onClick={() => setSelectedGameId(game.gameId)}><span className={won ? "game-result win" : "game-result loss"}>{won ? "胜" : "负"}</span><b>{state.teams[opponent].name}</b><small>{game.homeTeamId === state.userTeamId ? "主场" : "客场"}</small><strong>{game.awayScore}–{game.homeScore}</strong></button>; })}</div></section>}
 
       <details hidden={activeTab !== "manage" || manageSubTab !== "roster"} className="history-card season-calendar-card legacy-season-block">
-        <summary><span><small className="section-kicker">完整赛程</small><b>我的球队 · 82 场日历</b></span><strong>{playedGames} / 82</strong></summary>
+        <summary><span><small className="section-kicker">完整赛程</small><b>我的球队 · {userSchedule.length} 场日历</b></span><strong>{playedGames} / {userSchedule.length}</strong></summary>
         <div className="season-calendar-list">{userSchedule.map((game, index) => { const opponent = game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId; const result = state.userGameDetails[game.id]; const won = result?.winnerTeamId === state.userTeamId; return <button type="button" disabled={!result} onClick={() => result && setSelectedGameId(game.id)} key={game.id}><span>{String(index + 1).padStart(2, "0")}</span><small>{game.date}</small><b>{game.homeTeamId === state.userTeamId ? "主" : "客"} · {state.teams[opponent].name}</b><strong>{result ? `${won ? "胜" : "负"} ${result.awayScore}–${result.homeScore}` : "未赛"}</strong></button>; })}</div>
       </details>
 
@@ -734,7 +896,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
 
       {state.injuryState.pendingEmergencyRoster && (() => {
         const emergency = state.injuryState.pendingEmergencyRoster;
-        return <section className="injury-alert emergency-roster-alert prototype-alert-card" role="alert"><span className="prototype-alert-icon" aria-hidden="true">!</span><div><span className="section-kicker">模拟已暂停 · 紧急名单</span><h2>可用球员仅 {emergency.availableCount} 人</h2><p>比赛名单至少需要 8 名可用球员，系统将优先签下自由球员，不足时生成临时替补。</p><div className="prototype-alert-meta"><span>当前 <b>{emergency.availableCount}</b> 人</span><span>最低 <b>8</b> 人</span></div></div><button data-testid="fill-emergency-roster" disabled={busy} onClick={() => runEmergencyRosterCommand({ commandId: `fill-emergency-${state.league.seasonId}-${state.calendar.currentDateIndex}`, type: "FILL_EMERGENCY_ROSTER", payload: { teamId: state.userTeamId } })}>自动补齐至 8 人 →</button></section>;
+        return <section className="injury-alert emergency-roster-alert prototype-alert-card" role="alert"><span className="prototype-alert-icon" aria-hidden="true">!</span><div><span className="section-kicker">模拟已暂停 · 紧急名单</span><h2>可用球员仅 {emergency.availableCount} 人</h2><p>比赛名单至少需要 {LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget} 名可用球员，系统将优先签下自由球员，不足时生成临时替补。</p><div className="prototype-alert-meta"><span>当前 <b>{emergency.availableCount}</b> 人</span><span>最低 <b>{LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget}</b> 人</span></div></div><button data-testid="fill-emergency-roster" disabled={busy} onClick={() => runEmergencyRosterCommand({ commandId: `fill-emergency-${state.league.seasonId}-${state.calendar.currentDateIndex}`, type: "FILL_EMERGENCY_ROSTER", payload: { teamId: state.userTeamId } })}>自动补齐至 {LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget} 人 →</button></section>;
       })()}
 
       <section id="season-manage" className="action-grid legacy-season-block" hidden={activeTab !== "home"}>
@@ -757,7 +919,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
           {(["overview", "roster", "contracts", "training", "assets"] as const).map((tab) => <button key={tab} className={manageSubTab === tab ? "selected" : ""} onClick={() => setManageSubTab(tab)}>{({ overview: "概览", roster: "阵容", contracts: "合同薪资", training: "培养", assets: "资产筹码" })[tab]}</button>)}
         </div>
         {manageSubTab === "overview" && <section className="cyber-metric-grid"><span><small>综合战力</small><b>{myTeamFit.score.toFixed(0)}</b></span><span><small>进攻战力</small><b>{myTeamFit.offense.toFixed(0)}</b></span><span><small>防守战力</small><b>{myTeamFit.defense.toFixed(0)}</b></span><span><small>战术契合</small><b>{myTeamFit.score.toFixed(0)}%</b></span></section>}
-        {manageSubTab === "contracts" && <section className="prototype-cap-overview cyber-panel"><header><b>合同与薪资</b><span>{myRoster.length}/15</span></header><div className="career-metrics"><span><b>{shortMoney(teamPayroll)}</b><small>当前薪资</small></span><span><b>{shortMoney(Math.max(0, 140_000_000 - teamPayroll))}</b><small>预估空间</small></span><span><b>{myRoster.filter((player) => player.contract.yearsRemaining <= 1).length}</b><small>到期合同</small></span><span><b>{state.league.currentPhase === "REGULAR_PRE_DEADLINE" ? "开放" : "关闭"}</b><small>交易窗口</small></span></div>{myRoster.map((player) => <button type="button" className="cyber-list-row" key={player.id} onClick={() => setSelectedPlayerId(player.id)}><span>{playerNameZh(player.name, player.id)}</span><small>{shortMoney(player.contract.salary)} · {player.contract.yearsRemaining} 年</small></button>)}</section>}
+        {manageSubTab === "contracts" && <section className="prototype-cap-overview cyber-panel"><header><b>合同与薪资</b><span>{capSheet.activeStandardContracts}/{LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum}</span></header><div className="career-metrics"><span><b>{shortMoney(capSheet.total)}</b><small>薪资表总额</small></span><span><b>{shortMoney(capSheet.availableCapSpace)}</b><small>可用空间</small></span><span><b>{myRoster.filter((player) => player.contract.yearsRemaining <= 1).length}</b><small>到期合同</small></span><span><b>{isTradePhaseAllowed(state.league.currentPhase) ? "开放" : "关闭"}</b><small>交易窗口</small></span></div>{myRoster.map((player) => <button type="button" className="cyber-list-row" key={player.id} onClick={() => setSelectedPlayerId(player.id)}><span>{playerNameZh(player.name, player.id)}</span><small>{shortMoney(player.contract.salary)} · {player.contract.yearsRemaining} 年</small></button>)}</section>}
         {manageSubTab === "training" && <section className="cyber-panel disabled-feature"><b>重点培养</b><p>{state.trainingPlan ? "训练计划将在季前阶段结算。" : "培养计划在休赛期训练营开放。"}</p><button disabled>调整训练方向 · 休赛期开放</button></section>}
         {manageSubTab === "assets" && <section className="cyber-panel"><header><b>未来选秀权库存</b><span>{Object.values(state.draftPicks).filter((pick) => pick.ownerTeamId === state.userTeamId).length} 枚</span></header>{Object.values(state.draftPicks).filter((pick) => pick.ownerTeamId === state.userTeamId).sort((left, right) => left.year - right.year || left.round - right.round).map((pick) => <div className="cyber-list-row" key={pick.id}><span>{pick.year} 年第 {pick.round} 轮 · {state.teams[pick.originalTeamId]?.name ?? pick.originalTeamId}</span><small>{pick.reservedByCommitmentId ? "已承诺" : "可交易"}</small></div>)}<div className="cyber-list-row muted"><span>Trade Block / 交易货架</span><small>功能尚未实现</small></div></section>}
       </>}
@@ -766,8 +928,8 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
         <div className="cyber-subnav" role="tablist" aria-label="球员市场">
           {(["trade", "free-agents", "offers", "log"] as const).map((tab) => <button key={tab} className={marketSubTab === tab ? "selected" : ""} onClick={() => setMarketSubTab(tab)}>{({ trade: "交易", "free-agents": "自由球员", offers: "我的报价", log: "交易记录" })[tab]}</button>)}
         </div>
-        <div className={`cyber-market-status ${["REGULAR_SEASON", "REGULAR_PRE_DEADLINE"].includes(state.league.currentPhase) ? "open" : "closed"}`}>{["REGULAR_SEASON", "REGULAR_PRE_DEADLINE"].includes(state.league.currentPhase) ? "交易窗口开放中" : "当前阶段不可执行交易"}</div>
-        {marketSubTab === "trade" && (["REGULAR_SEASON", "REGULAR_PRE_DEADLINE"].includes(state.league.currentPhase) ? <TradeDesk state={state} busy={busy} onTradeCommand={runManagerCommand} /> : <section className="cyber-panel disabled-feature"><b>交易引擎</b><p>交易功能会在交易窗口开放时自动启用。</p><button disabled>交易截止日后不可执行交易</button></section>)}
+        <div className={`cyber-market-status ${isTradePhaseAllowed(state.league.currentPhase) ? "open" : "closed"}`}>{isTradePhaseAllowed(state.league.currentPhase) ? "交易窗口开放中" : "当前阶段不可执行交易"}</div>
+        {marketSubTab === "trade" && (isTradePhaseAllowed(state.league.currentPhase) ? <TradeDesk state={state} busy={busy} onTradeCommand={runManagerCommand} /> : <section className="cyber-panel disabled-feature"><b>交易引擎</b><p>交易功能会在交易窗口开放时自动启用。</p><button disabled>交易截止日后不可执行交易</button></section>)}
         {marketSubTab === "free-agents" && <section className="cyber-panel disabled-feature"><b>自由球员 FA</b><p>{state.freeAgency?.opened ? "自由市场的完整报价流程目前位于休赛期中心。" : "自由市场将在休赛期开放。"}</p><button disabled>{state.freeAgency?.opened ? "请前往休赛期中心" : "自由市场尚未开放"}</button></section>}
         {marketSubTab === "offers" && <section className="cyber-panel"><b>动态交易报价</b>{state.tradeDesk.offers.length ? state.tradeDesk.offers.map((offer) => <div className="cyber-list-row" key={offer.offerId}><span>来自 {state.teams[offer.counterpartyTeamId]?.fullName ?? offer.counterpartyTeamId} · {offer.userIncomingPlayerIds.map((id) => playerNameZh(state.players[id]?.name ?? id, id)).join("、")}</span><small>询价 {offer.inquiryCount} 次</small></div>) : <p>尚无交易报价。先在交易页选择本队球员并获取报价。</p>}</section>}
         {marketSubTab === "log" && <section className="cyber-panel"><b>交易记录</b>{state.gmCareer.tradeHistory.length ? state.gmCareer.tradeHistory.slice().reverse().map((trade) => <div className="cyber-list-row" key={trade.offerId}><span>{trade.summary}</span><small>{trade.seasonId}</small></div>) : <p>尚未完成交易。</p>}</section>}
@@ -798,7 +960,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
       </section>
 
       <section className="history-card league-hub-card prototype-secondary-details cyber-panel" hidden={activeTab !== "league" || leagueSubTab !== "leaders"}>
-        <div className="section-heading"><div><span className="section-kicker">联盟中心</span><h2>联盟领袖与奖项竞争</h2></div><b>32 支球队</b></div>
+        <div className="section-heading"><div><span className="section-kicker">联盟中心</span><h2>联盟领袖与奖项竞争</h2></div><b>{Object.keys(state.teams).length} 支球队</b></div>
         <div className="league-leader-grid">{([
           ["得分", leagueLeaders.points, "pts"], ["篮板", leagueLeaders.rebounds, "reb"], ["助攻", leagueLeaders.assists, "ast"],
         ] as const).map(([label, player, key]) => <span key={label}><small>{label}王</small><b>{player?.name ?? "赛季尚未开始"}</b><i>{player ? `${(player.seasonStats[key] / player.seasonStats.games).toFixed(1)} / 场` : "—"}</i></span>)}</div>
@@ -819,30 +981,26 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), openS
       {activeTab === "career" && careerSubTab === "milestones" && <section className="history-card prototype-career-secondary cyber-panel"><b>重大里程碑</b>{latestAwards && <div className="award-grid">{Object.entries(latestAwards.winners).map(([award, playerId]) => <span key={award}><small>{awardLabel(award)}</small><b>{state.players[playerId]?.name ?? playerId}</b></span>)}</div>}<div className="cyber-list-row muted"><span>球队首胜、首次季后赛、首次夺冠等</span><small>按成就系统记录</small></div></section>}
 
       <footer hidden={activeTab !== "manage"}>
-        <label className="slot-picker">存档<select value={activeSlot} onChange={(event) => setActiveSlot(Number(event.target.value) as 1 | 2 | 3)}><option value={1}>{slotLabel(1)}</option><option value={2}>{slotLabel(2)}</option><option value={3}>{slotLabel(3)}</option></select></label>
-        <button className="footer-action" onClick={() => void save()}>保存{slotLabel(activeSlot)}</button>
-        <button className="footer-action" onClick={() => void load()}>读取{slotLabel(activeSlot)}</button>
+        <label className="slot-picker">存档<select disabled={busy} value={activeSlot} onChange={(event) => changeActiveSlot(Number(event.target.value) as 1 | 2 | 3)}><option value={1}>{slotLabel(1)}</option><option value={2}>{slotLabel(2)}</option><option value={3}>{slotLabel(3)}</option></select></label>
+        <button className="footer-action" disabled={busy} onClick={() => void save()}>保存{slotLabel(activeSlot)}</button>
+        <button className="footer-action" disabled={busy} onClick={() => void load()}>读取{slotLabel(activeSlot)}</button>
         <span>{usesHupuRoster ? "球员：虎扑阵容/合同 · nba_api 统计可用时叠加 · 能力值为游戏推演" : "数据：虚构测试数据集 · 本地开发预览"}</span>
       </footer>
       <SeasonNavigation activeTab={activeTab} onChange={setActiveTab} />
       {queuedEvent?.effectivePause && <EventCard event={queuedEvent} busy={busy} onResolve={runEventCommand} mode="modal" />}
       {selectedGame && <GameDetailModal game={selectedGame} state={state} onClose={() => setSelectedGameId(null)} />}
-      {selectedPlayer && <PlayerDetailModal player={selectedPlayer} teamName={state.teams[selectedPlayer.teamId].fullName} busy={busy} tradeAllowed={state.league.currentPhase === "REGULAR_PRE_DEADLINE"} onClose={() => setSelectedPlayerId(null)} onSetRole={(role) => void runManagerCommand({ commandId: `role-${selectedPlayer.id}-${role}-${Object.keys(state.commandReceipts).length}`, type: "SET_TEAM_ROLE", payload: { playerId: selectedPlayer.id, role } })} onTrade={() => { const playerId = selectedPlayer.id; setSelectedPlayerId(null); setActiveTab("market"); setMarketSubTab("trade"); void runManagerCommand({ commandId: `trade-query-${playerId}-${(state.tradeDesk.offers[0]?.inquiryCount ?? -1) + 1}`, type: "GENERATE_TRADE_OFFERS", payload: { playerId, refresh: state.tradeDesk.selectedPlayerId === playerId } }).then(() => window.setTimeout(() => document.querySelector<HTMLElement>(".trade-desk")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0)); }} />}
+      {selectedPlayer && <PlayerDetailModal player={selectedPlayer} teamName={state.teams[selectedPlayer.teamId]?.fullName ?? "自由球员"} busy={busy} tradeAllowed={isTradePhaseAllowed(state.league.currentPhase)} onClose={() => setSelectedPlayerId(null)} onSetRole={(role) => void runManagerCommand({ commandId: `role-${selectedPlayer.id}-${role}-${Object.keys(state.commandReceipts).length}`, type: "SET_TEAM_ROLE", payload: { playerId: selectedPlayer.id, role } })} onTrade={() => { const playerId = selectedPlayer.id; setSelectedPlayerId(null); setActiveTab("market"); setMarketSubTab("trade"); void runManagerCommand({ commandId: `trade-query-${playerId}-${(state.tradeDesk.offers[0]?.inquiryCount ?? -1) + 1}`, type: "GENERATE_TRADE_OFFERS", payload: { playerId, refresh: state.tradeDesk.selectedPlayerId === playerId } }).then(() => window.setTimeout(() => document.querySelector<HTMLElement>(".trade-desk")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0)); }} />}
       {conflictModal}
     </main>
   );
 }
 
-function playerGameImpact(stat: PlayerBoxScore): number {
-  return stat.pts + stat.reb * 1.15 + stat.ast * 1.45 + stat.stl * 2.2 + stat.blk * 2.1 - stat.tov * 0.8;
-}
-
-function SaveConflictModal({ conflict, busy, onResolve }: { conflict: { local: SaveEnvelope; cloud: SaveEnvelope }; busy: boolean; onResolve: (choice: "LOCAL" | "CLOUD") => Promise<void> }) {
+function SaveConflictModal({ conflict, busy, onResolve }: { conflict: SaveConflictState; busy: boolean; onResolve: (choice: "LOCAL" | "CLOUD") => Promise<void> }) {
   const summary = (envelope: SaveEnvelope) => {
     const record = envelope.state.standings[envelope.state.userTeamId];
     return `${envelope.state.league.seasonId} · ${record?.wins ?? 0}-${record?.losses ?? 0}`;
   };
-  return <div className="event-modal-backdrop"><section className="save-conflict-card" role="dialog" aria-modal="true" aria-label="存档冲突"><span className="prototype-sheet-grabber" aria-hidden="true" /><header className="prototype-sheet-heading"><span className="prototype-sheet-icon">!</span><div><span className="section-kicker">存档冲突 · {slotLabel(conflict.local.slotId)}</span><h2>请选择要保留的进度</h2></div></header><p>本机与云端都发生了修改，系统不会自动合并完整游戏状态。选择云端前会先保存一份可校验的本机冲突备份。</p><div className="prototype-section-bar"><b>版本对比</b><span>完整覆盖，不合并</span></div><div className="conflict-versions"><span><small>本机版本 {conflict.local.revision}</small><b>{summary(conflict.local)}</b><i>{conflict.local.updatedAt}</i><code>{conflict.local.stateHash.slice(0, 12)}</code></span><span><small>云端版本 {conflict.cloud.revision}</small><b>{summary(conflict.cloud)}</b><i>{conflict.cloud.updatedAt}</i><code>{conflict.cloud.stateHash.slice(0, 12)}</code></span></div><div className="conflict-actions"><button disabled={busy} onClick={() => void onResolve("LOCAL")}>保留本机版本</button><button disabled={busy} className="secondary" onClick={() => void onResolve("CLOUD")}>使用云端版本</button></div></section></div>;
+  return <div className="event-modal-backdrop"><section className="save-conflict-card" role="dialog" aria-modal="true" aria-label="存档冲突"><span className="prototype-sheet-grabber" aria-hidden="true" /><header className="prototype-sheet-heading"><span className="prototype-sheet-icon">!</span><div><span className="section-kicker">存档冲突 · {slotLabel(conflict.slotId)}</span><h2>请选择要保留的进度</h2></div></header><p>本机与云端都发生了修改，系统不会自动合并完整游戏状态。选择云端前会先保存一份可校验的本机冲突备份。</p><div className="prototype-section-bar"><b>版本对比</b><span>完整覆盖，不合并</span></div><div className="conflict-versions"><span><small>本机版本 {conflict.local.revision}</small><b>{summary(conflict.local)}</b><i>{conflict.local.updatedAt}</i><code>{conflict.local.stateHash.slice(0, 12)}</code></span><span><small>云端版本 {conflict.cloud.revision}</small><b>{summary(conflict.cloud)}</b><i>{conflict.cloud.updatedAt}</i><code>{conflict.cloud.stateHash.slice(0, 12)}</code></span></div><div className="conflict-actions"><button disabled={busy} onClick={() => void onResolve("LOCAL")}>保留本机版本</button><button disabled={busy} className="secondary" onClick={() => void onResolve("CLOUD")}>使用云端版本</button></div></section></div>;
 }
 
 function PlayerDetailModal({ player, teamName, busy, tradeAllowed, onClose, onSetRole, onTrade }: {
@@ -891,9 +1049,40 @@ function PostgamePlayerName({ name }: { name: string }) {
   return <b ref={nameRef} className="postgame-player-name" style={{ fontSize: `${fontSize}px` }}>{name}</b>;
 }
 
+function PostgameMvpName({ name }: { name: string }) {
+  const nameRef = useRef<HTMLElement>(null);
+  const [fontSize, setFontSize] = useState(15);
+
+  useLayoutEffect(() => {
+    const updateSize = () => {
+      const nameElement = nameRef.current;
+      const container = nameElement?.parentElement;
+      if (!nameElement || !container) return;
+      const availableWidth = container.clientWidth;
+      const context = document.createElement("canvas").getContext("2d");
+      if (!context || availableWidth <= 0) return;
+      const style = window.getComputedStyle(nameElement);
+      context.font = `${style.fontWeight} 15px ${style.fontFamily}`;
+      const fullSizeWidth = context.measureText(name).width;
+      const nextSize = fullSizeWidth > availableWidth
+        ? Math.max(8, Math.floor((15 * availableWidth / fullSizeWidth) * 10) / 10)
+        : 15;
+      setFontSize((current) => current === nextSize ? current : nextSize);
+    };
+
+    updateSize();
+    const container = nameRef.current?.parentElement;
+    const observer = container ? new ResizeObserver(updateSize) : null;
+    if (container) observer?.observe(container);
+    return () => observer?.disconnect();
+  }, [name]);
+
+  return <b ref={nameRef} className="postgame-mvp-name" style={{ fontSize: `${fontSize}px` }} title={name}>{name}</b>;
+}
+
 function GameDetailModal({ game, state, onClose }: { game: GameResult; state: GameState; onClose: () => void }) {
   const boxes = [game.awayBoxScore, game.homeBoxScore].filter(Boolean) as NonNullable<GameResult["homeBoxScore"]>[];
-  const best = boxes.flatMap((box) => box.playerStats).sort((left, right) => playerGameImpact(right) - playerGameImpact(left) || left.playerId.localeCompare(right.playerId))[0];
+  const best = getGameMvpStat(game);
   const periods = Math.max(game.homePeriodScores?.length ?? 0, game.awayPeriodScores?.length ?? 0);
   const displayedPeriods = Math.max(periods, 4);
   const teams = [state.teams[game.awayTeamId], state.teams[game.homeTeamId]];
@@ -903,7 +1092,8 @@ function GameDetailModal({ game, state, onClose }: { game: GameResult; state: Ga
     const won = game.winnerTeamId === team.id;
     return <div className="postgame-team-box"><LogoMark team={team} variant="compact" /><b>{team.name}{won && <em>胜</em>}</b><strong className={won ? "score-win" : "score-lose"}>{score}</strong></div>;
   };
-  return <div className="game-detail-backdrop stage-modal-backdrop"><section className="game-detail-card stage-detail-card postgame-data-center" role="dialog" aria-modal="true" aria-label="比赛详情"><header className="postgame-modal-header"><div><span>比赛详情 · {game.date}</span><h2>赛后数据中心</h2></div><button className="detail-close" onClick={onClose} aria-label="关闭">✕</button></header><div className="postgame-modal-body"><section className="postgame-score-banner"><TeamBox team={teams[0]} score={game.awayScore} /><div className="postgame-status"><b>比赛结束</b><small>{game.overtimePeriods ? `${game.overtimePeriods} 个加时` : "常规时间"}</small></div><TeamBox team={teams[1]} score={game.homeScore} /></section><section className="postgame-quarter-section"><header><b>分节比分</b><small>{periods ? (periods > 4 ? `${periods - 4} 个加时` : "常规时间") : "历史记录未保存"}</small></header><div className="postgame-table-scroll"><table className="postgame-quarter-table"><thead><tr><th>球队</th>{Array.from({ length: displayedPeriods }, (_, index) => <th key={index}>{index < 4 ? `第${index + 1}节` : `加时${index - 3}`}</th>)}<th>总分</th></tr></thead><tbody>{[[teams[0], game.awayPeriodScores ?? [], game.awayScore], [teams[1], game.homePeriodScores ?? [], game.homeScore]].map(([team, scores, total]) => <tr key={(team as typeof teams[number]).id}><td>{(team as typeof teams[number]).name}</td>{Array.from({ length: displayedPeriods }, (_, index) => { const score = (scores as number[])[index]; return <td className={score !== undefined && score === Math.max(...(scores as number[])) ? "high" : ""} key={index}>{score ?? "—"}</td>; })}<td>{total as number}</td></tr>)}</tbody></table></div></section>{best && <section className="postgame-mvp-card"><div><span>MVP</span><div><small>本场最佳球员</small><b>{state.players[best.playerId] ? playerNameZh(state.players[best.playerId].name, state.players[best.playerId].id) : best.playerId}</b></div></div><strong>{best.pts}分 · {best.reb}篮板 · {best.ast}助攻</strong></section>}<section className="postgame-roster-section">{boxes.map((box) => { const team = state.teams[box.teamId]; return <article className="postgame-roster-card" key={box.teamId}><header><b><i style={{ background: team.primaryColor }} />{team.name}球员数据</b></header><div className="postgame-table-scroll"><table className="postgame-box-table"><thead><tr><th>球员</th><th>时间</th><th>得分</th><th>篮板</th><th>助攻</th><th>抢断</th><th>盖帽</th><th>FG%</th><th>+/-</th></tr></thead><tbody>{boxRows(box).map((stat) => { const player = state.players[stat.playerId]; const name = player ? playerNameZh(player.name, player.id) : stat.playerId; return <tr key={stat.playerId}><td><span className="postgame-position-badge">{player ? positionLabel(player.position) : "—"}</span><PostgamePlayerName name={name} /></td><td>{Math.round(stat.seconds / 60)}′</td><td className={stat.pts >= 18 ? "scoring" : ""}>{stat.pts}</td><td>{stat.reb}</td><td>{stat.ast}</td><td>{stat.stl}</td><td>{stat.blk}</td><td>{fgPercent(stat)}</td><td className="postgame-pm-neutral">—</td></tr>; })}</tbody></table></div></article>; })}</section></div></section></div>;
+  const mvpName = best && (state.players[best.playerId] ? playerNameZh(state.players[best.playerId].name, state.players[best.playerId].id) : best.playerId);
+  return <section className="postgame-page" aria-label="比赛详情"><header className="postgame-page-header postgame-modal-header"><div><span>比赛详情 · {game.date}</span><h2>赛后数据中心</h2></div><button className="postgame-page-back" type="button" onClick={onClose} aria-label="返回赛季页">← 返回</button></header><div className="postgame-page-body postgame-modal-body" tabIndex={0}><section className="postgame-score-banner"><TeamBox team={teams[0]} score={game.awayScore} /><div className="postgame-status"><b>比赛结束</b><small>{game.overtimePeriods ? `${game.overtimePeriods} 个加时` : "常规时间"}</small></div><TeamBox team={teams[1]} score={game.homeScore} /></section><section className="postgame-quarter-section"><header><b>分节比分</b><small>{periods ? (periods > 4 ? `${periods - 4} 个加时` : "常规时间") : "历史记录未保存"}</small></header><div className="postgame-table-scroll"><table className="postgame-quarter-table"><thead><tr><th>球队</th>{Array.from({ length: displayedPeriods }, (_, index) => <th key={index}>{index < 4 ? `第${index + 1}节` : `加时${index - 3}`}</th>)}<th>总分</th></tr></thead><tbody>{[[teams[0], game.awayPeriodScores ?? [], game.awayScore], [teams[1], game.homePeriodScores ?? [], game.homeScore]].map(([team, scores, total]) => <tr key={(team as typeof teams[number]).id}><td>{(team as typeof teams[number]).name}</td>{Array.from({ length: displayedPeriods }, (_, index) => { const score = (scores as number[])[index]; return <td className={score !== undefined && score === Math.max(...(scores as number[])) ? "high" : ""} key={index}>{score ?? "—"}</td>; })}<td>{total as number}</td></tr>)}</tbody></table></div></section>{best && <section className="postgame-mvp-card"><div><span>MVP</span><div className="postgame-mvp-copy"><small>本场最佳球员</small><PostgameMvpName name={mvpName!} /></div></div><strong>{best.pts}分 · {best.reb}篮板 · {best.ast}助攻</strong></section>}<section className="postgame-roster-section">{boxes.map((box) => { const team = state.teams[box.teamId]; return <article className="postgame-roster-card" key={box.teamId}><header><b><i style={{ background: team.primaryColor }} />{team.name}球员数据</b></header><div className="postgame-table-scroll"><table className="postgame-box-table"><thead><tr><th>球员</th><th>时间</th><th>得分</th><th>篮板</th><th>助攻</th><th>抢断</th><th>盖帽</th><th>FG%</th><th>+/-</th></tr></thead><tbody>{boxRows(box).map((stat) => { const player = state.players[stat.playerId]; const name = player ? playerNameZh(player.name, player.id) : stat.playerId; return <tr key={stat.playerId}><td><span className="postgame-position-badge">{player ? positionLabel(player.position) : "—"}</span><PostgamePlayerName name={name} /></td><td>{Math.round(stat.seconds / 60)}′</td><td className={stat.pts >= 18 ? "scoring" : ""}>{stat.pts}</td><td>{stat.reb}</td><td>{stat.ast}</td><td>{stat.stl}</td><td>{stat.blk}</td><td>{fgPercent(stat)}</td><td className="postgame-pm-neutral">—</td></tr>; })}</tbody></table></div></article>; })}</section></div></section>;
 }
 
 function EventCard({ event, busy, onResolve, mode }: {
@@ -935,7 +1125,7 @@ function TeamBadge({ id, state }: { id: string; state: GameState }) {
 
 function LogoMark({ team, variant = "large" }: { team: GameState["teams"][string]; variant?: "large" | "compact" }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const className = variant === "compact" ? "mini-logo" : "logo-disc";
+  const className = `${variant === "compact" ? "mini-logo" : "logo-disc"}${team.id === "SEA" || team.id === "LVG" ? " expansion-team-logo" : ""}`;
   const background = `linear-gradient(145deg, ${team.primaryColor}, ${team.secondaryColor})`;
   return (
     <span className={className} style={{ background }} aria-label={`${team.fullName} 队徽`}>

@@ -78,6 +78,7 @@ export function createCareer(careerSeed: string, userTeamId = "SEA"): GameState 
     achievements: createAchievementState(),
     gmCareer: createGmCareerState(),
     eventState: createEventState(),
+    teamNotifications: [],
     draftPicks: createFutureDraftPicks(fixture.teams),
     capState: { capHolds: [], deadMoney: [], offerReservations: [], emergencySalaryCharges: [] },
     tradeInquiryCount: {},

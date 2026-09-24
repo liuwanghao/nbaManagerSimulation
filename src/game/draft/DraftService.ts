@@ -1,6 +1,7 @@
 import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { createFictionalPlayerProfile } from "../../data/playerProfiles";
+import { calculateMarketPreference } from "../player/MarketPreferenceService";
 import { createBundledPlayer } from "../../data/hupuRoster";
 import { eligibleHistoricalTemplates, NBA_PLAYER_DATASET, type HistoricalPlayerTemplate } from "../../data/nbaPlayerDataset";
 import { REAL_2026_DRAFT, REAL_2026_DRAFT_PLAYER_IDS, REAL_2026_UNDRAFTED_PLAYER_IDS, type Real2026DraftEntry } from "../../data/real2026Draft";
@@ -14,6 +15,7 @@ import { emptyPlayerSeasonStats, type ExpansionCityId, type GameState, type Play
 
 export type DraftCommand =
   | { commandId: string; type: "PREPARE_ROOKIE_DRAFT"; payload: Record<string, never> }
+  | { commandId: string; type: "REVEAL_DRAFT_PROSPECT"; payload: { playerId: string } }
   | { commandId: string; type: "ADVANCE_ROOKIE_DRAFT_AI_PICK"; payload: { expectedPickNumber: number } }
   | { commandId: string; type: "FAST_FORWARD_ROOKIE_DRAFT"; payload: { expectedPickNumber: number } }
   | { commandId: string; type: "DRAFT_PLAYER"; payload: { playerId: string; expectedPickNumber: number } };
@@ -408,6 +410,7 @@ function publicDraftScore(player: Player, teamId: string, state: GameState): num
 
 function signRookie(state: GameState, player: Player, pick: RookieDraftPick): void {
   const team = state.teams[pick.ownerTeamId];
+  clearAiRookieRosterSlot(state, team.id);
   if (team.playerIds.length >= LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum) throw new Error(`${team.fullName} exceeds the offseason roster limit`);
   const firstRound = pick.round === 1;
   const year1 = firstRound
@@ -451,27 +454,105 @@ function availableProspects(state: GameState): Player[] {
   return draft.classPlayerIds.map((id) => state.players[id]).filter((player) => player.teamId === "FREE_AGENT");
 }
 
+function addDraftWaiverDeadMoney(state: GameState, player: Player, teamId: string): void {
+  const guaranteed = player.contract.guaranteedByYear ?? [];
+  const salaryBySeason: Record<string, number> = {};
+  for (let index = player.contract.currentYearIndex ?? 0; index < guaranteed.length; index += 1) {
+    const year = (player.contract.startSeason ?? state.league.seasonYear) + index;
+    const seasonId = `${year}-${String((year + 1) % 100).padStart(2, "0")}`;
+    if (guaranteed[index] > 0) salaryBySeason[seasonId] = guaranteed[index];
+  }
+  if (Object.keys(salaryBySeason).length === 0 && player.contract.guaranteedAmount > 0) {
+    salaryBySeason[state.league.seasonId] = Math.min(player.contract.salary, player.contract.guaranteedAmount);
+  }
+  if (Object.keys(salaryBySeason).length) {
+    state.capState.deadMoney.push({ id: stableHash(teamId, player.id, "draft-roster-cut", state.league.seasonId), teamId, salaryBySeason });
+  }
+}
+
+function clearAiRookieRosterSlot(state: GameState, teamId: string): void {
+  const team = state.teams[teamId];
+  if (team.playerIds.length < LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum) return;
+  if (teamId === state.userTeamId) throw new Error(`${team.fullName} exceeds the offseason roster limit`);
+  const player = team.playerIds
+    .map((id) => state.players[id])
+    .sort((left, right) => {
+      const leftRookie = ["ROOKIE_FIRST", "ROOKIE_SECOND"].includes(left.contract.contractType ?? "") ? 1 : 0;
+      const rightRookie = ["ROOKIE_FIRST", "ROOKIE_SECOND"].includes(right.contract.contractType ?? "") ? 1 : 0;
+      return leftRookie - rightRookie || publicPlayerValue(left) - publicPlayerValue(right) || left.id.localeCompare(right.id);
+    })[0];
+  if (!player) throw new Error(`${team.fullName} cannot clear a rookie roster slot`);
+  addDraftWaiverDeadMoney(state, player, teamId);
+  team.playerIds = team.playerIds.filter((id) => id !== player.id);
+  player.teamId = "FREE_AGENT";
+  player.rotationRole = "OUT";
+  player.teamRole = "DEVELOPMENT";
+  player.contract = { salary: 0, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA", optionType: "NONE", optionDecision: "NOT_APPLICABLE" };
+  player.birdTeamId = null;
+  player.birdYears = 0;
+  if (state.trainingPlan) delete state.trainingPlan.assignments[player.id];
+}
+
 function completeDraft(state: GameState): void {
   const draft = state.rookieDraft as RookieDraftState;
   if (draft.currentPickIndex !== draft.pickOrder.length) throw new Error(`Rookie Draft cannot finalize before ${draft.pickOrder.length} picks`);
   draft.completed = true;
   for (const prospect of availableProspects(state)) prospect.contract.status = "UFA";
+  if (state.league.seasonYear === 2026 && state.meta.dataVersion.startsWith("bundled.")) {
+    for (const player of Object.values(state.players)) {
+      if (player.teamId === "FREE_AGENT" && player.profileSource === "PROCEDURAL_DRAFT") player.teamId = "UNDRAFTED";
+    }
+  }
   state.league.currentPhase = "OFFSEASON_POST_DRAFT";
 }
 
-function selectAiProspect(state: GameState, pick: RookieDraftPick): Player {
+function equivalentReplacement(state: GameState, pick: RookieDraftPick, scripted: Player): Player {
+  const reserve = availableProspects(state)
+    .filter((player) => player.profileSource === "PROCEDURAL_DRAFT")
+    .sort((left, right) => right.id.localeCompare(left.id))[0];
+  if (!reserve) throw new Error("No procedural prospect remains for the intercepted real draft pick");
+  const profile = createFictionalPlayerProfile(state.rookieDraft!.draftSeed, pick.pickNumber, reserve.id, scripted.position, scripted.age);
+  return {
+    ...reserve,
+    age: scripted.age,
+    ageAtSnapshot: scripted.age,
+    birthDate: profile.birthDate,
+    ageSource: profile.ageSource,
+    heightCm: profile.heightCm,
+    weightKg: profile.weightKg,
+    position: scripted.position,
+    secondaryPosition: scripted.secondaryPosition,
+    marketPreference: calculateMarketPreference(reserve.personality, scripted.age),
+    attributes: { ...scripted.attributes },
+    overallAdjustment: scripted.overallAdjustment,
+    threeRate: scripted.threeRate,
+    assistRate: scripted.assistRate,
+    rimRate: scripted.rimRate,
+    usageTendency: scripted.usageTendency,
+    injuryRating: scripted.injuryRating,
+    traits: scripted.traits ? [...scripted.traits] : undefined,
+    truePotential: scripted.truePotential,
+    developmentRate: scripted.developmentRate,
+    developmentVolatility: scripted.developmentVolatility,
+    scoutedPotentialGrade: scripted.scoutedPotentialGrade,
+    scoutingConfidence: scripted.scoutingConfidence,
+    projectionDataVersion: `${NBA_PLAYER_DATASET.datasetVersion}+real-2026-equivalent`,
+  };
+}
+
+function selectAiProspect(state: GameState, pick: RookieDraftPick, commitReplacement = false): Player {
   const available = availableProspects(state);
   const scripted = pick.scriptedPlayerId ? state.players[pick.scriptedPlayerId] : undefined;
-  const nextRealProspect = REAL_2026_DRAFT
-    .map((entry) => state.players[entry.playerId])
-    .find((player) => player?.teamId === "FREE_AGENT");
-  const prospect = scripted?.teamId === "FREE_AGENT"
-    ? scripted
-    : pick.scriptedPlayerId && nextRealProspect
-      ? nextRealProspect
-      : available.sort((left, right) =>
-        publicDraftScore(right, pick.ownerTeamId, state) - publicDraftScore(left, pick.ownerTeamId, state)
-        || left.id.localeCompare(right.id))[0];
+  if (pick.scriptedPlayerId && !scripted) throw new Error(`Missing scripted 2026 prospect ${pick.scriptedPlayerId}`);
+  if (scripted?.teamId === "FREE_AGENT") return scripted;
+  if (scripted) {
+    const replacement = equivalentReplacement(state, pick, scripted);
+    if (commitReplacement) state.players[replacement.id] = replacement;
+    return replacement;
+  }
+  const prospect = available.sort((left, right) =>
+    publicDraftScore(right, pick.ownerTeamId, state) - publicDraftScore(left, pick.ownerTeamId, state)
+    || left.id.localeCompare(right.id))[0];
   if (!prospect) throw new Error("No eligible prospect remains");
   return prospect;
 }
@@ -511,6 +592,7 @@ export function prepareRookieDraft(input: GameState): GameState {
   state.rookieDraft = {
     draftSeed,
     classPlayerIds,
+    revealedProspectIds: [],
     pickOrder: buildPickOrder(state, draftSeed),
     currentPickIndex: 0,
     completed: false,
@@ -520,6 +602,17 @@ export function prepareRookieDraft(input: GameState): GameState {
   };
   state.league.currentPhase = "DRAFT";
   validateRookieDraftState(state);
+  return state;
+}
+
+function revealDraftProspect(input: GameState, playerId: string): GameState {
+  assertPhaseAllowed(input, "Reveal draft prospect", ["DRAFT", "OFFSEASON_POST_DRAFT"]);
+  const draft = input.rookieDraft;
+  if (!draft || !draft.classPlayerIds.includes(playerId)) throw new Error("Prospect is not in the current draft class");
+  const state = structuredClone(input);
+  const revealed = state.rookieDraft?.revealedProspectIds ?? [];
+  if (!revealed.includes(playerId)) revealed.push(playerId);
+  if (state.rookieDraft) state.rookieDraft.revealedProspectIds = revealed;
   return state;
 }
 
@@ -540,7 +633,7 @@ export function advanceRookieDraftAiPick(input: GameState, expectedPickNumber: n
   const state = structuredClone(input);
   const nextDraft = state.rookieDraft as RookieDraftState;
   const nextPick = nextDraft.pickOrder[nextDraft.currentPickIndex];
-  signRookie(state, selectAiProspect(state, nextPick), nextPick);
+  signRookie(state, selectAiProspect(state, nextPick, true), nextPick);
   nextDraft.currentPickIndex += 1;
   if (nextDraft.currentPickIndex === nextDraft.pickOrder.length) completeDraft(state);
   validateRookieDraftState(state);
@@ -560,7 +653,7 @@ export function fastForwardRookieDraft(input: GameState, expectedPickNumber: num
   while (nextDraft.currentPickIndex < nextDraft.pickOrder.length) {
     const nextPick = nextDraft.pickOrder[nextDraft.currentPickIndex];
     if (nextPick.ownerTeamId === state.userTeamId) break;
-    signRookie(state, selectAiProspect(state, nextPick), nextPick);
+    signRookie(state, selectAiProspect(state, nextPick, true), nextPick);
     nextDraft.currentPickIndex += 1;
   }
   if (nextDraft.currentPickIndex === nextDraft.pickOrder.length) completeDraft(state);
@@ -630,6 +723,8 @@ export function executeDraftCommand(state: GameState, command: DraftCommand): Ga
   }
   const next = command.type === "PREPARE_ROOKIE_DRAFT"
     ? prepareRookieDraft(state)
+    : command.type === "REVEAL_DRAFT_PROSPECT"
+      ? revealDraftProspect(state, command.payload.playerId)
     : command.type === "ADVANCE_ROOKIE_DRAFT_AI_PICK"
       ? advanceRookieDraftAiPick(state, command.payload.expectedPickNumber)
       : command.type === "FAST_FORWARD_ROOKIE_DRAFT"

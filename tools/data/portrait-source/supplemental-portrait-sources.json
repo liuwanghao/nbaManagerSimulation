@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "portraits": {
+    "1643257": {
+      "name": "Jayson Kent",
+      "page": "https://texaslonghorns.com/sports/mens-basketball/roster/jayson--kent/14080",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/texassports_com/images/2024/6/6/Jayson_Kent_headshot_summer_24_0Krh4.jpg"
+    },
+    "1643394": {
+      "name": "Keylan Boone",
+      "page": "https://unlvrebels.com/news/2023/4/19/keylan-boone-to-join-unlv-mens-basketball-program.aspx",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/unlvrebels.com/images/2023/4/19/Keylan_Boone.png"
+    },
+    "1642378": {
+      "name": "Mark Armstrong",
+      "page": "https://villanova.com/sports/mens-basketball/roster/mark-armstrong/13673",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/villanova.com/images/2023/8/29/Mark_Armstrong_2.jpg"
+    },
+    "1643093": {
+      "name": "Samson Johnson",
+      "page": "https://uconnhuskies.com/sports/mens-basketball/roster/samson-johnson/14197",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/uconnhuskies.com/images/2024/9/27/Johnson.jpg"
+    },
+    "1643592": {
+      "name": "Nick Boyd",
+      "page": "https://uwbadgers.com/sports/mens-basketball/roster/nick-boyd/14419",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/uwbadgers.com/images/2025/7/21/MBB-20250618-Jersey_Shoot-DEAN-45-Nick_Boyd_kWOG3.JPG"
+    },
+    "1643633": {
+      "name": "Graham Ike",
+      "page": "https://gozags.com/sports/mens-basketball/roster/graham-ike/5749",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/gozags.com/images/2024/9/10/IKE_GRAHAM.JPG"
+    },
+    "1643655": {
+      "name": "John Camden",
+      "page": "https://gotigersgo.com/sports/mens-basketball/roster/john-camden/9886",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/gotigersgo.com/images/2021/9/29/Camden_John.jpeg"
+    },
+    "1641800": {
+      "name": "Meechie Johnson",
+      "page": "https://ohiostatebuckeyes.com/sports/mens-basketball/roster/meechie-johnson-jr/11077",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/ohiostatebuckeyes.com/images/2024/10/23/MeechieJohnson_Headshot.jpg"
+    },
+    "1643732": {
+      "name": "Chase Ross",
+      "page": "https://gomarquette.com/sports/mens-basketball/roster/chase-ross/8174",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/gomarquette.com/images/2024/9/25/2024_Headshot_Ross_Chase.jpg"
+    },
+    "1643813": {
+      "name": "Alpha Diallo",
+      "page": "https://friars.com/sports/mens-basketball/roster/alpha-diallo/4789",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/friars.com/images/2019/7/19/Diallo_2020_71.jpg"
+    },
+    "1643710": {
+      "name": "Corey Camper",
+      "page": "https://nevadawolfpack.com/news/2025/4/28/mens-basketball-nevada-signs-corey-camper-jr.aspx",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/nevadawolfpack.com/images/2025/4/28/mbb_recruit_20250422_44140.JPG"
+    },
+    "1643634": {
+      "name": "Boopie Miller",
+      "page": "https://smumustangs.com/sports/mens-basketball/roster/boopie-miller/15150",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/smumustangs.com/images/2025/10/17/Miller_Boopie-2025-26.jpg",
+      "crop": [
+        0,
+        0,
+        981,
+        981
+      ],
+      "source": "Official college athletics",
+      "retrievedAt": "2026-09-23"
+    },
+    "1641761": {
+      "name": "Grant Nelson",
+      "page": "https://rolltide.com/sports/mens-basketball/roster/grant-nelson/12049",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/rolltide.com/images/2024/7/30/Nelson_Grant_2025web.jpg",
+      "crop": [
+        0,
+        0,
+        768,
+        768
+      ],
+      "source": "Official college athletics",
+      "retrievedAt": "2026-09-23"
+    },
+    "1643717": {
+      "name": "Josh Dix",
+      "page": "https://gocreighton.com/sports/mens-basketball/roster/josh-dix/8578",
+      "image": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/creighton.sidearmsports.com/images/2025/6/20/06-04_JoshDixHeadshot-1.jpg",
+      "crop": [
+        0,
+        0,
+        1600,
+        1600
+      ],
+      "source": "Official college athletics",
+      "retrievedAt": "2026-09-23"
+    }
+  }
+}

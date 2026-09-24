@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCareer } from "../season/career";
 import { simulateGame } from "../simulation/simulateGame";
-import { finalizeFinalsAwards, finalizeRegularSeasonAwards } from "./AwardsService";
+import { finalizeFinalsAwards, finalizeRegularSeasonAwards, getAwardRace, getGameMvpStat, getLeagueLeaders } from "./AwardsService";
 
 describe("AwardsService", () => {
   it("selects two 12-player All-Star rosters and every required regular-season award idempotently", () => {
@@ -25,6 +25,7 @@ describe("AwardsService", () => {
     state.standings.SEA.wins = 70;
     state.standings.SEA.losses = 12;
 
+    expect(getAwardRace(state, "MVP", 5)[0].id).toBe(starId);
     const awarded = finalizeRegularSeasonAwards(state);
     const record = awarded.history.seasonAwards[0];
     expect(record.allStars.WEST).toHaveLength(12);
@@ -40,11 +41,40 @@ describe("AwardsService", () => {
     const state = createCareer("awards-finals");
     const game = state.schedule[0];
     const result = simulateGame(game, state.teams[game.homeTeamId], state.teams[game.awayTeamId], state.players, state.seeds.seasonSeed, true);
+    const forcedMvp = result.homeBoxScore?.playerStats[0];
+    if (!forcedMvp) throw new Error("detailed box score missing");
+    forcedMvp.pts = 999;
+    expect(getGameMvpStat(result)?.playerId).toBe(forcedMvp.playerId);
     finalizeFinalsAwards(state, result.winnerTeamId, [result]);
     const record = state.history.seasonAwards[0];
     const finalsMvp = record.winners.FINALS_MVP as string;
     expect(state.teams[result.winnerTeamId].playerIds).toContain(finalsMvp);
     expect(state.players[finalsMvp].career?.honors?.finalsMvp).toBe(1);
     expect(state.teams[result.winnerTeamId].playerIds.every((id) => state.players[id].career?.honors?.championships === 1)).toBe(true);
+  });
+
+  it("calculates qualified per-game league leaders in the engine", () => {
+    const state = createCareer("awards-league-leaders");
+    const players = Object.values(state.players);
+    for (const player of players) {
+      player.seasonStats.games = 10;
+      player.seasonStats.pts = 100;
+      player.seasonStats.reb = 50;
+      player.seasonStats.ast = 30;
+    }
+    const pointsLeader = players[0];
+    const reboundsLeader = players[1];
+    const assistsLeader = players[2];
+    const unqualifiedScorer = players[3];
+    pointsLeader.seasonStats.pts = 300;
+    reboundsLeader.seasonStats.reb = 200;
+    assistsLeader.seasonStats.ast = 150;
+    unqualifiedScorer.seasonStats.games = 9;
+    unqualifiedScorer.seasonStats.pts = 900;
+
+    const leaders = getLeagueLeaders(state);
+    expect(leaders.points?.id).toBe(pointsLeader.id);
+    expect(leaders.rebounds?.id).toBe(reboundsLeader.id);
+    expect(leaders.assists?.id).toBe(assistsLeader.id);
   });
 });

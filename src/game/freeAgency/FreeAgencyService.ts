@@ -5,6 +5,9 @@ import { getAvailableCapSpace, getCapSheet } from "../cap/CapSheetService";
 import { assertPhaseAllowed, getRosterLimit } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
+import { marketFitScore, personalityOfferWeights } from "../player/MarketPreferenceService";
+import { addTeamNotification } from "../notifications/TeamNotificationService";
+import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import type { FreeAgentOffer, FreeAgencyState, GameState, Player, PromisedRole } from "../state/types";
 import { freeAgentAttraction } from "../team/TeamSystemService";
 
@@ -15,6 +18,19 @@ export type FreeAgencyCommand =
   | { commandId: string; type: "ADVANCE_FA_DAY"; payload: Record<string, never> }
   | { commandId: string; type: "RESOLVE_USER_RFA"; payload: { decision: "MATCH" | "DECLINE" } };
 
+export interface FreeAgentOfferDraft {
+  years: number;
+  year1Salary: number;
+  guaranteedPercent: number;
+  rolePromised: PromisedRole;
+}
+
+export interface FreeAgentOfferPreview {
+  draft: FreeAgentOfferDraft;
+  valid: boolean;
+  reason?: string;
+}
+
 const cfg = BALANCE_CONFIG.freeAgency;
 const clamp = (value: number): number => Math.max(0, Math.min(100, value));
 
@@ -24,20 +40,72 @@ function maxSalary(player: Player): number {
   return LEAGUE_FINANCE_CONFIG.salaryCap * percent;
 }
 
-function projectedMarketSalary(player: Player): number {
-  const value = publicPlayerValue(player, "BALANCED");
-  return Math.max(LEAGUE_FINANCE_CONFIG.minimumSalary, Math.min(maxSalary(player), (value - cfg.marketSalary.valueFloor) * cfg.marketSalary.dollarsPerValuePoint));
+function expectedRole(player: Player): PromisedRole {
+  const overall = calculatePlayerOverall(player);
+  const thresholds = cfg.roleOverallThresholds;
+  return overall >= thresholds.starter ? "STARTER"
+    : overall >= thresholds.sixthMan ? "SIXTH_MAN"
+      : overall >= thresholds.rotation ? "ROTATION" : "BENCH";
+}
+
+export function getRecommendedFreeAgentOffer(state: GameState, playerId: string, teamId = state.userTeamId): FreeAgentOfferDraft {
+  const player = state.players[playerId];
+  if (!player) throw new Error("Unknown free agent");
+  const marketSalary = Math.round(getProjectedMarketSalary(player) / 10_000) * 10_000;
+  const careerStage = cfg.ageCareerStage;
+  const years = player.age <= careerStage.youngMaximumAge
+    ? careerStage.targetYears.young
+    : player.age >= careerStage.veteranMinimumAge ? careerStage.targetYears.veteran : careerStage.targetYears.prime;
+  const rolePromised = expectedRole(player);
+  const originalTeamId = state.freeAgency?.markets[playerId]?.originalTeamId;
+  const maxYears = originalTeamId === teamId ? LEAGUE_FINANCE_CONFIG.contractYears.ownTeamMaximum : LEAGUE_FINANCE_CONFIG.contractYears.otherTeamMaximum;
+  return {
+    years: Math.max(LEAGUE_FINANCE_CONFIG.contractYears.minimum, Math.min(maxYears, years)),
+    year1Salary: Math.min(maxSalary(player), Math.max(LEAGUE_FINANCE_CONFIG.minimumSalary, marketSalary)),
+    guaranteedPercent: BALANCE_CONFIG.ai.freeAgency.guaranteedPercent,
+    rolePromised,
+  };
+}
+
+export function getFreeAgentOfferPreview(state: GameState, playerId: string, teamId = state.userTeamId): FreeAgentOfferPreview {
+  const draft = getRecommendedFreeAgentOffer(state, playerId, teamId);
+  const player = state.players[playerId];
+  const freeAgency = state.freeAgency;
+  if (!freeAgency?.opened) return { draft, valid: false, reason: "自由市场尚未开启" };
+  if (!player || !["UFA", "RFA"].includes(player.contract.status) || player.teamId !== "FREE_AGENT") return { draft, valid: false, reason: "球员已不在自由市场" };
+  const market = freeAgency.markets[playerId];
+  if (market?.marketWindowStatus === "RFA_MATCHING") return { draft, valid: false, reason: "RFA 正在等待原球队匹配" };
+  if (player.contract.status === "RFA" && market?.originalTeamId === teamId) return { draft, valid: false, reason: "原球队不能提交 RFA 报价单" };
+  if (state.teams[teamId].playerIds.length >= getRosterLimit(state.league.currentPhase)) return { draft, valid: false, reason: "球队名单已满" };
+  const available = getAvailableCapSpace(state, teamId);
+  const hold = state.capState.capHolds.find((entry) => entry.teamId === teamId && entry.playerId === playerId)?.amount ?? 0;
+  if (Math.max(0, draft.year1Salary - hold) > available) return { draft, valid: false, reason: "可用薪资空间不足" };
+  return { draft, valid: true };
+}
+
+export function getProjectedMarketSalary(player: Player): number {
+  const overall = calculatePlayerOverall(player);
+  const anchors = cfg.marketSalary.ratingAnchors;
+  const upperIndex = anchors.findIndex((anchor) => overall <= anchor.overall);
+  const baseSalary = upperIndex <= 0
+    ? anchors[upperIndex === -1 ? anchors.length - 1 : 0].annualSalary
+    : anchors[upperIndex - 1].annualSalary
+      + (anchors[upperIndex].annualSalary - anchors[upperIndex - 1].annualSalary)
+      * (overall - anchors[upperIndex - 1].overall)
+      / (anchors[upperIndex].overall - anchors[upperIndex - 1].overall);
+  const ageMultiplier = player.age <= cfg.marketSalary.youngMaximumAge ? cfg.marketSalary.youngMultiplier
+    : player.age >= cfg.marketSalary.veteranMinimumAge ? cfg.marketSalary.veteranMultiplier : 1;
+  return Math.max(LEAGUE_FINANCE_CONFIG.minimumSalary, Math.min(maxSalary(player), baseSalary * ageMultiplier));
 }
 
 function roleScore(player: Player, role: PromisedRole): number {
-  const thresholds = cfg.roleValueThresholds;
-  const expected = publicPlayerValue(player) >= thresholds.starter ? "STARTER" : publicPlayerValue(player) >= thresholds.sixthMan ? "SIXTH_MAN" : publicPlayerValue(player) >= thresholds.rotation ? "ROTATION" : "BENCH";
+  const expected = expectedRole(player);
   const order: PromisedRole[] = ["BENCH", "ROTATION", "SIXTH_MAN", "STARTER"];
   return clamp(cfg.utilityScales.roleBase + (order.indexOf(role) - order.indexOf(expected)) * cfg.utilityScales.roleStep);
 }
 
 function offerUtility(state: GameState, offer: Omit<FreeAgentOffer, "utility">, player: Player): number {
-  const marketSalary = projectedMarketSalary(player);
+  const marketSalary = getProjectedMarketSalary(player);
   const salaryValue = clamp(offer.year1Salary / marketSalary * cfg.utilityScales.salary);
   const guaranteedMoney = clamp(offer.guaranteedValue / Math.max(1, offer.totalValue) * 100);
   const careerStage = cfg.ageCareerStage;
@@ -49,7 +117,7 @@ function offerUtility(state: GameState, offer: Omit<FreeAgentOffer, "utility">, 
   const winRate = games ? (record.wins / games) * 100 : 50;
   const contender = clamp(winRate + (publicPlayerValue(player) >= cfg.contenderStarValueThreshold ? cfg.contenderStarBonus : 0));
   const reputation = freeAgentAttraction(state, state.teams[offer.teamId]);
-  const market = clamp(50 + (player.marketPreference - 50) * ((Number.parseInt(stableHash(offer.teamId, "market").slice(-2), 16) % 101 - 50) / 50));
+  const market = marketFitScore(player.marketPreference, state.teams[offer.teamId].marketRating);
   const marketState = state.freeAgency?.markets[player.id];
   const relationship = marketState?.originalTeamId === offer.teamId ? cfg.originalTeamRelationship : cfg.otherTeamRelationship;
   const ageFit = player.age <= careerStage.youngMaximumAge
@@ -57,12 +125,21 @@ function offerUtility(state: GameState, offer: Omit<FreeAgentOffer, "utility">, 
     : player.age >= careerStage.veteranMinimumAge
       ? (guaranteedMoney * careerStage.veteran.guaranteed + contender * careerStage.veteran.contender)
       : (salaryValue * careerStage.prime.salary + contender * careerStage.prime.contender + roleScore(player, offer.rolePromised) * careerStage.prime.role);
-  const weights = cfg.weights;
-  const base = (salaryValue * weights.salaryValue + guaranteedMoney * weights.guaranteedMoney
-    + contractYears * weights.contractYears + roleScore(player, offer.rolePromised) * weights.promisedRole
-    + winRate * weights.teamRecord + contender * weights.contenderStatus + reputation * weights.franchiseReputation
-    + market * weights.marketPreference + relationship * weights.existingTeamRelationship
-    + ageFit * weights.ageCareerStageFit) / 100;
+  const weights = personalityOfferWeights(player.personality);
+  const factors = {
+    salaryValue,
+    guaranteedMoney,
+    contractYears,
+    promisedRole: roleScore(player, offer.rolePromised),
+    teamRecord: winRate,
+    contenderStatus: contender,
+    franchiseReputation: reputation,
+    marketPreference: market,
+    existingTeamRelationship: relationship,
+    ageCareerStageFit: ageFit,
+  } satisfies Record<keyof typeof weights, number>;
+  const base = (Object.keys(factors) as Array<keyof typeof factors>).reduce((sum, key) =>
+    sum + factors[key] * weights[key], 0) / 100;
   const rng = createRng(stableHash(state.seeds.seasonSeed, "free_agency", player.id, offer.teamId, offer.offerId));
   return Math.round(clamp(base + rng.int(cfg.preferenceNoiseMin, cfg.preferenceNoiseMax)) * 100) / 100;
 }
@@ -171,7 +248,7 @@ export function enterFreeAgency(input: GameState): GameState {
   const freeAgency: FreeAgencyState = { opened: true, currentDay: 1, offers: {}, markets: {}, settledPlayerDay: {}, transactionLog: [] };
   state.freeAgency = freeAgency;
   for (const player of Object.values(state.players).sort((a, b) => a.id.localeCompare(b.id))) {
-    if (!["UFA", "RFA"].includes(player.contract.status)) continue;
+    if (player.teamId === "UNDRAFTED" || !["UFA", "RFA"].includes(player.contract.status)) continue;
     const originalTeamId = player.teamId !== "FREE_AGENT" ? player.teamId : player.birdTeamId ?? undefined;
     if (originalTeamId && state.teams[originalTeamId]) state.teams[originalTeamId].playerIds = state.teams[originalTeamId].playerIds.filter((id) => id !== player.id);
     player.teamId = "FREE_AGENT";
@@ -213,27 +290,31 @@ function generateAiOffers(state: GameState): void {
   for (const teamId of Object.keys(state.teams).sort()) {
     if (teamId === state.userTeamId || state.teams[teamId].playerIds.length >= getRosterLimit(state.league.currentPhase)) continue;
     const alreadyToday = Object.values(freeAgency.offers).filter((offer) => offer.teamId === teamId && offer.createdDay === freeAgency.currentDay).length;
-    const allowance = Math.max(0, Math.min(1, BALANCE_CONFIG.ai.maxNewFreeAgentOffersPerTeamDay - alreadyToday));
+    const allowance = Math.max(0, BALANCE_CONFIG.ai.maxNewFreeAgentOffersPerTeamDay - alreadyToday);
     if (!allowance) continue;
-    const target = players.filter((player) => freeAgency.markets[player.id]?.originalTeamId !== teamId || player.contract.status !== "RFA")
+    const candidates = players.filter((player) => freeAgency.markets[player.id]?.originalTeamId !== teamId || player.contract.status !== "RFA")
       .filter((player) => !Object.values(freeAgency.offers).some((offer) => offer.teamId === teamId && offer.playerId === player.id && offer.status === "ACTIVE"))
-      .sort((a, b) => publicPlayerValue(b) - publicPlayerValue(a) || stableHash(state.seeds.seasonSeed, teamId, freeAgency.currentDay, a.id).localeCompare(stableHash(state.seeds.seasonSeed, teamId, freeAgency.currentDay, b.id)))[0];
-    if (!target) continue;
+      .sort((a, b) => publicPlayerValue(b) - publicPlayerValue(a) || stableHash(state.seeds.seasonSeed, teamId, freeAgency.currentDay, a.id).localeCompare(stableHash(state.seeds.seasonSeed, teamId, freeAgency.currentDay, b.id)));
     const aiFa = BALANCE_CONFIG.ai.freeAgency;
-    const salaryMultiplier = aiFa.salaryOfferMinMultiplier + createRng(stableHash(state.seeds.seasonSeed, "ai-fa", teamId, target.id, freeAgency.currentDay)).nextFloat()
-      * (aiFa.salaryOfferMaxMultiplier - aiFa.salaryOfferMinMultiplier);
-    const salary = Math.round(Math.max(LEAGUE_FINANCE_CONFIG.minimumSalary, projectedMarketSalary(target) * salaryMultiplier) / 10_000) * 10_000;
-    try {
-      createOfferMutable(
-        state,
-        teamId,
-        target.id,
-        target.age <= aiFa.longOfferMaximumAge ? aiFa.longOfferYears : aiFa.veteranOfferYears,
-        Math.min(salary, maxSalary(target)),
-        aiFa.guaranteedPercent,
-        publicPlayerValue(target) >= aiFa.starterOfferValue ? "STARTER" : "ROTATION",
-      );
-    } catch { /* deterministic legal skip */ }
+    let createdOffers = 0;
+    for (const target of candidates) {
+      if (createdOffers >= allowance) break;
+      const salaryMultiplier = aiFa.salaryOfferMinMultiplier + createRng(stableHash(state.seeds.seasonSeed, "ai-fa", teamId, target.id, freeAgency.currentDay)).nextFloat()
+        * (aiFa.salaryOfferMaxMultiplier - aiFa.salaryOfferMinMultiplier);
+      const salary = Math.round(Math.max(LEAGUE_FINANCE_CONFIG.minimumSalary, getProjectedMarketSalary(target) * salaryMultiplier) / 10_000) * 10_000;
+      try {
+        createOfferMutable(
+          state,
+          teamId,
+          target.id,
+          target.age <= aiFa.longOfferMaximumAge ? aiFa.longOfferYears : aiFa.veteranOfferYears,
+          Math.min(salary, maxSalary(target)),
+          aiFa.guaranteedPercent,
+          expectedRole(target),
+        );
+        createdOffers += 1;
+      } catch { /* deterministic legal skip */ }
+    }
   }
 }
 
@@ -265,6 +346,12 @@ function settlePlayers(state: GameState): void {
   for (const market of Object.values(freeAgency.markets).sort((a, b) => a.playerId.localeCompare(b.playerId))) {
     if (freeAgency.settledPlayerDay[market.playerId] === freeAgency.currentDay || market.marketWindowStatus !== "OPEN") continue;
     const active = Object.values(freeAgency.offers).filter((offer) => offer.playerId === market.playerId && offer.status === "ACTIVE");
+    for (const offer of active) {
+      if (state.teams[offer.teamId].playerIds.length < getRosterLimit(state.league.currentPhase)) continue;
+      offer.status = "REJECTED";
+      releaseReservation(state, offer.offerId);
+      if (offer.teamId === state.userTeamId) freeAgency.transactionLog.unshift(`${state.players[offer.playerId].name} 的报价因球队名单已满失效`);
+    }
     if (freeAgency.currentDay < market.decisionDeadline) {
       for (const offer of active.filter((entry) => entry.expiresDay < freeAgency.currentDay)) { offer.status = "EXPIRED"; releaseReservation(state, offer.offerId); }
     }
@@ -287,6 +374,24 @@ export function advanceFreeAgencyDay(input: GameState): GameState {
   const state = structuredClone(input);
   generateAiOffers(state);
   settlePlayers(state);
+  for (const offer of Object.values((state.freeAgency as FreeAgencyState).offers)) {
+    if (offer.teamId !== state.userTeamId || offer.status === "ACTIVE" || offer.status === "WITHDRAWN") continue;
+    const previousStatus = input.freeAgency.offers[offer.offerId]?.status;
+    if (!previousStatus || previousStatus === offer.status) continue;
+    const player = state.players[offer.playerId];
+    const signedElsewhere = offer.status === "ACCEPTED" && player.teamId !== state.userTeamId;
+    const title = signedElsewhere ? "报价被原球队匹配" : offer.status === "ACCEPTED" ? "自由球员签约成功"
+      : offer.status === "SIGNED_OFFER_SHEET" ? "报价单已获接受"
+        : offer.status === "EXPIRED" ? "报价已到期" : "报价未成交";
+    const message = signedElsewhere ? `球员留在 ${state.teams[player.teamId]?.fullName ?? "原球队"}，预留薪资已释放。`
+      : offer.status === "ACCEPTED" ? `${offer.years} 年合同已生效，球员已加入球队。`
+        : offer.status === "SIGNED_OFFER_SHEET" ? "等待原球队决定是否匹配。"
+          : "本次报价已失效，预留薪资已释放。";
+    addTeamNotification(state, {
+      id: `fa-offer-${offer.offerId}-${offer.status}`, category: "FREE_AGENCY", seasonId: state.league.seasonId,
+      title, message, playerId: player.id, playerName: player.name,
+    });
+  }
   (state.freeAgency as FreeAgencyState).currentDay += 1;
   return state;
 }
@@ -301,6 +406,12 @@ export function resolveUserRfa(input: GameState, decision: "MATCH" | "DECLINE"):
     signAcceptedOffer(state, offer, state.userTeamId);
   } else signAcceptedOffer(state, offer, offer.teamId);
   delete (state.freeAgency as FreeAgencyState).pendingUserRfaDecision;
+  addTeamNotification(state, {
+    id: `rfa-decision-${offer.offerId}-${decision}`, category: "FREE_AGENCY", seasonId: state.league.seasonId,
+    title: decision === "MATCH" ? "已匹配受限自由球员报价" : "已放弃匹配报价",
+    message: decision === "MATCH" ? "球员已加入球队，合同生效。" : "球员将加盟报价球队。",
+    playerId: offer.playerId, playerName: state.players[offer.playerId]?.name,
+  });
   return state;
 }
 

@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 1,
+  "season": "2026",
+  "sourceId": "NBA_OFFICIAL_FREE_AGENT_TRACKER",
+  "retrievedAt": "2026-09-23T08:20:28.457Z",
+  "players": [
+    {
+      "nbaPlayerId": "1628396",
+      "fullName": "Tony Bradley",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612737",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1628467",
+      "fullName": "Maxi Kleber",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612747",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1628971",
+      "fullName": "Bruce Brown",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612743",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1628988",
+      "fullName": "Aaron Holiday",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612745",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1629216",
+      "fullName": "Gabe Vincent",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612737",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1629599",
+      "fullName": "Amir Coffey",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612756",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1630165",
+      "fullName": "Killian Hayes",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612758",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1630214",
+      "fullName": "Xavier Tillman",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612766",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1630322",
+      "fullName": "Lindy Waters III",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612759",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1630536",
+      "fullName": "Sharife Cooper",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612764",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1630587",
+      "fullName": "Isaiah Livers",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612756",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1630604",
+      "fullName": "E.J. Liddell",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612751",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1630623",
+      "fullName": "Tyson Etienne",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612751",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1630625",
+      "fullName": "Dalano Banton",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612738",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1630639",
+      "fullName": "A.J. Lawson",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612761",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1630644",
+      "fullName": "Mac McClung",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612741",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1630699",
+      "fullName": "MarJon Beauchamp",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612755",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1630811",
+      "fullName": "Keaton Wallace",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612737",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1630828",
+      "fullName": "Alex Antetokounmpo",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612749",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1630846",
+      "fullName": "Olivier Sarr",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612739",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631102",
+      "fullName": "TyTy Washington Jr.",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612746",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631104",
+      "fullName": "Blake Wesley",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612757",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1631105",
+      "fullName": "Jalen Duren",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612765",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1631111",
+      "fullName": "Wendell Moore Jr.",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612765",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631116",
+      "fullName": "Patrick Baldwin Jr.",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612758",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631120",
+      "fullName": "JD Davison",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612745",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1631166",
+      "fullName": "Drew Timme",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612747",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631211",
+      "fullName": "Trevor Keels",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612748",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631213",
+      "fullName": "Tyrese Martin",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612755",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631223",
+      "fullName": "David Roddy",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612743",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1631338",
+      "fullName": "Mouhamadou Gueye",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612741",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1631466",
+      "fullName": "Nate Williams",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612744",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1641733",
+      "fullName": "Nick Smith Jr.",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612747",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1641755",
+      "fullName": "Kevin McCullar Jr.",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612752",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1641807",
+      "fullName": "Norchad Omier",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612746",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1641810",
+      "fullName": "Antonio Reeves",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612766",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1642443",
+      "fullName": "Jahmir Young",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612748",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1642490",
+      "fullName": "Josh Oduro",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612740",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1642917",
+      "fullName": "Max Shulga",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612738",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "1642938",
+      "fullName": "Curtis Jones",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612743",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1642950",
+      "fullName": "Lachlan Olbrich",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612741",
+      "twoWay": true
+    },
+    {
+      "nbaPlayerId": "1643060",
+      "fullName": "Hayden Gray",
+      "status": "RFA",
+      "previousNbaTeamId": "1610612762",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "201145",
+      "fullName": "Jeff Green",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612745",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "201567",
+      "fullName": "Kevin Love",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612762",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "202066",
+      "fullName": "Garrett Temple",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612761",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "202685",
+      "fullName": "Jonas Valančiūnas",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612743",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "202687",
+      "fullName": "Bismack Biyombo",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612759",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "203482",
+      "fullName": "Kelly Olynyk",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612759",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "203486",
+      "fullName": "Mason Plumlee",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612759",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "203552",
+      "fullName": "Seth Curry",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612744",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "203648",
+      "fullName": "Thanasis Antetokounmpo",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612749",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "203926",
+      "fullName": "Doug McDermott",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612758",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "203939",
+      "fullName": "Dwight Powell",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612742",
+      "twoWay": false
+    },
+    {
+      "nbaPlayerId": "204060",
+      "fullName": "Joe Ingles",
+      "status": "UFA",
+      "previousNbaTeamId": "1610612750",
+      "twoWay": false
+    }
+  ]
+}

@@ -2,11 +2,6 @@
   "offline": true,
   "files": [
     {
-      "path": ".DS_Store",
-      "bytes": 6148,
-      "sha256": "d7b934ac0ccdad5bcd535d25bf14ab4d200a446bf11d5f383965a5e83a1bf34a"
-    },
-    {
       "path": "assets/story/championship-celebration.jpg",
       "bytes": 227480,
       "sha256": "a70a06412bdbb6f1af552c77ea39c29b66f0c25c4675271edaf3a2be0f620859"
@@ -67,134 +62,134 @@
       "sha256": "8eee5cbcb243b1fa102bc8a0adf33cb3e9ba9b11a3469871dbd2c07981f78240"
     },
     {
-      "path": "player-portraits/nba-atlas-000.jpg",
-      "bytes": 77804,
-      "sha256": "99712248938080355dcbd3ba80d231e7a055e2d2cfec7e9e20b0cc65826684d6"
+      "path": "player-portraits/nba-atlas-000.webp",
+      "bytes": 50266,
+      "sha256": "206a79764f0cba32e97edb1383de84862c1e7bdccd8f57f2b66ccd1d9d964907"
     },
     {
-      "path": "player-portraits/nba-atlas-001.jpg",
-      "bytes": 78456,
-      "sha256": "8883de2eac7f7f01989b1ff765fd502fabb7cabc5ccb35e06c04e04e6d96d3d2"
+      "path": "player-portraits/nba-atlas-001.webp",
+      "bytes": 50756,
+      "sha256": "d1c3fa712f52201d7b83e3e19e26a00082c8f7947e6d80a9e66f419785d9e4f8"
     },
     {
-      "path": "player-portraits/nba-atlas-002.jpg",
-      "bytes": 79326,
-      "sha256": "dd6ea8e98ba78c25c79d8ec30dd3c9afaeb80fb884ebacaef1061059f3cc338b"
+      "path": "player-portraits/nba-atlas-002.webp",
+      "bytes": 52480,
+      "sha256": "9e5501fe530f17cf973572ea75083fa32dfaf6e5bde8d466e1c1bfaf49fc2f88"
     },
     {
-      "path": "player-portraits/nba-atlas-003.jpg",
-      "bytes": 78238,
-      "sha256": "68ecca826c1c3b0a0cb6d9d370dc87ccca63a558218d7aabf6519bc992815261"
+      "path": "player-portraits/nba-atlas-003.webp",
+      "bytes": 51460,
+      "sha256": "f527112297f26817bafd79c2e46d67453a1fa5d0cfa82c3b996073211d0da2c1"
     },
     {
-      "path": "player-portraits/nba-atlas-004.jpg",
-      "bytes": 78729,
-      "sha256": "4b1184152867075df0e3200ba25b6b26f826e6f4f8696aa6760ee115767e3d39"
+      "path": "player-portraits/nba-atlas-004.webp",
+      "bytes": 51864,
+      "sha256": "e12952a24610cc179be35c846f9c2285a5d5fe4c701901a5af3944fc4051d398"
     },
     {
-      "path": "player-portraits/nba-atlas-005.jpg",
-      "bytes": 79653,
-      "sha256": "81871fc4a3f2c1e8b94979a4144f7ad251f8982496433cf543cc7a4449bbbc98"
+      "path": "player-portraits/nba-atlas-005.webp",
+      "bytes": 52704,
+      "sha256": "5a37f921b78cb9ec720da25f5680296f452adad6088d58bda1b0df2ee546b98a"
     },
     {
-      "path": "player-portraits/nba-atlas-006.jpg",
-      "bytes": 81140,
-      "sha256": "984b9fd666ee471779597b16ba4d2e697f7bed5add539317754fa3517362fe7b"
+      "path": "player-portraits/nba-atlas-006.webp",
+      "bytes": 53418,
+      "sha256": "5700b2e934399dcb3898d64bd6a35eba9344b269e0080efe24bf434ede1295c4"
     },
     {
-      "path": "player-portraits/nba-atlas-007.jpg",
-      "bytes": 78952,
-      "sha256": "351481e6d702ed79dc78577e5c54e8fcb867e9ef2ba2d7512ad41861b4ca7f24"
+      "path": "player-portraits/nba-atlas-007.webp",
+      "bytes": 54366,
+      "sha256": "234851a25c0b3349342d762f2adf5a80214051c278510f6e32da675b49fa888e"
     },
     {
-      "path": "player-portraits/nba-atlas-008.jpg",
-      "bytes": 78071,
-      "sha256": "20c010900bad34830af738f857cb8914583e7ceed5e9d8e520f5142e8c89da2a"
+      "path": "player-portraits/nba-atlas-008.webp",
+      "bytes": 51948,
+      "sha256": "153ac8cf6bf9e7f19ca1b991dc3fe3d222c5cd800587f2e3ceee04f2015f0101"
     },
     {
-      "path": "player-portraits/nba-atlas-009.jpg",
-      "bytes": 76592,
-      "sha256": "5b41425bd8f87e4a48a5f22324bc85b83a25349245f31a5e516246635a3435e7"
+      "path": "player-portraits/nba-atlas-009.webp",
+      "bytes": 52470,
+      "sha256": "b5a6c91854e435d2f08c119ae582f6a7f27a2ad19df30c6a6def378a057b8d22"
     },
     {
-      "path": "player-portraits/nba-atlas-010.jpg",
-      "bytes": 77096,
-      "sha256": "828a4530803b41450923a679a102a36716144df93d478fa0984f60df9947c486"
+      "path": "player-portraits/nba-atlas-010.webp",
+      "bytes": 54334,
+      "sha256": "a0e1af4376deba944948e8a585456f3eba94d31d97682eda19a098080ee99bb7"
     },
     {
-      "path": "player-portraits/nba-atlas-011.jpg",
-      "bytes": 79961,
-      "sha256": "3ab135a69ddf366c2f542fb07bbe18542722233ef40414468f91d61a97d0ae4f"
+      "path": "player-portraits/nba-atlas-011.webp",
+      "bytes": 54736,
+      "sha256": "e77a7f222c37d03f7a5388af5a55361dcbdb676f70a9e10b1c1c2b5d0bd56000"
     },
     {
-      "path": "player-portraits/nba-atlas-012.jpg",
-      "bytes": 77662,
-      "sha256": "69d7eefea8c5e42422f5ea69a5457dbde1fce1ed3ab77fcae201ae9cdade6899"
+      "path": "player-portraits/nba-atlas-012.webp",
+      "bytes": 53316,
+      "sha256": "191e9b61f94b120e63ef30c91377f0bcabd3cbc66b3578c5778c25428b972636"
     },
     {
-      "path": "player-portraits/nba-atlas-013.jpg",
-      "bytes": 78799,
-      "sha256": "3e671ab4201d7e8ed20987f5c8368d57e9aa3fdba2b6c6bb23a600fedee5515d"
+      "path": "player-portraits/nba-atlas-013.webp",
+      "bytes": 53214,
+      "sha256": "589bc4f47971ec3f6a305da54874efe137e5d6b15a73eb7a5cfeb7fee3993172"
     },
     {
-      "path": "player-portraits/nba-atlas-014.jpg",
-      "bytes": 78995,
-      "sha256": "a382294c92475b66fe9b8ad26a8bfb5b78b36fe74dd2aa77cc15be4cb6611700"
+      "path": "player-portraits/nba-atlas-014.webp",
+      "bytes": 54518,
+      "sha256": "5fbc9ffe3535267b10e8f4664357fc97fd5e50120c478a03ac4612485cad5520"
     },
     {
-      "path": "player-portraits/nba-atlas-015.jpg",
-      "bytes": 77167,
-      "sha256": "92119f2e5ab7cdd8108fdb84d49e5c2280c67ae4d40f3468d85341eca45257a3"
+      "path": "player-portraits/nba-atlas-015.webp",
+      "bytes": 51436,
+      "sha256": "217d2ef2303460276421d3857c40fbef572e077c7ec05873bd59ce4c786fc240"
     },
     {
-      "path": "player-portraits/nba-atlas-016.jpg",
-      "bytes": 74424,
-      "sha256": "765fb68baecbd4f2d23962f133b8cccda271ad7aa20011100e95d01cc9aa97ef"
+      "path": "player-portraits/nba-atlas-016.webp",
+      "bytes": 54744,
+      "sha256": "12d0378548de4bbbac55650069c3c0e5fc46afebb02e35263b9e72f0b6845e53"
     },
     {
-      "path": "player-portraits/nba-atlas-017.jpg",
-      "bytes": 77159,
-      "sha256": "eb568c622f8af3ac54e6b936e52633bd6abab20ec67ab68f8ee1d91f41ac1b0d"
+      "path": "player-portraits/nba-atlas-017.webp",
+      "bytes": 53322,
+      "sha256": "18a71f612c6f6c715c68b721d6876bac69c9858ad0f5f4aeef4b80b875377df5"
     },
     {
-      "path": "player-portraits/nba-atlas-018.jpg",
-      "bytes": 78172,
-      "sha256": "0ccf52ee2b4b422856247325f540ac49d25e36b611b1753ec60f7833f406d39d"
+      "path": "player-portraits/nba-atlas-018.webp",
+      "bytes": 51488,
+      "sha256": "319b62407139e4f38b29c13cae93c4333417a0e35e4c7bab74bfee37389d0c3a"
     },
     {
-      "path": "player-portraits/nba-atlas-019.jpg",
-      "bytes": 74594,
-      "sha256": "9f10e55aad7f99cb3adfc2252411b86747ce4e65bf6c9d776853610c07b6a4ae"
+      "path": "player-portraits/nba-atlas-019.webp",
+      "bytes": 53548,
+      "sha256": "a0eb83504f0a97f3e6f881ea2cddaf5394fc482316303244bbd1160f5fb4e123"
     },
     {
-      "path": "player-portraits/nba-atlas-020.jpg",
-      "bytes": 70397,
-      "sha256": "700899e8eb57050695c198b3272e5401eed1a18a14db2264a6ef83109b732b73"
+      "path": "player-portraits/nba-atlas-020.webp",
+      "bytes": 51794,
+      "sha256": "c245c7de3fcc0f025033210ef3297ca6a97caa7dd5ac1184bbd8ca51811a4529"
     },
     {
-      "path": "player-portraits/nba-atlas-021.jpg",
-      "bytes": 75529,
-      "sha256": "b2afe8481c0d84e20ac7fe57f76dfa2f711da31d9ec22c0deeaf6d8ebe3c1857"
+      "path": "player-portraits/nba-atlas-021.webp",
+      "bytes": 52496,
+      "sha256": "63ab9e058d5874d43900205e2dca2737dd16d367e0516074f40586a926490afd"
     },
     {
-      "path": "player-portraits/nba-atlas-022.jpg",
-      "bytes": 69710,
-      "sha256": "cfd9262c41216a0920c2c50b00f6756258f71f1cfe9559edeee95dfecc456ea4"
+      "path": "player-portraits/nba-atlas-022.webp",
+      "bytes": 50952,
+      "sha256": "4a7215a1077508f967dca653f32730d9891fc93e4986776744d3122ef8415076"
     },
     {
-      "path": "player-portraits/nba-atlas-023.jpg",
-      "bytes": 76190,
-      "sha256": "ea796744935dfdedfff964a28df02d5f3b49a597538d8227d190ccedec10a755"
+      "path": "player-portraits/nba-atlas-023.webp",
+      "bytes": 52598,
+      "sha256": "83e1809727713f5f82f483cc8c6ba4901a5bf588a012e422de1693b91c01cea9"
     },
     {
-      "path": "player-portraits/nba-atlas-024.jpg",
-      "bytes": 52964,
-      "sha256": "958ae613398f2f1a510aea6d0875884903bb092a1846f1ef710ed0acde6a412e"
+      "path": "player-portraits/nba-atlas-024.webp",
+      "bytes": 54074,
+      "sha256": "52c383567e17ac30d79ed7be9894564d51a6764a81bcf803b02f313912e404d9"
     },
     {
-      "path": "player-portraits/nba-atlas-025.jpg",
-      "bytes": 51514,
-      "sha256": "891e1b37248e8a9badcd46d13247ffdd129e254423c5db9ec56ba3e3f70b853e"
+      "path": "player-portraits/nba-atlas-025.webp",
+      "bytes": 16704,
+      "sha256": "21fdf1f960eae9217b70b0a4dbd760a4cc056ce34a7de6762a3e8e181d11efd5"
     },
     {
       "path": "story/championship-celebration.jpg",

@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   NBA2K_ATTRIBUTE_FIELDS,
+  applyPlayerPositions,
   applyRatingsSnapshot,
   createRatingsSnapshot,
   nbaOfficialHeadshotPath,
   nbaOfficialHeadshotUrl,
   transformApiPlayers,
+  validatePositionList,
+  validatePositionOverrides,
+  validatePositionOverrideTargets,
 } from "./player_data_pipeline.mjs";
 
 function apiPlayer(overrides = {}) {
@@ -34,6 +38,89 @@ const exactCategories = {
 };
 
 describe("NBA2K API player data pipeline", () => {
+  it("validates one or two distinct five-position values", () => {
+    assert.deepEqual(validatePositionList(["PF", "C"]), ["PF", "C"]);
+    assert.throws(() => validatePositionList([]), /one or two/u);
+    assert.throws(() => validatePositionList(["PG", "S"]), /invalid position/u);
+    assert.throws(() => validatePositionList(["SG", "SG"]), /duplicate positions/u);
+    assert.throws(() => validatePositionList(["PG", "SG", "SF"]), /one or two/u);
+  });
+
+  it("writes 2K primary and secondary positions while applying curated overrides", () => {
+    const dataset = {
+      schemaVersion: 1,
+      players: [
+        { nbaPlayerId: "1", fullName: "Test Player", position: "SF" },
+        { nbaPlayerId: "2", fullName: "Myles Turner", position: "PF" },
+        { nbaPlayerId: "3", fullName: "Unmatched Player", position: "SG" },
+      ],
+    };
+    const roster = { players: [
+      { nbaPlayerId: "1", fullName: "Test Player" },
+      { nbaPlayerId: "2", fullName: "Myles Turner" },
+    ] };
+    const ratings = { players: [
+      { name: "Test Player", positions: ["PG", "SG"] },
+      { name: "Myles Turner", positions: ["C"] },
+    ] };
+    const overrides = {
+      schemaVersion: 1,
+      version: "test-overrides",
+      sourceId: "curated-player-position-overrides",
+      players: [{ nbaPlayerId: "2", fullName: "Myles Turner", positions: ["PF", "C"], reason: "Test correction" }],
+    };
+
+    const result = applyPlayerPositions(dataset, roster, ratings, overrides);
+    assert.deepEqual(result.dataset.players.map(({ position, secondaryPosition, positionSource }) => ({
+      position, secondaryPosition, positionSource,
+    })), [
+      { position: "PG", secondaryPosition: "SG", positionSource: "NBA2K" },
+      { position: "PF", secondaryPosition: "C", positionSource: "MANUAL_OVERRIDE" },
+      { position: "SG", secondaryPosition: null, positionSource: "INFERRED" },
+    ]);
+    assert.equal(result.dataset.schemaVersion, 2);
+    assert.equal(result.appliedFrom2k, 1);
+    assert.equal(result.appliedFromOverrides, 1);
+    assert.equal(result.retainedInferred, 1);
+  });
+
+  it("rejects stale or ambiguous curated position overrides", () => {
+    const valid = {
+      schemaVersion: 1,
+      version: "test-overrides",
+      sourceId: "curated-player-position-overrides",
+      players: [{ nbaPlayerId: "1", fullName: "Test Player", positions: ["PG"], reason: "Test correction" }],
+    };
+    assert.equal(validatePositionOverrides(valid), valid);
+    assert.throws(() => validatePositionOverrides({ ...valid, players: [{ ...valid.players[0], reason: "" }] }), /requires a reason/u);
+    assert.throws(() => applyPlayerPositions(
+      { players: [{ nbaPlayerId: "1", fullName: "Test Player", position: "PG" }] },
+      { players: [{ nbaPlayerId: "1", fullName: "Different Player" }] },
+      { players: [] },
+      valid,
+    ), /does not match the NBA roster/u);
+    assert.throws(() => validatePositionOverrideTargets(valid, []), /does not match a known player/u);
+  });
+
+  it("applies a curated 2K position to a player outside the current NBA roster", () => {
+    const overrides = {
+      schemaVersion: 1,
+      version: "test-overrides",
+      sourceId: "curated-player-position-overrides",
+      players: [{ nbaPlayerId: "1641715", fullName: "Cam Whitmore", positions: ["SF", "PF"], reason: "Verified 2K positions" }],
+    };
+    const dataset = { players: [{ nbaPlayerId: "1641715", fullName: "Cam Whitmore", position: "SG" }] };
+    validatePositionOverrideTargets(overrides, dataset.players);
+    const result = applyPlayerPositions(dataset, { players: [] }, { players: [] }, overrides);
+    assert.deepEqual(result.dataset.players[0], {
+      nbaPlayerId: "1641715",
+      fullName: "Cam Whitmore",
+      position: "SF",
+      secondaryPosition: "PF",
+      positionSource: "MANUAL_OVERRIDE",
+    });
+  });
+
   it("uses the stable NBA Player ID for an official offline headshot", () => {
     assert.equal(nbaOfficialHeadshotUrl("1629029"), "https://cdn.nba.com/headshots/nba/latest/260x190/1629029.png");
     assert.equal(nbaOfficialHeadshotPath("1629029"), "./player-portraits/nba-1629029.png");

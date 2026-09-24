@@ -6,6 +6,7 @@ import {
   evaluateAwardAchievements,
   evaluatePostseasonAchievements,
   evaluateRegularSeasonAchievements,
+  getGmLevelLabel,
   rebuildGmCareerFromHistory,
   unlockAchievement,
 } from "./AchievementService";
@@ -93,5 +94,18 @@ describe("career achievements", () => {
     expect(state.gmCareer.championships).toBe(1);
     expect(state.gmCareer.conferenceTitles).toBe(1);
     expect(state.gmCareer.dynastyScore).toBeGreaterThanOrEqual(2200);
+  });
+
+  it("derives the displayed GM level from career state", () => {
+    const state = createCareer("gm-level-label");
+    expect(getGmLevelLabel(state)).toBe("新手经理");
+    state.gmCareer.seasons = 2;
+    expect(getGmLevelLabel(state)).toBe("优秀经理");
+    state.gmCareer.dynastyScore = 1_500;
+    expect(getGmLevelLabel(state)).toBe("联盟精英");
+    state.gmCareer.championships = 1;
+    expect(getGmLevelLabel(state)).toBe("冠军经理");
+    state.gmCareer.championships = 4;
+    expect(getGmLevelLabel(state)).toBe("传奇经理");
   });
 });

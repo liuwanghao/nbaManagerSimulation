@@ -129,7 +129,9 @@ const DIVISION_LABELS: Record<Division, string> = {
 
 export const phaseLabel = (value: string): string => PHASE_LABELS[value] ?? "未知阶段";
 export const positionLabel = (value: Position | string | undefined): string => value && POSITION_LABELS[value as Position] ? POSITION_LABELS[value as Position] : value ?? "未知位置";
-export const positionPairLabel = (primary: Position | string, secondary?: Position | string): string => secondary ? `${positionLabel(primary)} / ${positionLabel(secondary)}` : positionLabel(primary);
+export const positionPairLabel = (primary: Position | string, secondary?: Position | string): string => secondary && secondary !== primary
+  ? `${positionLabel(primary)} / ${positionLabel(secondary)}`
+  : positionLabel(primary);
 export const rotationRoleLabel = (value: RotationRole): string => ROTATION_ROLE_LABELS[value];
 export const teamRoleLabel = (value: TeamRole): string => TEAM_ROLE_LABELS[value];
 export const contractStatusLabel = (value: string): string => CONTRACT_STATUS_LABELS[value] ?? "其他合同";
@@ -143,6 +145,9 @@ export const conferenceLabel = (value: Conference): string => CONFERENCE_LABELS[
 export const divisionLabel = (value: Division): string => DIVISION_LABELS[value];
 export const slotLabel = (value: number): string => `存档 ${value}`;
 export const moneyLabel = (value: number): string => `${Math.round(value / 10_000).toLocaleString("zh-CN")} 万美元`;
+export const hundredMillionDollarLabel = (value: number): string => `${(value / 100_000_000).toFixed(3)} 亿美元`;
+export const measurementLabel = (value: number | null | undefined, unit: "cm" | "kg"): string =>
+  value != null && Number.isFinite(value) && value > 0 ? `${Math.round(value)}${unit}` : "—";
 
 const UI_TERM_REPLACEMENTS: Array<[RegExp, string]> = [
   [/^.+ is not allowed during .+$/giu, "当前阶段不能执行此操作"],

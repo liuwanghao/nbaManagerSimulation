@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { PORTRAIT_ATLAS_STRIP_PATHS } from "./src/data/portraitAtlasIds.ts";
 
 const MAX_CODE_FILE_BYTES = 5 * 1024 * 1024;
 const REQUIRED_LOCAL_IMAGES = [
@@ -11,7 +12,7 @@ const REQUIRED_LOCAL_IMAGES = [
   "story/championship-celebration.jpg",
   "assets/story/opening-arena.jpg",
   "assets/story/championship-celebration.jpg",
-  ...Array.from({ length: 26 }, (_, row) => `player-portraits/nba-atlas-${String(row).padStart(3, "0")}.jpg`),
+  ...PORTRAIT_ATLAS_STRIP_PATHS.map((path) => path.slice(2)),
 ];
 
 function listLocalFiles(root: string, directory = ""): string[] {

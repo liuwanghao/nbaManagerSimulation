@@ -2,6 +2,7 @@ import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { createFutureDraftPicks } from "../../data/draftPicks";
 import { publicPlayerValue } from "../ai/AIValueService";
+import { getProjectedMarketSalary } from "../freeAgency/FreeAgencyService";
 import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
@@ -37,20 +38,12 @@ function normalizeContract(player: Player, seasonYear: number): PlayerContract {
   return contract;
 }
 
-function marketSalary(player: Player): number {
-  const percentages = LEAGUE_FINANCE_CONFIG.maximumSalaryPercentages;
-  return Math.max(LEAGUE_FINANCE_CONFIG.minimumSalary, Math.min(
-    LEAGUE_FINANCE_CONFIG.salaryCap * (player.serviceYears >= 10 ? percentages.tenPlusYears : player.serviceYears >= 7 ? percentages.sevenToNineYears : percentages.zeroToSixYears),
-    Math.max(0, publicPlayerValue(player) - BALANCE_CONFIG.freeAgency.marketSalary.valueFloor) * BALANCE_CONFIG.freeAgency.marketSalary.dollarsPerValuePoint,
-  ));
-}
-
 function shouldExercisePlayerOption(state: GameState, player: Player, optionSalary: number): boolean {
   const rng = createRng(stableHash(state.seeds.seasonSeed, "player-option", player.id, state.league.seasonYear));
   const config = BALANCE_CONFIG.contracts.playerOption;
   const personality = player.personality === "MONEY_FOCUSED" ? config.moneyFocusedBonus : player.personality === "LOYAL" ? config.loyalBonus : player.personality === "COMPETITIVE" ? config.competitivePenalty : 0;
   const injury = player.injuryRating < config.lowInjuryRatingThreshold ? config.lowInjuryRatingBonus : 0;
-  const salaryAdvantage = (optionSalary / Math.max(1, marketSalary(player)) - 1) * 100;
+  const salaryAdvantage = (optionSalary / Math.max(1, getProjectedMarketSalary(player)) - 1) * 100;
   return salaryAdvantage + personality + injury + rng.int(BALANCE_CONFIG.contracts.playerOptionNoiseMin, BALANCE_CONFIG.contracts.playerOptionNoiseMax) >= 0;
 }
 

@@ -7,7 +7,7 @@ import { LEAGUE_FINANCE_CONFIG } from "./leagueFinance";
  * 工具、测试和后续配置面板只需要读取 GAME_CONFIG。
  */
 export const GAME_CONFIG = {
-  version: "game-config.v3",
+  version: "game-config.v5",
   balance: BALANCE_CONFIG,
   simulation: SIMULATION_CONFIG,
   finance: LEAGUE_FINANCE_CONFIG,
@@ -25,6 +25,16 @@ export function validateGameConfig(): string[] {
   assert(Math.abs(simulation.boxScore.usage.tendencyWeight + simulation.boxScore.usage.offenseImpactWeight - 1) < 0.0001, "Usage 权重之和必须为 1");
   assert(Math.abs(simulation.starPower.bestStarWeight + simulation.starPower.secondStarWeight - 1) < 0.0001, "Star Power 聚合权重之和必须为 1");
   assert(balance.freeAgency.minimumAcceptThreshold <= balance.freeAgency.earlyAcceptThreshold, "自由市场最低接受阈值不能高于提前接受阈值");
+  assert(balance.freeAgency.marketSalary.ratingAnchors.every((anchor, index, anchors) =>
+    anchor.annualSalary > 0 && (index === 0 || anchor.overall > anchors[index - 1].overall && anchor.annualSalary > anchors[index - 1].annualSalary)),
+  "自由球员年薪锚点必须随能力严格递增");
+  const offerWeights = balance.freeAgency.weights;
+  assert(Object.values(offerWeights).reduce((sum, value) => sum + value, 0) === 100, "自由市场报价权重之和必须为 100");
+  assert(Object.values(balance.freeAgency.personalityWeightShifts).every((shifts) =>
+    Object.values(shifts).reduce((sum: number, value) => sum + value, 0) === 0
+    && Object.keys(offerWeights).every((key) => offerWeights[key as keyof typeof offerWeights] + ((shifts as Record<string, number>)[key] ?? 0) >= 0)),
+  "性格权重调整必须守恒且不能产生负权重");
+  assert(Object.values(balance.teamCore.marketRatings).every((value) => Number.isInteger(value) && value >= 0 && value <= 100), "球队市场评分必须在 0～100 之间");
   assert(Object.values(balance.freeAgency.weights).reduce((sum, value) => sum + value, 0) === 100, "自由市场 Utility 权重之和必须为 100");
   assert(Object.values(balance.expansion.aiStrategyWeights).reduce((sum, value) => sum + value, 0) === 100, "扩军 AI 策略权重之和必须为 100");
   assert(balance.draft.classSize >= 64, "Draft 人数不能少于联盟选秀签位数");

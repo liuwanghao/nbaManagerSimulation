@@ -10,9 +10,11 @@ export interface NbaPlayerProjection {
   teamAbbreviation: string;
   jerseyNumber: string | null;
   position: Position;
+  secondaryPosition: Position | null;
+  positionSource: "NBA2K" | "MANUAL_OVERRIDE" | "INFERRED";
   age: number;
-  heightCm: number;
-  weightKg: number;
+  heightCm: number | null;
+  weightKg: number | null;
   portraitPath?: string | null;
   season: string;
   stats: Record<string, Record<string, number | string | null>>;
@@ -44,10 +46,11 @@ export interface HistoricalPlayerTemplate {
 }
 
 export interface NbaPlayerDataset {
-  schemaVersion: 1;
+  schemaVersion: 2;
   datasetVersion: string;
   generatedAt: string;
   ratingModelVersion: string;
+  positionModelVersion: string;
   source: {
     nbaApiVersion: string;
     currentSeason: string;
@@ -68,6 +71,7 @@ export interface NbaPlayerDataset {
 }
 
 const POSITIONS = new Set<Position>(["PG", "SG", "SF", "PF", "C"]);
+const POSITION_SOURCES = new Set<NbaPlayerProjection["positionSource"]>(["NBA2K", "MANUAL_OVERRIDE", "INFERRED"]);
 const ATTRIBUTE_KEYS: Array<keyof PlayerAttributes> = [
   "shooting", "finishing", "playmaking", "perimeterDefense",
   "interiorDefense", "rebounding", "athleticism", "basketballIq",
@@ -84,15 +88,35 @@ function assertAttributes(value: PlayerAttributes, context: string): void {
 export function validateNbaPlayerDataset(value: unknown): NbaPlayerDataset {
   if (!value || typeof value !== "object") throw new Error("NBA player dataset must be an object");
   const dataset = value as NbaPlayerDataset;
-  if (dataset.schemaVersion !== 1) throw new Error(`Unsupported NBA player dataset schema ${String(dataset.schemaVersion)}`);
-  if (!dataset.datasetVersion || !dataset.generatedAt || !dataset.ratingModelVersion) throw new Error("NBA player dataset version metadata is incomplete");
+  if (dataset.schemaVersion !== 2) throw new Error(`Unsupported NBA player dataset schema ${String(dataset.schemaVersion)}`);
+  if (!dataset.datasetVersion || !dataset.generatedAt || !dataset.ratingModelVersion || !dataset.positionModelVersion) {
+    throw new Error("NBA player dataset version metadata is incomplete");
+  }
   if (!Array.isArray(dataset.players) || !Array.isArray(dataset.historicalTemplates)) throw new Error("NBA player dataset arrays are missing");
   const playerIds = new Set<string>();
   for (const player of dataset.players) {
     if (!player.canonicalPlayerId || playerIds.has(player.canonicalPlayerId)) throw new Error(`Duplicate NBA player ${player.canonicalPlayerId}`);
     playerIds.add(player.canonicalPlayerId);
     if (!POSITIONS.has(player.position)) throw new Error(`Invalid position for ${player.canonicalPlayerId}`);
+    if (player.secondaryPosition !== null && !POSITIONS.has(player.secondaryPosition)) {
+      throw new Error(`Invalid secondary position for ${player.canonicalPlayerId}`);
+    }
+    if (player.secondaryPosition === player.position) throw new Error(`Duplicate positions for ${player.canonicalPlayerId}`);
+    if (!POSITION_SOURCES.has(player.positionSource)) throw new Error(`Invalid position source for ${player.canonicalPlayerId}`);
     assertAttributes(player.projection.attributes, player.canonicalPlayerId);
+    if (!Number.isInteger(player.age) || player.age < 18 || player.age > 50
+      || player.projection.qualityFlags.includes("NBA_OFFICIAL_AGE_UNAVAILABLE")) {
+      throw new Error(`Invalid or unresolved age for ${player.canonicalPlayerId}`);
+    }
+    for (const key of ["overall", "potential", "durability"] as const) {
+      if (!Number.isInteger(player.projection[key]) || player.projection[key] < 25 || player.projection[key] > 99) {
+        throw new Error(`Invalid ${key} for ${player.canonicalPlayerId}`);
+      }
+    }
+    if (player.projection.qualityFlags.includes("NBA_2K27_PROFILE_UNAVAILABLE")
+      && Object.values(player.projection.attributes).every((value) => value === 25)) {
+      throw new Error(`Unrated NBA player still has placeholder attributes: ${player.canonicalPlayerId}`);
+    }
   }
   const historicalIds = new Set<string>();
   for (const template of dataset.historicalTemplates) {
