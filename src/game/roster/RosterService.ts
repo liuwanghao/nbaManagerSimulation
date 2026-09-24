@@ -5,7 +5,7 @@ import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import { generateSchedule, validateSchedule } from "../schedule/schedule";
 import { emptyStanding, type GameState, type Player, type TeamRole, type TrainingFocus } from "../state/types";
-import { enqueueCareerMilestoneEvents } from "../events/EventService";
+import { enqueueCareerMilestoneEvents, enqueueEvent } from "../events/EventService";
 
 export type RosterCommand =
   | { commandId: string; type: "CLOSE_FREE_AGENCY"; payload: Record<string, never> }
@@ -154,6 +154,7 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
   state.calendar.currentDateIndex = 0;
   state.league.currentPhase = "REGULAR_PRE_DEADLINE";
   enqueueCareerMilestoneEvents(state);
+  enqueueEvent(state, "franchise_season_opening_001");
   return state;
 }
 

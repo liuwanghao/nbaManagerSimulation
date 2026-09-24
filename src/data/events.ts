@@ -67,6 +67,7 @@ const seedGroups: Record<string, EventSeed[]> = {
     ["playoffs_champion_001", "联盟冠军", "球队夺得总冠军，城市进入庆典时刻。", 100, true],
   ],
   FRANCHISE: [
+    ["franchise_season_opening_001", "常规赛开幕", "常规赛名单已锁定。", 101, true],
     ["franchise_first_win_001", "队史首胜", "球队赢下队史第一场常规赛。", 78, true],
     ["franchise_ten_wins_001", "初具竞争力", "球队取得生涯第十场胜利。", 48],
     ["franchise_fifty_wins_001", "五十胜", "球队首次完成单季 50 胜。", 62, true],
@@ -94,7 +95,9 @@ const seedGroups: Record<string, EventSeed[]> = {
 
 function definition(category: string, seed: EventSeed): EventDefinition {
   const [id, title, description, priority = 40, pauseSimulation = false, scope = "PLAYER_TEAM"] = seed;
-  const choiceEffects: EventEffectDefinition[] = category === "MORALE" || category === "ROLE"
+  const seasonOpening = id === "franchise_season_opening_001";
+  const expansionComplete = id === "expansion_complete_001";
+  const choiceEffects: EventEffectDefinition[] = seasonOpening ? [] : category === "MORALE" || category === "ROLE"
     ? [{ effectId: "morale_response", type: "PLAYER_MORALE", target: "{{player_id}}", value: category === "MORALE" ? 6 : 4, executionPhase: "ON_CHOICE" }]
     : category === "BREAKOUT"
       ? [{ effectId: "form_breakout", type: "PLAYER_FORM", target: "{{player_id}}", value: 0.75, executionPhase: "ON_CHOICE" }]
@@ -123,15 +126,15 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     type: category,
     category,
     scope,
-    visibility: "PLAYER_VISIBLE",
+    visibility: expansionComplete ? "BACKGROUND" : "PLAYER_VISIBLE",
     priority,
-    trigger: { mode: "CONDITION", checkPoint: category === "FREE_AGENCY" || category === "DRAFT" ? "OFFSEASON" : "AFTER_GAME" },
+    trigger: { mode: seasonOpening ? "MANUAL" : "CONDITION", checkPoint: category === "FREE_AGENCY" || category === "DRAFT" ? "OFFSEASON" : "AFTER_GAME" },
     conditions: {},
     weight: (BALANCE_CONFIG.randomEvents.categoryWeights as Record<string, number>)[category] ?? BALANCE_CONFIG.randomEvents.defaultWeight,
-    cooldownGames: BALANCE_CONFIG.randomEvents.defaultCooldownGames,
+    cooldownGames: seasonOpening ? 0 : BALANCE_CONFIG.randomEvents.defaultCooldownGames,
     oncePerSeason: category === "FRANCHISE" || id.includes("first_") || id.includes("award") || id.includes("champion") || id.includes("complete"),
-    oncePerCareer: category === "FRANCHISE" || category === "EXPANSION" || id.includes("first_") || id.includes("complete_001") || id.includes("dynasty"),
-    pauseSimulation,
+    oncePerCareer: !seasonOpening && (category === "FRANCHISE" || category === "EXPANSION" || id.includes("first_") || id.includes("complete_001") || id.includes("dynasty")),
+    pauseSimulation: expansionComplete ? false : pauseSimulation,
     visual: { useIllustration: true, illustrationKey: id.replace(/_\d+$/u, "") },
     content: { title, description },
     autoEffects: [],

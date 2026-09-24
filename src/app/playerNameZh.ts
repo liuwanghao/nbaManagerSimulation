@@ -168,6 +168,13 @@ export function playerNameZh(name: string, canonicalPlayerId?: string): string {
   return significantParts.map((part) => COMMON_NAME_PARTS[part.toLowerCase()]).join("·");
 }
 
+export function playerSurnameZh(name: string, canonicalPlayerId?: string): string {
+  const displayName = playerNameZh(name, canonicalPlayerId);
+  const parts = displayName.split(/[·•\s]+/u).filter(Boolean);
+  if (parts.length > 1) return parts[parts.length - 1];
+  return /\p{Script=Han}/u.test(name) ? [...displayName][0] : displayName;
+}
+
 export function localizePlayerNamesInText(text: string | undefined, players: Player[]): string {
   if (!text) return "";
   return players

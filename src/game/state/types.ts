@@ -341,6 +341,7 @@ export interface CapState {
 }
 
 export type FreeAgentOfferStatus = "DRAFT" | "SUBMITTED" | "ACTIVE" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "WITHDRAWN" | "SIGNED_OFFER_SHEET";
+export type FreeAgentOfferResolutionReason = "PLAYER_REJECTED" | "SIGNED_WITH_OTHER_TEAM" | "RFA_MATCHED" | "ROSTER_FULL" | "ACTIVE_OFFER_LIMIT";
 export type PromisedRole = "STARTER" | "SIXTH_MAN" | "ROTATION" | "BENCH";
 
 export interface FreeAgentOffer {
@@ -351,12 +352,14 @@ export interface FreeAgentOffer {
   expiresDay: number;
   years: number;
   year1Salary: number;
+  salaryByYear?: number[];
   totalValue: number;
   guaranteedValue: number;
   rolePromised: PromisedRole;
   capReservation: number;
   utility: number;
   status: FreeAgentOfferStatus;
+  resolutionReason?: FreeAgentOfferResolutionReason;
   kind: "UFA_OFFER" | "RFA_OFFER_PROPOSAL";
 }
 

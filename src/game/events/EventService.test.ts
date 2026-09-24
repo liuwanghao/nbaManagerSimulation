@@ -33,6 +33,27 @@ describe("data-driven event engine", () => {
     expect(executeEventCommand(resolved, command)).toBe(resolved);
   });
 
+  it("settles expansion at completion and keeps the season opening pending until entered", () => {
+    const state = createCareer("season-opening-event");
+    const supportBefore = state.teams[state.userTeamId].fanSupport;
+    const expansion = enqueueEvent(state, "expansion_complete_001");
+    expect(expansion?.status).toBe("RESOLVED");
+    expect(state.teams[state.userTeamId].fanSupport).toBe(supportBefore + 1);
+    expect(blockingEvent(state)).toBeUndefined();
+    expect(enqueueEvent(state, "expansion_complete_001")).toBeUndefined();
+
+    const opening = enqueueEvent(state, "franchise_season_opening_001");
+    expect(opening?.status).toBe("PENDING");
+    expect(blockingEvent(state)?.eventInstanceId).toBe(opening?.eventInstanceId);
+    const resolved = executeEventCommand(state, {
+      commandId: "enter-season-once", type: "RESOLVE_EVENT",
+      payload: { eventInstanceId: opening?.eventInstanceId as string, choiceId: "acknowledge" },
+    });
+    expect(blockingEvent(resolved)).toBeUndefined();
+    expect(resolved.teams[resolved.userTeamId].fanSupport).toBe(supportBefore + 1);
+    expect(enqueueEvent(resolved, "franchise_season_opening_001")).toBeUndefined();
+  });
+
   it("applies a snapshotted player effect once when a choice resolves", () => {
     const state = createCareer("event-player-effect");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];

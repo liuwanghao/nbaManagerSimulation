@@ -145,6 +145,9 @@ export const conferenceLabel = (value: Conference): string => CONFERENCE_LABELS[
 export const divisionLabel = (value: Division): string => DIVISION_LABELS[value];
 export const slotLabel = (value: number): string => `存档 ${value}`;
 export const moneyLabel = (value: number): string => `${Math.round(value / 10_000).toLocaleString("zh-CN")} 万美元`;
+export const adaptiveMoneyLabel = (value: number): string => Math.abs(value) >= 100_000_000
+  ? `${(value / 100_000_000).toLocaleString("zh-CN", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} 亿美元`
+  : moneyLabel(value);
 export const hundredMillionDollarLabel = (value: number): string => `${(value / 100_000_000).toFixed(3)} 亿美元`;
 export const measurementLabel = (value: number | null | undefined, unit: "cm" | "kg"): string =>
   value != null && Number.isFinite(value) && value > 0 ? `${Math.round(value)}${unit}` : "—";

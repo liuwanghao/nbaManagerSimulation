@@ -202,6 +202,11 @@
       "sha256": "93ffebb9fd3849badec24926c08db5034f484fdff3baee3c43250f4be39ce2b1"
     },
     {
+      "path": "story/season-opening-portrait.png",
+      "bytes": 1864798,
+      "sha256": "e905c3fe9433cd5e2a25b1cd3346f6fad884df124388b26748e404eaa56482fb"
+    },
+    {
       "path": "team-logos/0318B0B694F80E0F873B0A4714470D58_1657174298893.png",
       "bytes": 102500,
       "sha256": "c25cbc826b9486a70f53e1cae738e7b68d4f66b4cd3a49475761630cfe571a89"

@@ -10,6 +10,7 @@ import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { publicPlayerValue, negativeContractScore } from "../ai/AIValueService";
 import { getCapSheet } from "../cap/CapSheetService";
 import { unlockAchievement } from "../career/AchievementService";
+import { enqueueEvent } from "../events/EventService";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
@@ -586,6 +587,7 @@ function finalizeExpansionDraftMutable(state: GameState): void {
   expansion.finalized = true;
   expansion.lastNotice = `${totalPicks} 次扩军选择全部完成，协议补偿已经结算。`;
   unlockAchievement(state, "EXPANSION_COMPLETE");
+  enqueueEvent(state, "expansion_complete_001");
   state.league.currentPhase = "ROOKIE_DRAFT_PENDING";
 }
 

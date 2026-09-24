@@ -8,6 +8,7 @@ import type { ExpansionCityId, ExpansionPackage, GameState, Player } from "../ga
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { GameChrome } from "./GameChrome";
 import { playerNameZh } from "./playerNameZh";
+import { playerRatingStyle } from "./playerRatingColor";
 import { humanizeUiText, moneyLabel, phaseLabel, positionPairLabel, slotLabel } from "./uiText";
 import { ReferencePlayerCard } from "./ReferencePlayerCard";
 import type { SaveSlotSummary } from "../storage/SaveService";
@@ -31,7 +32,7 @@ interface ExpansionFlowProps {
 
 const money = moneyLabel;
 const EXPANSION_SORT_OPTIONS: Array<{ value: ExpansionPlayerSort; label: string; direction: string }> = [
-  { value: "OVERALL", label: "能力", direction: "高→低" },
+  { value: "OVERALL", label: "OVR", direction: "高→低" },
   { value: "AGE", label: "年龄", direction: "小→大" },
   { value: "SALARY", label: "年薪", direction: "低→高" },
   { value: "CONTRACT", label: "剩余合同", direction: "短→长" },
@@ -75,6 +76,7 @@ function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "stat
   const [cityId, setCityId] = useState<ExpansionCityId>("SEA");
   const [teamName, setTeamName] = useState("");
   const selectedBrand = EXPANSION_BRAND_PRESETS[cityId][0];
+  const exampleName = selectedBrand.teamName;
   const normalizedName = teamName.trim();
   let teamNameError = "";
   if (normalizedName) {
@@ -116,8 +118,8 @@ function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "stat
       </div>
 
       <label className="field-label" htmlFor="team-name">02 为球队命名</label>
-      <p className="team-name-hint">城市名会自动添加；这里只填写队名后半部分，例如“翡翠潮”。</p>
-      <input id="team-name" className="team-name-input" value={teamName} maxLength={20} placeholder="输入队名后半部分，例如：翡翠潮" autoComplete="off" aria-invalid={Boolean(teamNameError)} aria-describedby="team-name-guidance team-name-preview" onChange={(event) => setTeamName(event.target.value)} />
+      <p className="team-name-hint">城市名会自动添加；这里只填写队名后半部分，例如“{exampleName}”。</p>
+      <input id="team-name" className="team-name-input" value={teamName} maxLength={20} placeholder={`请输入队名的后半部分，例如${exampleName}`} autoComplete="off" aria-invalid={Boolean(teamNameError)} aria-describedby="team-name-guidance team-name-preview" onChange={(event) => setTeamName(event.target.value)} />
       <div id="team-name-preview" className="team-name-preview" aria-live="polite"><span>完整队名预览</span><strong>{EXPANSION_CITY_NAMES[cityId]}{normalizedName || "球队名"}</strong></div>
       <div id="team-name-guidance" className={`team-name-guidance${teamNameError ? " error" : teamNameValid ? " valid" : ""}`} aria-live="polite">
         {teamNameError ? <><b>名称不可用</b><span>{teamNameError}</span></> : teamNameValid ? <><b>✓ 名称可用</b><span>创建后仍可在球队管理中查看。</span></> : <><b>命名规则</b><span>2～20 个字符，可用中文、英文字母、数字、空格、- 或 '，但不能只输入数字。</span></>}
@@ -217,7 +219,7 @@ function TradeDesk({ state, busy, onCommand }: Pick<ExpansionFlowProps, "state" 
       <div className="trade-prep-summary reference-trade-stats">
         <span><small>合同池</small><b>已自动校验</b></span><span><small>保护名单</small><b>{Object.keys(expansion.protectionLists).length} 队已冻结</b></span><span><small>可用报价</small><b>{offers.length} 份</b></span>
       </div>
-      <div className="trade-rule-note reference-trade-info"><span>!</span><p><b>合同选项已在后台结算</b>只有下赛季仍有有效合同的球员进入扩军池；无需再单独确认。</p></div>
+      <div className="trade-rule-note reference-trade-info"><span>!</span><p><b>合同选项已在后台结算</b>扩军池仅保留下赛季合同仍有效的球员，无需另行确认。<br /><strong>协议规则：</strong>指定选择会占用本队下一次签位，球员自动入队；保护协议使本队不能选该球员，选秀结束后获得补偿选秀权。进入选秀后，已接受的协议不可撤销。</p></div>
       <div className="trade-offer-filters reference-trade-tabs" role="group" aria-label="筛选扩军交易报价">
         {(["ALL", "SELECT_PLAYER", "PROTECT_PLAYER"] as const).map((value) => <button key={value} className={filter === value ? "selected" : ""} onClick={() => setFilter(value)}>{value === "ALL" ? "全部报价" : value === "SELECT_PLAYER" ? "指定选择" : "保护球员"}</button>)}
       </div>
@@ -229,19 +231,18 @@ function TradeDesk({ state, busy, onCommand }: Pick<ExpansionFlowProps, "state" 
           const chineseName = playerNameZh(player.name, player.id);
           return (
             <article key={offer.id} className="offer-card prototype-offer-card reference-deal-card">
-              <header><span><TeamLogoMark team={team} /><b style={{ color: team.primaryColor }}>{team.fullName}</b></span><em className={offer.type === "SELECT_PLAYER" ? "designated" : "protected"}>{offer.type === "SELECT_PLAYER" ? "下一签自动入队" : "承诺不选择"}</em></header>
-              <div className="offer-player-line reference-player-head"><div><b>{chineseName}</b><span>{positionPairLabel(player.position, player.secondaryPosition)} · {player.age} 岁</span></div><span className="trade-overall-badge" data-testid={`trade-player-overall-${player.id}`}><small>综合</small><strong>{calculatePlayerOverall(player).toFixed(0)}</strong></span></div>
+              <header><span><TeamLogoMark team={team} /><b style={{ color: team.primaryColor }}>{team.fullName}</b></span><em className={offer.type === "SELECT_PLAYER" ? "designated" : "protected"}>{offer.type === "SELECT_PLAYER" ? "指定选择 · 自动入队" : "保护球员 · 补偿签"}</em></header>
+              <div className="offer-player-line reference-player-head"><div><b>{chineseName}</b><span>{positionPairLabel(player.position, player.secondaryPosition)} · {player.age} 岁</span></div><span className="trade-overall-badge player-rating-surface" style={playerRatingStyle(calculatePlayerOverall(player))} data-testid={`trade-player-overall-${player.id}`}><small>OVR</small><strong className="player-rating-tone">{calculatePlayerOverall(player).toFixed(0)}</strong></span></div>
               <div className="offer-contract-grid">
                 <span><small>本季年薪</small><b>{money(player.contract.salary)}</b></span><span><small>剩余合同</small><b>{player.contract.yearsRemaining} 年</b></span><span><small>补偿资产</small><b>{asset.year} {asset.round === 1 ? "首轮签" : "次轮签"}</b></span>
               </div>
-              <p className="offer-impact">{offer.type === "SELECT_PLAYER" ? "接受后锁定该队唯一损失名额；进入选秀时自动占用下一次可用签位，球员直接入队。" : "接受后本队不能选择该球员；扩军选秀完成后获得补偿签。"}</p>
               <div className="offer-actions"><button className="detail-button btn-secondary" onClick={() => setSelectedPlayerId(player.id)}>查看球员</button><button className="btn-primary" disabled={busy || accepted.length >= BALANCE_CONFIG.expansion.maxAcceptedTradesPerTeam} onClick={() => onCommand({ commandId: `stage3-accept-${offer.id}`, type: "ACCEPT_EXPANSION_TRADE", payload: { offerId: offer.id } })}>接受这份协议</button></div>
             </article>
           );
         })}
         {visibleOffers.length === 0 && <div className="trade-empty-state">当前筛选条件下没有可接受报价。</div>}
       </div>
-      <div className="trade-desk-final-action reference-footer-submit"><p>指定选择协议在进入选秀后自动占用签位并让球员入队；保护协议只换补偿选秀权。进入选秀后协议不可普通撤销。</p><button data-testid="start-expansion-draft" className="primary-cta" disabled={busy} onClick={() => onCommand({ commandId: "stage3-start-draft", type: "START_EXPANSION_DRAFT", payload: {} })}>锁定协议并进入扩军选秀 ➔</button></div>
+      <div className="trade-desk-final-action reference-footer-submit"><button data-testid="start-expansion-draft" className="primary-cta" disabled={busy} onClick={() => onCommand({ commandId: "stage3-start-draft", type: "START_EXPANSION_DRAFT", payload: {} })}>锁定协议并进入扩军选秀 ➔</button></div>
       {selectedPlayerId && <PlayerDetail state={state} player={state.players[selectedPlayerId]} onClose={() => setSelectedPlayerId(null)} />}
     </section>
   );
@@ -294,7 +295,7 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
   const visibleTeam = visibleTeamId === "ALL" ? undefined : state.teams[visibleTeamId];
   const teamAvailablePlayers = players.filter((player) => visibleTeamId === "ALL" || player.teamId === visibleTeamId);
   const availablePlayers = findExpansionDraftPlayers(players, visibleTeamId, positionFilter, searchQuery, sortMode);
-  const sortLabel = EXPANSION_SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? "能力";
+  const sortLabel = EXPANSION_SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? "OVR";
   const protectedPlayers = (visibleTeam ? expansion.protectionLists[visibleTeamId]?.protectedPlayerIds ?? [] : []).map((id) => state.players[id]).filter(Boolean);
   const playerTeam = state.teams[expansion.playerTeamId];
   const currentRoster = getCurrentTeamRoster(state);
@@ -362,7 +363,7 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
           {visibleRoster.length > 0 ? <div className="draft-current-roster-grid">
             {visibleRoster.map((player) => <button type="button" data-testid={`current-roster-player-${player.id}`} key={player.id} onClick={() => setSelectedPlayerId(player.id)}>
               <span><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · 年薪 {money(player.contract.salary)}</small></span>
-              <em><small>OVR</small>{calculatePlayerOverall(player).toFixed(0)}</em>
+              <em className="player-rating-tone" style={playerRatingStyle(calculatePlayerOverall(player))}><small>OVR</small>{calculatePlayerOverall(player).toFixed(0)}</em>
             </button>)}
           </div> : <div className="draft-current-roster-empty"><b>{currentRoster.length > 0 ? `暂无 ${rosterPositionFilter} 位置球员` : "阵容席位等待填充"}</b><span>{currentRoster.length > 0 ? "切换位置或选择“全部”查看完整阵容。" : "从下方未保护名单选中球员后，会立即显示在这里。"}</span></div>}
         </div>
@@ -381,7 +382,7 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
       <div className="draft-roster-scroll">
         {visibleTeam && <details className="draft-protected-panel" open>
           <summary><span>🔒 球队被保护球员（{protectedPlayers.length} 人）</span><small>点击展开 / 收起</small></summary>
-          <div className="protected-player-grid">{protectedPlayers.map((player) => <article key={player.id}><div><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · {calculatePlayerOverall(player).toFixed(0)}</small></div><span>🔒</span></article>)}</div>
+          <div className="protected-player-grid">{protectedPlayers.map((player) => <article key={player.id}><div><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · <strong className="player-rating-tone" style={playerRatingStyle(calculatePlayerOverall(player))}>{calculatePlayerOverall(player).toFixed(0)}</strong></small></div><span>🔒</span></article>)}</div>
         </details>}
         <section className="draft-available-player-panel" aria-label="选秀池可用球员">
           <div className="draft-section-label available">🌐 选秀池可用球员（{availablePlayers.length} 人）</div>
@@ -405,8 +406,9 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
           {availablePlayers.map((player) => {
             const selectable = !forcedPlayer || player.id === forcedPlayer.id;
             const withinSalaryLimit = selectable && isExpansionDraftSelectionWithinSalaryLimit(state, expansion.playerTeamId, player.id);
-            return <article className="player-row prototype-draft-player" key={player.id} onClick={() => setSelectedPlayerId(player.id)}>
-              <div className="draft-player-copy"><div className="draft-player-title"><b>{playerNameZh(player.name, player.id)}</b><em>{visibleTeam ? positionPairLabel(player.position, player.secondaryPosition) : `${state.teams[player.teamId].name} · ${positionPairLabel(player.position, player.secondaryPosition)}`}</em></div><div className="draft-player-stats"><span>综合 <strong>{calculatePlayerOverall(player).toFixed(0)}</strong></span><i>｜</i><span>年龄 <strong>{player.age} 岁</strong></span><i>｜</i><span>年薪 <strong>{money(player.contract.salary)}</strong></span><i>｜</i><span>剩余 <strong>{player.contract.yearsRemaining} 年</strong></span></div></div>
+            const salaryBlocked = selectable && !withinSalaryLimit;
+            return <article className={`player-row prototype-draft-player${salaryBlocked ? " salary-blocked" : ""}`} key={player.id} onClick={() => setSelectedPlayerId(player.id)}>
+              <div className="draft-player-copy"><div className="draft-player-title"><b>{playerNameZh(player.name, player.id)}</b><em>{visibleTeam ? positionPairLabel(player.position, player.secondaryPosition) : `${state.teams[player.teamId].name} · ${positionPairLabel(player.position, player.secondaryPosition)}`}</em></div><div className="draft-player-stats"><span>OVR <strong className="player-rating-tone" style={playerRatingStyle(calculatePlayerOverall(player))}>{calculatePlayerOverall(player).toFixed(0)}</strong></span><i>｜</i><span>年龄 <strong>{player.age} 岁</strong></span><i>｜</i><span>年薪 <strong>{money(player.contract.salary)}</strong></span><i>｜</i><span>剩余 <strong>{player.contract.yearsRemaining} 年</strong></span></div></div>
               <span className="player-actions"><button data-testid={`draft-player-select-${player.id}`} disabled={busy || !withinSalaryLimit || Boolean(forcedPlayer && !autoPickFailed)} onClick={(event) => { event.stopPropagation(); void selectPlayerAndAdvance(player.id); }}>{forcedPlayer ? autoPickFailed && selectable ? "重试协议入队" : "协议自动入队中" : withinSalaryLimit ? "选中球员" : "超出薪资上限"}</button></span>
             </article>;
           })}
