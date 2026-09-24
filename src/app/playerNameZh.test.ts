@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { NBA_PLAYER_DATASET } from "../data/nbaPlayerDataset";
 import { CURRENT_NBA_ROSTER_BY_ID } from "../data/currentNbaRoster";
+import { REAL_2026_DRAFT } from "../data/real2026Draft";
+import { fictionalNameAt } from "../data/playerProfiles";
 import { playerNameZh } from "./playerNameZh";
 
 describe("playerNameZh", () => {
@@ -12,13 +14,29 @@ describe("playerNameZh", () => {
     expect(playerNameZh("Example Unknownname")).toBe("Example Unknownname");
   });
 
-  it("covers every rated player on the NBA 2026-27 current roster with a Chinese display name", () => {
+  it("keeps a readable name for every current player without fabricating unverified translations", () => {
     const currentRatedPlayers = NBA_PLAYER_DATASET.players.filter((player) => CURRENT_NBA_ROSTER_BY_ID.has(player.nbaPlayerId));
     expect(currentRatedPlayers.length).toBeGreaterThanOrEqual(560);
+    let localizedCount = 0;
     for (const player of currentRatedPlayers) {
       const localized = playerNameZh(player.fullName, player.canonicalPlayerId);
-      expect(localized, `${player.nbaPlayerId}:${player.fullName}`).toMatch(/\p{Script=Han}/u);
-      expect(localized, `${player.nbaPlayerId}:${player.fullName}`).not.toMatch(/[A-Za-z]{3,}/u);
+      expect(localized.trim(), `${player.nbaPlayerId}:${player.fullName}`).not.toBe("");
+      expect(localized, `${player.nbaPlayerId}:${player.fullName}`).not.toContain("\uFFFD");
+      if (/\p{Script=Han}/u.test(localized)) localizedCount += 1;
+      else expect(localized, `${player.nbaPlayerId}:${player.fullName}`).toBe(player.fullName);
+    }
+    expect(localizedCount).toBeGreaterThan(500);
+  });
+
+  it("shows Chinese names for every bundled player and generated name combination", () => {
+    const names = [
+      ...NBA_PLAYER_DATASET.players.map((player) => [player.fullName, player.canonicalPlayerId] as const),
+      ...NBA_PLAYER_DATASET.historicalTemplates.map((player) => [player.sourceName, undefined] as const),
+      ...REAL_2026_DRAFT.map((player) => [player.fullName, player.playerId] as const),
+      ...Array.from({ length: 48 * 48 }, (_, ordinal) => [fictionalNameAt("localization-audit", ordinal), undefined] as const),
+    ];
+    for (const [name, id] of names) {
+      expect(playerNameZh(name, id), name).toMatch(/\p{Script=Han}/u);
     }
   });
 });

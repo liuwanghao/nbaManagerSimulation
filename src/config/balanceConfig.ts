@@ -1,5 +1,5 @@
 export const BALANCE_CONFIG = {
-  version: "balance.v4-nba2k27-profile-map",
+  version: "balance.v6-free-agent-pricing",
   freeAgency: {
     offerValidDays: 3,
     decisionWindowDays: 3,
@@ -8,8 +8,21 @@ export const BALANCE_CONFIG = {
     minimumAcceptThreshold: 60,
     preferenceNoiseMin: -3,
     preferenceNoiseMax: 3,
-    marketSalary: { valueFloor: 48, dollarsPerValuePoint: 850_000 },
-    roleValueThresholds: { starter: 82, sixthMan: 74, rotation: 65 },
+    marketSalary: {
+      ratingAnchors: [
+        { overall: 65, annualSalary: 1_272_870 },
+        { overall: 70, annualSalary: 2_500_000 },
+        { overall: 75, annualSalary: 8_000_000 },
+        { overall: 80, annualSalary: 20_000_000 },
+        { overall: 85, annualSalary: 38_000_000 },
+        { overall: 90, annualSalary: 50_000_000 },
+      ],
+      youngMaximumAge: 25,
+      youngMultiplier: 1.05,
+      veteranMinimumAge: 32,
+      veteranMultiplier: 0.95,
+    },
+    roleOverallThresholds: { starter: 82, sixthMan: 74, rotation: 65 },
     utilityScales: { salary: 70, contractYears: 80, roleBase: 70, roleStep: 15 },
     ageCareerStage: {
       youngMaximumAge: 25,
@@ -35,6 +48,30 @@ export const BALANCE_CONFIG = {
       existingTeamRelationship: 5,
       ageCareerStageFit: 4,
     },
+    marketPreferenceModel: {
+      baseline: 50,
+      youngMaximumAge: 25,
+      veteranMinimumAge: 31,
+      youngBonus: 3,
+      veteranPenalty: -3,
+      personalityBias: {
+        COMPETITIVE: 0,
+        MONEY_FOCUSED: -8,
+        LOYAL: -12,
+        ROLE_FOCUSED: -8,
+        MARKET_FOCUSED: 28,
+        BALANCED: 0,
+      },
+    },
+    marketFit: { baseline: 50, scale: 50 },
+    personalityWeightShifts: {
+      COMPETITIVE: { salaryValue: -5, guaranteedMoney: -3, teamRecord: 2, contenderStatus: 8, marketPreference: -2 },
+      MONEY_FOCUSED: { salaryValue: 7, guaranteedMoney: 5, teamRecord: -3, contenderStatus: -4, marketPreference: -2, existingTeamRelationship: -3 },
+      LOYAL: { salaryValue: -4, guaranteedMoney: -2, marketPreference: -2, existingTeamRelationship: 8 },
+      ROLE_FOCUSED: { salaryValue: -4, guaranteedMoney: -2, promisedRole: 8, marketPreference: -2 },
+      MARKET_FOCUSED: { salaryValue: -5, guaranteedMoney: -2, marketPreference: 10, existingTeamRelationship: -3 },
+      BALANCED: {},
+    },
   },
   ai: {
     directionLockDays: 60,
@@ -59,7 +96,7 @@ export const BALANCE_CONFIG = {
       REBUILD: { currentAbility: 1, youth: 0.7, starterBonus: 0 },
     },
     draftPreference: { readinessWeight: 0.72, potentialWeight: 0.28, futureFirstPotentialWeight: 0.45, rosterNeedWeight: 1.6, agePenalty: 0.15 },
-    freeAgency: { minimumTargetValue: 0, starterOfferValue: 76, rfaMatchValue: 70, salaryOfferMinMultiplier: 0.9, salaryOfferMaxMultiplier: 1.1, longOfferMaximumAge: 27, longOfferYears: 3, veteranOfferYears: 2, guaranteedPercent: 0.85 },
+    freeAgency: { minimumTargetValue: 0, rfaMatchValue: 70, salaryOfferMinMultiplier: 0.9, salaryOfferMaxMultiplier: 1.1, longOfferMaximumAge: 27, longOfferYears: 3, veteranOfferYears: 2, guaranteedPercent: 0.85 },
   },
   trade: {
     valueWeights: { ability: 1, futureFirstAge: 1.2, winNowAge: 0.65, balancedAge: 0.8, contract: 1, role: 1 },
@@ -279,6 +316,23 @@ export const BALANCE_CONFIG = {
     protectedPlayersPerExistingTeam: 8,
     rosterPlayersPerExpansionTeam: 14,
     optionExerciseProbability: 0.7,
+    protectionValue: {
+      starOverallThreshold: 82,
+      starAssetBonusPerOverall: 1.25,
+      expiringHighSalaryCapShare: 0.18,
+      expiringHighSalaryBonus: 4,
+      twoYearHighSalaryBonus: 1,
+      durabilityRiskThreshold: 75,
+      durabilityRiskPenaltyPerPoint: 0.15,
+      currentInjuryPenaltyPerGame: 0.08,
+      currentInjuryPenaltyMaximum: 4,
+      contenderAbilityThreshold: 80,
+      contenderAbilityBonusPerOverall: 0.7,
+      competeAbilityBonusPerOverall: 0.5,
+      retoolAbilityBonusPerOverall: 0.2,
+      rebuildVeteranAge: 32,
+      rebuildVeteranHighSalaryPenalty: 6,
+    },
     package: {
       A: { firstExpansionPick: 1, rookieDraftPick: 6 },
       B: { firstExpansionPick: 2, rookieDraftPick: 5 },
@@ -313,6 +367,13 @@ export const BALANCE_CONFIG = {
     gradeThresholds: [{ minimum: 90, grade: "S" }, { minimum: 84, grade: "A+" }, { minimum: 76, grade: "A" }, { minimum: 69, grade: "B+" }, { minimum: 61, grade: "B" }, { minimum: 53, grade: "C+" }, { minimum: 45, grade: "C" }, { minimum: 0, grade: "D" }],
   },
   teamCore: {
+    // City exposure tuning, not population or revenue estimates.
+    marketRatings: {
+      SEA: 74, POR: 70, SAC: 68, GSW: 96, LVG: 82, PHX: 78, LAL: 100, LAC: 100,
+      UTA: 61, DEN: 73, OKC: 58, DAL: 83, HOU: 83, SAS: 66, MEM: 60, NOP: 59,
+      BOS: 87, BKN: 100, NYK: 100, TOR: 83, PHI: 84, WAS: 80, CLE: 66, DET: 68,
+      MIN: 72, MIL: 67, CHI: 93, IND: 66, ATL: 81, CHA: 65, ORL: 72, MIA: 88,
+    },
     gameFanSupport: { win: 0.25, loss: -0.15, winningStreakThreshold: 3, losingStreakThreshold: 5, streakBonus: 0.1, streakPenalty: -0.1 },
     morale: { win: 0.35, loss: -0.45, nonParticipantMultiplier: 0.4, default: 50 },
     fanMilestones: { playIn: 1, playoffs: 3, seriesWin: 2, conferenceFinals: 3, finals: 4, champion: 8 },

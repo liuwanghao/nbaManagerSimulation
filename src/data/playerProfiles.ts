@@ -1,5 +1,6 @@
 import { stableHash } from "../game/random/hash";
 import { createRng } from "../game/random/xoshiro";
+import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import type { Player, PlayerPersonality, Position } from "../game/state/types";
 
 const FIRST_NAMES = [
@@ -62,7 +63,7 @@ export function fictionalNameAt(careerSeed: string, ordinal: number): string {
 
 export type FictionalPlayerProfile = Pick<Player,
   "name" | "heightCm" | "weightKg" | "secondaryPosition" | "birthDate" | "ageAtSnapshot"
-  | "ageSource" | "serviceYears" | "injuryRating" | "personality" | "marketPreference" | "profileSource"
+  | "ageSource" | "serviceYears" | "serviceYearsSource" | "injuryRating" | "personality" | "marketPreference" | "profileSource"
 >;
 
 export function createFictionalPlayerProfile(
@@ -79,18 +80,23 @@ export function createFictionalPlayerProfile(
   const secondaryOptions = SECONDARY_POSITIONS[position];
   const month = birthRng.int(1, 6);
   const day = birthRng.int(1, 28);
+  const secondaryPosition = secondaryOptions[identityRng.int(0, secondaryOptions.length - 1)];
+  const serviceYears = identityRng.int(0, Math.max(0, Math.min(12, age - 19)));
+  const injuryRating = identityRng.int(25, 99);
+  const personality = PERSONALITIES[identityRng.int(0, PERSONALITIES.length - 1)];
   return {
     name: fictionalNameAt(careerSeed, ordinal),
     heightCm: bodyRng.int(range.height[0], range.height[1]),
     weightKg: bodyRng.int(range.weight[0], range.weight[1]),
-    secondaryPosition: secondaryOptions[identityRng.int(0, secondaryOptions.length - 1)],
+    secondaryPosition,
     birthDate: `${2026 - age}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
     ageAtSnapshot: age,
     ageSource: "GENERATED_BIRTH_DATE",
-    serviceYears: identityRng.int(0, Math.max(0, Math.min(12, age - 19))),
-    injuryRating: identityRng.int(25, 99),
-    personality: PERSONALITIES[identityRng.int(0, PERSONALITIES.length - 1)],
-    marketPreference: identityRng.int(0, 100),
+    serviceYears,
+    serviceYearsSource: "GENERATED",
+    injuryRating,
+    personality,
+    marketPreference: calculateMarketPreference(personality, age),
     profileSource: "FICTIONAL_FIXTURE",
   };
 }

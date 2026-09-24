@@ -1,0 +1,17 @@
+{
+  "asOf": "2026-09-24",
+  "players": [
+    {
+      "nbaPlayerId": "201566",
+      "fullName": "Russell Westbrook",
+      "retiredAt": "2026-08-12",
+      "sourceId": "NBA_NEWS_2026_08_12_WESTBROOK_RETIREMENT"
+    },
+    {
+      "nbaPlayerId": "201587",
+      "fullName": "Nicolas Batum",
+      "retiredAt": "2026-09-21",
+      "sourceId": "NBA_NEWS_2026_09_21_BATUM_RETIREMENT"
+    }
+  ]
+}

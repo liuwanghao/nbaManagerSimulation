@@ -9,19 +9,40 @@ import syncReport from "./player-data-sync-report.json";
 
 describe("NBA player dataset", () => {
   it("loads a versioned offline current-player snapshot", () => {
-    expect(NBA_PLAYER_DATASET.schemaVersion).toBe(1);
-    expect(NBA_PLAYER_DATASET.datasetVersion).toContain("nba-api-");
+    expect(NBA_PLAYER_DATASET.schemaVersion).toBe(2);
+    expect(NBA_PLAYER_DATASET.datasetVersion).toContain("nba-official-2026-27-2026-09-23");
     expect(NBA_PLAYER_DATASET.ratingModelVersion).toBe("nba2k27-api-full-profile-map-v1");
+    expect(NBA_PLAYER_DATASET.positionModelVersion).toBe("nba2k27-official-roster-positions-v1");
     expect(NBA_PLAYER_DATASET.source.nba2k?.snapshotVersion).toMatch(/^nba2kapi-2k27-/u);
     expect(NBA_PLAYER_DATASET.source.nba2k?.provider).toBe("NBA2K API");
     expect(NBA_PLAYER_DATASET.source.nba2k?.official).toBe(false);
     expect(NBA_PLAYER_DATASET.source.nba2k?.mappingVersion).toBe(ratingMap.version);
-    expect(NBA_PLAYER_DATASET.players.length).toBeGreaterThanOrEqual(270);
+    expect(NBA_PLAYER_DATASET.players).toHaveLength(580);
     expect(new Set(NBA_PLAYER_DATASET.players.map((player) => player.canonicalPlayerId)).size).toBe(NBA_PLAYER_DATASET.players.length);
     for (const player of NBA_PLAYER_DATASET.players) {
       expect(calculateAttributeOverall(player.projection.attributes, player.position)).toBeGreaterThanOrEqual(25);
       expect(player.projection.qualityFlags).toBeInstanceOf(Array);
+      expect(["NBA2K", "MANUAL_OVERRIDE", "INFERRED"]).toContain(player.positionSource);
+      expect(player.secondaryPosition).not.toBe(player.position);
     }
+  });
+
+  it("stores NBA 2K primary and secondary positions in the dataset", () => {
+    const turner = NBA_PLAYER_DATASET.players.find((player) => player.nbaPlayerId === "1626167");
+    const whitmore = NBA_PLAYER_DATASET.players.find((player) => player.nbaPlayerId === "1641715");
+    expect(turner).toMatchObject({
+      fullName: "Myles Turner",
+      position: "C",
+      secondaryPosition: null,
+      positionSource: "NBA2K",
+    });
+    expect(whitmore).toMatchObject({
+      fullName: "Cam Whitmore",
+      position: "SF",
+      secondaryPosition: "PF",
+      positionSource: "NBA2K",
+    });
+    expect(NBA_PLAYER_DATASET.players.filter((player) => player.projection.qualityFlags.includes("NBA_2K27_FULL_PROFILE"))).toHaveLength(545);
   });
 
   it("keeps recognizable stars in the elite tier without inflating the league", () => {
@@ -69,28 +90,40 @@ describe("NBA player dataset", () => {
     const byName = new Map(NBA_PLAYER_DATASET.players.map((player) => [player.fullName, player]));
     expect(byName.get("Jalen Brunson")?.projection).toMatchObject({
       overall: 96,
-      attributes: { shooting: 93, playmaking: 90, athleticism: 83 },
+      attributes: { shooting: 93, playmaking: 91, athleticism: 83 },
     });
     expect(byName.get("Tyrese Haliburton")?.projection.overall).toBe(90);
     expect(byName.get("Kyrie Irving")?.projection.overall).toBe(87);
     expect(byName.get("Damian Lillard")?.projection.overall).toBe(86);
 
-    expect(syncReport.snapshotVersion).toBe(fullRatings.snapshotVersion);
-    expect(syncReport.currentCoveragePercent).toBeGreaterThanOrEqual(90);
-    expect(syncReport.officialTop100Matched).toBe(100);
-    expect(syncReport.officialTop100MeanAbsoluteError).toBe(0);
-    expect(syncReport.teamAuthority).toBe("nba-current-roster.json");
+    expect(syncReport.snapshotDate).toBe("2026-09-23");
+    expect(syncReport.officialRosterPlayers).toBe(577);
+    expect(syncReport.matched2kPlayers).toBe(542);
+    expect(syncReport.unavailable2kPlayers).toBe(35);
+    expect(syncReport.oldPlayerProfilesDiscarded).toBe(true);
+    expect(syncReport.unavailablePlayers).toHaveLength(35);
     const portraits = NBA_PLAYER_DATASET.players.filter((player) => player.portraitPath);
-    expect(portraits.length).toBeGreaterThanOrEqual(620);
+    expect(portraits.length).toBe(580);
     expect(portraits.every((player) => player.portraitPath?.startsWith("./player-portraits/"))).toBe(true);
     expect(portraits.every((player) => !player.portraitPath?.startsWith("http"))).toBe(true);
+    expect(NBA_PLAYER_DATASET.players.every((player) => player.age >= 18 && player.age <= 50)).toBe(true);
+    expect(NBA_PLAYER_DATASET.players.every((player) => !player.projection.qualityFlags.includes("NBA_2025_26_AGE"))).toBe(true);
+    expect(new Set(NBA_PLAYER_DATASET.players.map((player) => player.age)).size).toBeGreaterThan(15);
+    expect(NBA_PLAYER_DATASET.players.filter((player) => player.projection.qualityFlags.includes("NBA_2K27_PROFILE_UNAVAILABLE")))
+      .toHaveLength(35);
+    expect(NBA_PLAYER_DATASET.players.filter((player) => player.projection.qualityFlags.includes("NBA_2K27_PROFILE_UNAVAILABLE"))
+      .every((player) => player.projection.overall > 25)).toBe(true);
   });
 
   it("rejects duplicate canonical IDs and unknown schemas", () => {
-    expect(() => validateNbaPlayerDataset({ ...NBA_PLAYER_DATASET, schemaVersion: 2 })).toThrow(/Unsupported/u);
+    expect(() => validateNbaPlayerDataset({ ...NBA_PLAYER_DATASET, schemaVersion: 1 })).toThrow(/Unsupported/u);
     expect(() => validateNbaPlayerDataset({
       ...NBA_PLAYER_DATASET,
       players: [NBA_PLAYER_DATASET.players[0], NBA_PLAYER_DATASET.players[0]],
     })).toThrow(/Duplicate NBA player/u);
+    expect(() => validateNbaPlayerDataset({
+      ...NBA_PLAYER_DATASET,
+      players: [{ ...NBA_PLAYER_DATASET.players[0], secondaryPosition: NBA_PLAYER_DATASET.players[0].position }],
+    })).toThrow(/Duplicate positions/u);
   });
 });

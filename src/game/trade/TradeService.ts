@@ -3,13 +3,34 @@ import { publicDraftPickValue, publicPlayerValue } from "../ai/AIValueService";
 import { assertPhaseAllowed, getRosterLimit } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import type { GameState, TradeOffer } from "../state/types";
+import { calculateTeamFitForPlayers } from "../team/TeamFitService";
 import { validateSalaryMatch } from "./SalaryMatchValidator";
 
 export type TradeCommand =
   | { commandId: string; type: "GENERATE_TRADE_OFFERS"; payload: { playerId: string; refresh: boolean } }
   | { commandId: string; type: "ACCEPT_TRADE_OFFER"; payload: { offerId: string } };
 
-const phases = ["OFFSEASON_PRE_DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON", "REGULAR_PRE_DEADLINE"] as const;
+export const TRADE_PHASES = ["OFFSEASON_PRE_DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON", "REGULAR_PRE_DEADLINE"] as const;
+export type TradePhase = typeof TRADE_PHASES[number];
+
+export interface TradeOfferEvaluation {
+  legal: boolean;
+  reason?: string;
+  outgoingSalary: number;
+  incomingSalary: number;
+  salaryDifference: number;
+  userFitBefore: number;
+  userFitAfter: number;
+  userFitDelta: number;
+  counterpartyFitBefore: number;
+  counterpartyFitAfter: number;
+  counterpartyFitDelta: number;
+  gmWillingness: "极高" | "较高" | "一般" | "拒绝";
+}
+
+export function isTradePhaseAllowed(phase: GameState["league"]["currentPhase"]): phase is TradePhase {
+  return (TRADE_PHASES as readonly string[]).includes(phase);
+}
 
 function validatePickRule(state: GameState, movingPickIds: string[], fromTeamId: string): void {
   const moving = new Set(movingPickIds);
@@ -22,7 +43,7 @@ function validatePickRule(state: GameState, movingPickIds: string[], fromTeamId:
 }
 
 export function generateTradeOffers(input: GameState, playerId: string, refresh: boolean): GameState {
-  assertPhaseAllowed(input, "Generate trade offers", phases);
+  assertPhaseAllowed(input, "Generate trade offers", TRADE_PHASES);
   if (!input.teams[input.userTeamId].playerIds.includes(playerId)) throw new Error("Player is not on the user roster");
   if (input.players[playerId].contract.contractType === "EMERGENCY") throw new Error("EMERGENCY_CONTRACT_NOT_TRADEABLE");
   const state = structuredClone(input);
@@ -61,7 +82,7 @@ export function generateTradeOffers(input: GameState, playerId: string, refresh:
 }
 
 export function acceptTradeOffer(input: GameState, offerId: string): GameState {
-  assertPhaseAllowed(input, "Execute trade", phases);
+  assertPhaseAllowed(input, "Execute trade", TRADE_PHASES);
   const offer = input.tradeDesk.offers.find((entry) => entry.offerId === offerId && entry.status === "AVAILABLE");
   if (!offer) throw new Error("Trade offer is no longer available");
   const state = structuredClone(input);
@@ -94,6 +115,59 @@ export function acceptTradeOffer(input: GameState, offerId: string): GameState {
   committed.status = "ACCEPTED";
   for (const entry of state.tradeDesk.offers) if (entry.offerId !== committed.offerId) entry.status = "REJECTED";
   return state;
+}
+
+export function evaluateTradeOffer(state: GameState, offerId: string): TradeOfferEvaluation {
+  const offer = state.tradeDesk.offers.find((entry) => entry.offerId === offerId);
+  const empty: TradeOfferEvaluation = {
+    legal: false, reason: "交易方案不存在", outgoingSalary: 0, incomingSalary: 0, salaryDifference: 0,
+    userFitBefore: 0, userFitAfter: 0, userFitDelta: 0, counterpartyFitBefore: 0, counterpartyFitAfter: 0,
+    counterpartyFitDelta: 0, gmWillingness: "拒绝",
+  };
+  if (!offer) return empty;
+  const outgoing = offer.userOutgoingPlayerIds.map((id) => state.players[id]).filter(Boolean);
+  const incoming = offer.userIncomingPlayerIds.map((id) => state.players[id]).filter(Boolean);
+  const other = state.teams[offer.counterpartyTeamId];
+  const mine = state.teams[state.userTeamId];
+  const outgoingSalary = outgoing.reduce((sum, player) => sum + player.contract.salary, 0);
+  const incomingSalary = incoming.reduce((sum, player) => sum + player.contract.salary, 0);
+  if (!mine || !other) return { ...empty, outgoingSalary, incomingSalary, salaryDifference: Math.abs(outgoingSalary - incomingSalary), reason: "交易球队不存在" };
+  const userBefore = calculateTeamFitForPlayers(mine.playerIds.map((id) => state.players[id]).filter(Boolean));
+  const otherBefore = calculateTeamFitForPlayers(other.playerIds.map((id) => state.players[id]).filter(Boolean));
+  const userAfter = calculateTeamFitForPlayers([
+    ...mine.playerIds.filter((id) => !offer.userOutgoingPlayerIds.includes(id)).map((id) => state.players[id]).filter(Boolean),
+    ...incoming,
+  ]);
+  const otherAfter = calculateTeamFitForPlayers([
+    ...other.playerIds.filter((id) => !offer.userIncomingPlayerIds.includes(id)).map((id) => state.players[id]).filter(Boolean),
+    ...outgoing,
+  ]);
+  const result = (legal: boolean, reason?: string): TradeOfferEvaluation => {
+    const counterpartyFitDelta = otherAfter.score - otherBefore.score;
+    return {
+      legal, reason, outgoingSalary, incomingSalary, salaryDifference: Math.abs(outgoingSalary - incomingSalary),
+      userFitBefore: userBefore.score, userFitAfter: userAfter.score, userFitDelta: userAfter.score - userBefore.score,
+      counterpartyFitBefore: otherBefore.score, counterpartyFitAfter: otherAfter.score, counterpartyFitDelta,
+      gmWillingness: !legal ? "拒绝" : counterpartyFitDelta >= 2 ? "极高" : counterpartyFitDelta >= 0 ? "较高" : "一般",
+    };
+  };
+  if (!isTradePhaseAllowed(state.league.currentPhase)) return result(false, "当前阶段不开放交易");
+  if (offer.status !== "AVAILABLE") return result(false, "交易方案已失效");
+  try {
+    for (const player of [...outgoing, ...incoming]) if (player.contract.contractType === "EMERGENCY") throw new Error("临时合同不可交易");
+    if (!outgoing.every((player) => mine.playerIds.includes(player.id))) throw new Error("我方资产已发生变化");
+    if (!incoming.every((player) => other.playerIds.includes(player.id))) throw new Error("对方资产已发生变化");
+    validateSalaryMatch(state, mine.id, offer.userOutgoingPlayerIds, offer.userIncomingPlayerIds);
+    validateSalaryMatch(state, other.id, offer.userIncomingPlayerIds, offer.userOutgoingPlayerIds);
+    validatePickRule(state, offer.userOutgoingPickIds, mine.id);
+    validatePickRule(state, offer.userIncomingPickIds, other.id);
+    const mineSize = mine.playerIds.length - offer.userOutgoingPlayerIds.length + offer.userIncomingPlayerIds.length;
+    const otherSize = other.playerIds.length - offer.userIncomingPlayerIds.length + offer.userOutgoingPlayerIds.length;
+    if (mineSize > getRosterLimit(state.league.currentPhase) || otherSize > getRosterLimit(state.league.currentPhase)) throw new Error("名单人数超过阶段上限");
+  } catch (error) {
+    return result(false, error instanceof Error ? error.message : "交易校验失败");
+  }
+  return result(true);
 }
 
 export function executeTradeCommand(state: GameState, command: TradeCommand): GameState {

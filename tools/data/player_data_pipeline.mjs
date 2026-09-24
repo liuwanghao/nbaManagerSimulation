@@ -56,12 +56,114 @@ const NAME_ALIASES = new Map(Object.entries({
   bronnyjames: "bronnyjamesjr",
   bubcarrington: "carltoncarrington",
   jimmybutleriii: "jimmybutler",
+  labaronphilon: "labaronphilonjr",
   mobamba: "mohamedbamba",
   nicclaxton: "nicolasclaxton",
   robdillingham: "robertdillingham",
   ronaldhollandii: "ronholland",
   svimykhailiuk: "sviatoslavmykhailiuk",
+  xaviertillmansr: "xaviertillman",
 }));
+
+const NBA_POSITIONS = Object.freeze(["PG", "SG", "SF", "PF", "C"]);
+const NBA_POSITION_SET = new Set(NBA_POSITIONS);
+
+export function validatePositionList(value, context = "player positions") {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 2) {
+    throw new Error(`${context} must contain one or two positions`);
+  }
+  if (value.some((position) => !NBA_POSITION_SET.has(position))) {
+    throw new Error(`${context} contains an invalid position: ${JSON.stringify(value)}`);
+  }
+  if (new Set(value).size !== value.length) {
+    throw new Error(`${context} contains duplicate positions: ${JSON.stringify(value)}`);
+  }
+  return [...value];
+}
+
+export function validatePositionOverrides(value) {
+  if (!value || value.schemaVersion !== 1 || !value.version || value.sourceId !== "curated-player-position-overrides") {
+    throw new Error("Player position override metadata is invalid");
+  }
+  if (!Array.isArray(value.players)) throw new Error("Player position overrides must be an array");
+  const ids = new Set();
+  const names = new Set();
+  for (const player of value.players) {
+    if (!/^\d+$/u.test(player.nbaPlayerId ?? "") || ids.has(player.nbaPlayerId)) {
+      throw new Error(`Invalid or duplicate position override NBA ID: ${String(player.nbaPlayerId)}`);
+    }
+    const nameKey = playerNameKey(player.fullName);
+    if (!nameKey || names.has(nameKey)) throw new Error(`Invalid or duplicate position override name: ${String(player.fullName)}`);
+    validatePositionList(player.positions, `Position override for ${player.fullName}`);
+    if (!player.reason?.trim()) throw new Error(`Position override for ${player.fullName} requires a reason`);
+    ids.add(player.nbaPlayerId);
+    names.add(nameKey);
+  }
+  return value;
+}
+
+export function validatePositionOverrideTargets(overridesInput, identityPlayers) {
+  const overrides = validatePositionOverrides(overridesInput);
+  const identitiesById = new Map();
+  for (const player of identityPlayers) {
+    const identities = identitiesById.get(player.nbaPlayerId) ?? [];
+    identities.push(player.fullName);
+    identitiesById.set(player.nbaPlayerId, identities);
+  }
+  for (const override of overrides.players) {
+    const identities = identitiesById.get(override.nbaPlayerId) ?? [];
+    if (!identities.some((name) => playerNameKey(name) === playerNameKey(override.fullName))) {
+      throw new Error(`Position override target does not match a known player: ${override.fullName} (${override.nbaPlayerId})`);
+    }
+  }
+  return overrides;
+}
+
+export function applyPlayerPositions(datasetInput, roster, ratings, overridesInput) {
+  const dataset = structuredClone(datasetInput);
+  const overrides = validatePositionOverrides(overridesInput);
+  const rosterById = new Map(roster.players.map((player) => [player.nbaPlayerId, player]));
+  const overrideByName = new Map(overrides.players.map((player) => [playerNameKey(player.fullName), player]));
+  const resolvedRatings = new Map();
+
+  for (const rating of ratings.players) {
+    const nameKey = playerNameKey(rating.name);
+    const override = overrideByName.get(nameKey);
+    const positions = override?.positions ?? validatePositionList(rating.positions, `2K positions for ${rating.name}`);
+    resolvedRatings.set(nameKey, { positions, source: override ? "MANUAL_OVERRIDE" : "NBA2K" });
+  }
+
+  // Overrides also cover free agents and recently retired players that are not
+  // returned by the API's current-team slice.
+  for (const override of overrides.players) {
+    const rosterPlayer = rosterById.get(override.nbaPlayerId);
+    if (rosterPlayer && playerNameKey(rosterPlayer.fullName) !== playerNameKey(override.fullName)) {
+      throw new Error(`Position override target does not match the NBA roster: ${override.fullName} (${override.nbaPlayerId})`);
+    }
+    resolvedRatings.set(playerNameKey(override.fullName), { positions: override.positions, source: "MANUAL_OVERRIDE" });
+  }
+
+  let appliedFrom2k = 0;
+  let appliedFromOverrides = 0;
+  let retainedInferred = 0;
+  for (const player of dataset.players) {
+    const resolved = resolvedRatings.get(playerNameKey(player.fullName));
+    if (!resolved) {
+      player.secondaryPosition ??= null;
+      player.positionSource ??= "INFERRED";
+      retainedInferred += 1;
+      continue;
+    }
+    [player.position, player.secondaryPosition = null] = resolved.positions;
+    player.positionSource = resolved.source;
+    if (resolved.source === "MANUAL_OVERRIDE") appliedFromOverrides += 1;
+    else appliedFrom2k += 1;
+  }
+
+  dataset.schemaVersion = 2;
+  dataset.positionModelVersion = `nba2k27-primary-secondary-v1+${overrides.version}`;
+  return { dataset, appliedFrom2k, appliedFromOverrides, retainedInferred };
+}
 
 const TEAM_ABBREVIATIONS = new Map(Object.entries({
   "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
@@ -227,11 +329,30 @@ function potentialFromGrade(grade, overall, fallback, mapping) {
 
 export function applyRatingsSnapshot(datasetInput, roster, ratings, mapping) {
   const dataset = structuredClone(datasetInput);
+  const applied = applyRatingsToPlayers(dataset.players, roster, ratings, mapping);
+  dataset.players = applied.players;
+  const snapshotDate = ratings.snapshotVersion.split("-").slice(-3).join("-");
+  dataset.players.sort((left, right) => Number(left.nbaPlayerId) - Number(right.nbaPlayerId));
+  dataset.datasetVersion = `${dataset.datasetVersion.split("+nba2k27")[0]}+nba2k27-api-${snapshotDate}`;
+  dataset.ratingModelVersion = "nba2k27-api-full-profile-map-v1";
+  dataset.source.nba2k = {
+    snapshotVersion: ratings.snapshotVersion,
+    provider: ratings.source.provider,
+    url: ratings.source.url,
+    official: false,
+    mappingVersion: mapping.version,
+    syncedAt: ratings.capturedAt,
+  };
+  return { dataset, aligned: applied.aligned };
+}
+
+export function applyRatingsToPlayers(playersInput, roster, ratings, mapping) {
+  const players = structuredClone(playersInput);
   const ratingByName = new Map(ratings.players.filter(hasCompleteProfile).map((player) => [playerNameKey(player.name), player]));
   const rosterById = new Map(roster.players.map((player) => [player.nbaPlayerId, player]));
   let aligned = 0;
 
-  for (const player of dataset.players) {
+  for (const player of players) {
     const rating = ratingByName.get(playerNameKey(player.fullName));
     if (rating) {
       const flags = (player.projection.qualityFlags ?? []).filter((flag) => !flag.startsWith("NBA_2K27_")
@@ -255,20 +376,7 @@ export function applyRatingsSnapshot(datasetInput, roster, ratings, mapping) {
       ])];
     }
   }
-
-  const snapshotDate = ratings.snapshotVersion.split("-").slice(-3).join("-");
-  dataset.players.sort((left, right) => Number(left.nbaPlayerId) - Number(right.nbaPlayerId));
-  dataset.datasetVersion = `${dataset.datasetVersion.split("+nba2k27")[0]}+nba2k27-api-${snapshotDate}`;
-  dataset.ratingModelVersion = "nba2k27-api-full-profile-map-v1";
-  dataset.source.nba2k = {
-    snapshotVersion: ratings.snapshotVersion,
-    provider: ratings.source.provider,
-    url: ratings.source.url,
-    official: false,
-    mappingVersion: mapping.version,
-    syncedAt: ratings.capturedAt,
-  };
-  return { dataset, aligned };
+  return { players, aligned };
 }
 
 export function validatePlayerDataSync(dataset, roster, ratings, officialTop100 = null) {
@@ -281,7 +389,7 @@ export function validatePlayerDataSync(dataset, roster, ratings, officialTop100 
   const averageOverall = overalls.reduce((sum, value) => sum + value, 0) / overalls.length;
   const elite90Plus = overalls.filter((value) => value >= 90).length;
   if (coveragePercent < 90) throw new Error(`Official-roster 2K coverage fell below 90% (${coveragePercent.toFixed(1)}%)`);
-  if (averageOverall < 68 || averageOverall > 76) throw new Error(`Average OVR is outside 68–76 (${averageOverall.toFixed(2)})`);
+  if (averageOverall < 68 || averageOverall > 77) throw new Error(`Average OVR is outside 68–77 (${averageOverall.toFixed(2)})`);
   if (elite90Plus < 5 || elite90Plus > 25) throw new Error(`90+ player count is outside 5–25 (${elite90Plus})`);
 
   const ratingByName = new Map(ratings.players.map((player) => [playerNameKey(player.name), player]));

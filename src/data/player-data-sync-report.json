@@ -1,1 +1,192 @@
-{"schemaVersion":1,"snapshotVersion":"nba2kapi-2k27-2026-09-16","snapshotPlayers":650,"datasetPlayers":650,"officialRosterPlayers":597,"currentPlayersWithDatasetRows":561,"currentPlayersAligned":558,"currentCoveragePercent":99.5,"averageOverall":75.07,"elite90Plus":21,"officialTop100Matched":100,"officialTop100MeanAbsoluteError":0,"apiTeamDisagreementsIgnored":38,"teamAuthority":"nba-current-roster.json","fingerprint":"a5b13875d3df1aa280c8a779ed984f4a90406b381b186794de92d84153a41404","syncedAt":"2026-09-18T03:33:28.573Z","dryRun":false,"mode":"official-portraits-only","alignedDatasetPlayers":0,"portraits":null,"officialPortraits":{"source":"NBA official CDN","candidates":650,"downloaded":650,"reused":0,"unavailable":0,"failed":0,"failureReasons":[]}}
+{
+  "schemaVersion": 1,
+  "snapshotDate": "2026-09-23",
+  "rosterSource": "NBA.com official players directory",
+  "ratingSource": "NBA2K API 2K27 current profiles",
+  "officialRosterPlayers": 577,
+  "matched2kPlayers": 542,
+  "unavailable2kPlayers": 35,
+  "unavailablePlayers": [
+    {
+      "nbaPlayerId": "1642378",
+      "fullName": "Mark Armstrong",
+      "teamAbbreviation": "POR"
+    },
+    {
+      "nbaPlayerId": "1643709",
+      "fullName": "Miles Barnstable",
+      "teamAbbreviation": "SAS"
+    },
+    {
+      "nbaPlayerId": "1642927",
+      "fullName": "Nate Bittle",
+      "teamAbbreviation": "TOR"
+    },
+    {
+      "nbaPlayerId": "1643394",
+      "fullName": "Keylan Boone",
+      "teamAbbreviation": "POR"
+    },
+    {
+      "nbaPlayerId": "1643592",
+      "fullName": "Nick Boyd",
+      "teamAbbreviation": "GSW"
+    },
+    {
+      "nbaPlayerId": "1631219",
+      "fullName": "John Butler Jr.",
+      "teamAbbreviation": "MIL"
+    },
+    {
+      "nbaPlayerId": "1643655",
+      "fullName": "John Camden",
+      "teamAbbreviation": "PHX"
+    },
+    {
+      "nbaPlayerId": "1643710",
+      "fullName": "Corey Camper",
+      "teamAbbreviation": "PHX"
+    },
+    {
+      "nbaPlayerId": "1643620",
+      "fullName": "Tucker DeVries",
+      "teamAbbreviation": "BOS"
+    },
+    {
+      "nbaPlayerId": "1629605",
+      "fullName": "Tacko Fall",
+      "teamAbbreviation": "PHI"
+    },
+    {
+      "nbaPlayerId": "1643727",
+      "fullName": "J'Vonne Hadley",
+      "teamAbbreviation": "MIA"
+    },
+    {
+      "nbaPlayerId": "1643778",
+      "fullName": "Samuel Hoiberg",
+      "teamAbbreviation": "PHX"
+    },
+    {
+      "nbaPlayerId": "1643633",
+      "fullName": "Graham Ike",
+      "teamAbbreviation": "GSW"
+    },
+    {
+      "nbaPlayerId": "201949",
+      "fullName": "James Johnson",
+      "teamAbbreviation": "IND"
+    },
+    {
+      "nbaPlayerId": "1641800",
+      "fullName": "Meechie Johnson",
+      "teamAbbreviation": "LAL"
+    },
+    {
+      "nbaPlayerId": "1643093",
+      "fullName": "Samson Johnson",
+      "teamAbbreviation": "POR"
+    },
+    {
+      "nbaPlayerId": "1643627",
+      "fullName": "Keba Keita",
+      "teamAbbreviation": "IND"
+    },
+    {
+      "nbaPlayerId": "1643744",
+      "fullName": "Houston Mallette",
+      "teamAbbreviation": "CHI"
+    },
+    {
+      "nbaPlayerId": "1643792",
+      "fullName": "Rienk Mast",
+      "teamAbbreviation": "IND"
+    },
+    {
+      "nbaPlayerId": "1643724",
+      "fullName": "Isaac McKneely",
+      "teamAbbreviation": "ATL"
+    },
+    {
+      "nbaPlayerId": "1643575",
+      "fullName": "Duke Miles",
+      "teamAbbreviation": "PHI"
+    },
+    {
+      "nbaPlayerId": "1643634",
+      "fullName": "Boopie Miller",
+      "teamAbbreviation": "DEN"
+    },
+    {
+      "nbaPlayerId": "1643564",
+      "fullName": "KeShawn Murphy",
+      "teamAbbreviation": "WAS"
+    },
+    {
+      "nbaPlayerId": "1642392",
+      "fullName": "Jameer Nelson Jr.",
+      "teamAbbreviation": "PHI"
+    },
+    {
+      "nbaPlayerId": "1643070",
+      "fullName": "Jayden Nunn",
+      "teamAbbreviation": "SAS"
+    },
+    {
+      "nbaPlayerId": "203901",
+      "fullName": "Elfrid Payton",
+      "teamAbbreviation": "SAC"
+    },
+    {
+      "nbaPlayerId": "1643761",
+      "fullName": "Nick Pringle",
+      "teamAbbreviation": "BKN"
+    },
+    {
+      "nbaPlayerId": "1643740",
+      "fullName": "Jordan Riley",
+      "teamAbbreviation": "DET"
+    },
+    {
+      "nbaPlayerId": "1643732",
+      "fullName": "Chase Ross",
+      "teamAbbreviation": "LAL"
+    },
+    {
+      "nbaPlayerId": "1641868",
+      "fullName": "Jake Stephens",
+      "teamAbbreviation": "MIL"
+    },
+    {
+      "nbaPlayerId": "1643614",
+      "fullName": "Peter Suder",
+      "teamAbbreviation": "CHI"
+    },
+    {
+      "nbaPlayerId": "1643148",
+      "fullName": "Saint Thomas",
+      "teamAbbreviation": "PHI"
+    },
+    {
+      "nbaPlayerId": "1643754",
+      "fullName": "Cristoph Tilly",
+      "teamAbbreviation": "OKC"
+    },
+    {
+      "nbaPlayerId": "1642893",
+      "fullName": "Alex Toohey",
+      "teamAbbreviation": "GSW"
+    },
+    {
+      "nbaPlayerId": "1642870",
+      "fullName": "Milos Uzan",
+      "teamAbbreviation": "BOS"
+    }
+  ],
+  "oldPlayerProfilesDiscarded": true,
+  "unavailablePlayerFallback": "Missing 2K profiles use deterministic, position- and NBA-stat-based engine estimates; all estimates are explicitly flagged.",
+  "unprovidedFields": "Player ages use official or independently verified birthdates, or the 2026-27 Hupu salary workbook. NBA 2K does not provide potential, so age-adjusted engine potential is estimated.",
+  "freeAgentPlayers": 56,
+  "freeAgentMatched2kPlayers": 51,
+  "ageCoverage": 580
+}

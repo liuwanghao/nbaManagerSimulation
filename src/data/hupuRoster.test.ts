@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import { TEAM_DEFINITIONS } from "./league";
 import { createExpansionCareerFromBundledDataset, createExpansionCareerFromHupu, salaryFromHupu, type HupuTeamSnapshot } from "./hupuRoster";
 import { NBA_PLAYER_DATASET } from "./nbaPlayerDataset";
+import { NBA_2026_27_SALARY_CONTRACTS, salaryContractFor } from "./nbaSalaryContracts";
+import { NBA_SUPPLEMENTAL_PLAYER_PROJECTIONS } from "./nbaSupplementalPlayers";
+import { NBA_2026_FREE_AGENTS } from "./nbaFreeAgents";
+import { NBA_FREE_AGENT_PROJECTIONS } from "./nbaFreeAgentProjections";
 import { CURRENT_NBA_ROSTER, CURRENT_NBA_ROSTER_BY_ID } from "./currentNbaRoster";
 import { REAL_2026_CLASS_ROSTER_EXCLUSIONS } from "./real2026Draft";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { EXPANSION_BRAND_PRESETS } from "./expansionBrands";
 import { chooseRightsPackage, createExpansionTeam, resolveOptionPhase } from "../game/expansion/ExpansionService";
+import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 
 function mockSnapshots(): HupuTeamSnapshot[] {
   return TEAM_DEFINITIONS.filter((team) => team.sourceTeamId).map((team, teamIndex) => ({
@@ -38,19 +43,47 @@ function mockSnapshots(): HupuTeamSnapshot[] {
 }
 
 describe("Hupu live roster mapping", () => {
+  it("uses verified NBA experience for every real opening player", () => {
+    const state = createExpansionCareerFromBundledDataset("service-years-audit");
+    const players = Object.values(state.players).filter((player) => player.id.startsWith("nba:"));
+    expect(players).toHaveLength(569);
+    expect(players.every((player) => player.serviceYearsSource === "NBA_OFFICIAL_PROFILE"
+      || player.serviceYearsSource === "DOCUMENTED_DEBUT")).toBe(true);
+    expect(state.players["nba:1630166"]).toMatchObject({ serviceYears: 6, serviceYearsSource: "NBA_OFFICIAL_PROFILE" });
+    expect(state.players["nba:1642258"]).toMatchObject({ serviceYears: 2, serviceYearsSource: "NBA_OFFICIAL_PROFILE" });
+    expect(state.players["nba:1631131"]).toMatchObject({ serviceYears: 3, serviceYearsSource: "NBA_OFFICIAL_PROFILE" });
+    expect(state.players["nba:201145"]).toMatchObject({ serviceYears: 19, serviceYearsSource: "NBA_OFFICIAL_PROFILE" });
+  });
+
   it("creates the same complete roster from the dataset embedded in the static bundle", () => {
     const first = createExpansionCareerFromBundledDataset("static-bundle-test");
     const replay = createExpansionCareerFromBundledDataset("static-bundle-test");
     const existingTeams = TEAM_DEFINITIONS.filter((team) => team.sourceTeamId);
     const bundledPlayers = Object.values(first.players);
 
-    expect(existingTeams.every((team) => first.teams[team.id].playerIds.length >= 9 && first.teams[team.id].playerIds.length <= 18)).toBe(true);
+    expect(existingTeams.every((team) => first.teams[team.id].playerIds.length >= 9
+      && first.teams[team.id].playerIds.length <= LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum)).toBe(true);
+    expect(Math.max(...existingTeams.map((team) => first.teams[team.id].playerIds.length)))
+      .toBe(LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum);
     expect(bundledPlayers.length).toBeGreaterThanOrEqual(430);
     expect(bundledPlayers.every((player) => player.profileSource === "CURATED_DATASET")).toBe(true);
-    expect(first.meta.dataVersion).toBe(`bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}`);
+    expect(first.meta.dataVersion).toBe(`bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}+fa.${NBA_2026_FREE_AGENTS.retrievedAt.slice(0, 10)}+salary.2026-27.0923+retired.2026-09-24+service.2026.v2`);
     expect(first.teams.LAL.playerIds).toEqual(replay.teams.LAL.playerIds);
     expect(first.players[first.teams.LAL.playerIds[0]].name).toBe(replay.players[replay.teams.LAL.playerIds[0]].name);
     expect([...REAL_2026_CLASS_ROSTER_EXCLUSIONS].every((playerId) => !first.players[playerId])).toBe(true);
+  });
+
+  it("keeps the official roster and current free-agent pool separate", () => {
+    const state = createExpansionCareerFromBundledDataset("offline-free-agent-test");
+    const players = Object.values(state.players).filter((player) => player.teamId === "FREE_AGENT");
+    expect(NBA_2026_FREE_AGENTS.players).toHaveLength(54);
+    expect(players).toHaveLength(54);
+    expect(state.players["nba:201566"]).toBeUndefined();
+    expect(state.players["nba:201587"]).toBeUndefined();
+    expect(players.every((player) => ["UFA", "RFA"].includes(player.contract.status))).toBe(true);
+    expect(players.every((player) => !CURRENT_NBA_ROSTER_BY_ID.has(player.id.replace(/^nba:/u, "")))).toBe(true);
+    expect(NBA_FREE_AGENT_PROJECTIONS.every((player) => player.projection.qualityFlags.includes("BIRTHDATE_VERIFIED"))).toBe(true);
+    expect(state.players["nba:1642926"]).toMatchObject({ name: "Tamar Bates", teamId: "UTA" });
   });
 
   it("uses official 2026-27 team assignments for returning rated players", () => {
@@ -61,18 +94,47 @@ describe("Hupu live roster mapping", () => {
     expect(CURRENT_NBA_ROSTER_BY_ID.get("203468")?.teamAbbreviation).toBe("ATL");
     expect(klay?.teamId).toBe("MIA");
     expect(cj?.teamId).toBe("ATL");
-    expect(CURRENT_NBA_ROSTER.players).toHaveLength(597);
+    expect(CURRENT_NBA_ROSTER.players).toHaveLength(577);
+    expect(state.players["nba:1629723"]?.teamId).toBe("NYK");
+    expect(state.players["nba:1631207"]?.teamId).toBe("GSW");
+    expect(state.players["nba:1641763"]?.teamId).toBe("HOU");
+    expect(state.players["nba:1629723"]?.contract.salaryByYear).toEqual([6_170_000]);
+    expect(state.players["nba:1631207"]?.contract.salaryByYear).toEqual([2_630_000]);
+    expect(state.players["nba:1641763"]?.contract.salaryByYear).toEqual([2_410_000]);
   });
 
-  it("does not invent contract options that release signed snapshot players", () => {
+  it("excludes retired rows while promoting official current-roster assignments", () => {
+    const state = createExpansionCareerFromBundledDataset("historical-row-eligibility-test");
+    expect(Object.values(state.players).some((player) => player.name === "Chris Paul")).toBe(false);
+    expect(CURRENT_NBA_ROSTER_BY_ID.get("1641715")?.teamAbbreviation).toBe("DEN");
+    expect(state.players["nba:1641715"]).toMatchObject({
+      teamId: "DEN",
+      name: "Cam Whitmore",
+      position: "SF",
+      secondaryPosition: "PF",
+    });
+  });
+
+  it("uses the NBA 2K single position for Myles Turner", () => {
+    const state = createExpansionCareerFromBundledDataset("myles-turner-position-test");
+    expect(state.players["nba:1626167"]).toMatchObject({
+      teamId: "MIL",
+      name: "Myles Turner",
+      position: "C",
+      secondaryPosition: "C",
+    });
+  });
+
+  it("uses the imported local salary snapshot without inventing contract options", () => {
     const preset = EXPANSION_BRAND_PRESETS.SEA[0];
     let state = createExpansionCareerFromBundledDataset("signed-roster-contract-test");
     const reaves = state.players["nba:1630559"];
     expect(reaves?.name).toBe("Austin Reaves");
     expect(reaves?.teamId).toBe("LAL");
     expect(reaves?.contract.optionType).toBe("NONE");
-    expect(reaves?.contract.yearsRemaining).toBe(4);
-    expect(reaves?.contract.guaranteedAmount).toBe(185_000_000);
+    expect(reaves?.contract.salaryByYear).toEqual([41_240_000, 42_950_000, 46_250_000, 49_550_000]);
+    expect(reaves?.contract.optionByYear).toEqual(["NONE", "NONE", "NONE", "NONE"]);
+    expect(reaves?.contract.guaranteedAmount).toBe(179_990_000);
     state = createExpansionTeam(state, {
       cityId: "SEA",
       presetId: preset.presetId,
@@ -85,6 +147,43 @@ describe("Hupu live roster mapping", () => {
     expect(state.players[reaves.id].contract.status).toBe("STANDARD");
     expect(state.players[reaves.id].teamId).toBe("LAL");
     expect(state.teams.LAL.playerIds).toContain(reaves.id);
+  });
+
+  it("loads a validated, versioned local 2026-27 contract snapshot", () => {
+    expect(NBA_2026_27_SALARY_CONTRACTS.contracts).toHaveLength(485);
+    expect(salaryContractFor("nba:1642461")?.salaryByYear).toEqual([6_000_000, 5_750_000]);
+    expect(salaryContractFor("nba:1641705")?.salaryByYear).toEqual([
+      16_870_000, 43_500_000, 46_980_000, 50_460_000, 53_940_000, 57_420_000,
+    ]);
+    expect(salaryContractFor("nba:1641705")?.optionByYear.at(-1)).toBe("PLAYER_OPTION");
+    expect(NBA_2026_27_SALARY_CONTRACTS.unmatchedSourcePlayers).toEqual([
+      expect.objectContaining({ sourcePlayerName: "琼斯", reason: "duplicate_target" }),
+    ]);
+  });
+
+  it("keeps the user-corrected Morez Johnson identity in Dallas with his imported contract", () => {
+    const state = createExpansionCareerFromBundledDataset("morez-johnson-contract-test");
+    const morez = state.players["nba:1643516"];
+    expect(morez).toBeUndefined();
+  });
+
+  it("keeps 2026 draft prospects out of the opening roster", () => {
+    const state = createExpansionCareerFromBundledDataset("corrected-young-players-contract-test");
+    expect(state.players["nba:1643576"]).toBeUndefined();
+    expect(state.players["nba:1643509"]).toBeUndefined();
+  });
+
+  it("does not retain supplemental players absent from the authoritative roster", () => {
+    const state = createExpansionCareerFromBundledDataset("supplemental-2k-contract-test");
+    expect(state.players["nba:1643590"]).toBeUndefined();
+    expect(state.players["nba:1642926"]).toMatchObject({ teamId: "UTA", name: "Tamar Bates" });
+    expect(state.players["nba:1643555"]).toBeUndefined();
+    expect(state.players["nba:1642889"]).toBeUndefined();
+    expect(state.players["nba:1642910"]).toMatchObject({ teamId: "POR", name: "John Tonje" });
+    expect(state.players["nba:1642857"]).toMatchObject({ teamId: "MIL", name: "Kasparas Jakučionis" });
+    expect(NBA_SUPPLEMENTAL_PLAYER_PROJECTIONS).toHaveLength(0);
+    expect(NBA_PLAYER_DATASET.players.some((player) => player.nbaPlayerId === "201959")).toBe(false);
+    expect(salaryContractFor("nba:201959")).toBeUndefined();
   });
 
   it("carries the production-calibrated OVR into the playable roster", () => {

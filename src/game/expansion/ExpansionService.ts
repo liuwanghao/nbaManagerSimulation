@@ -6,8 +6,11 @@ import {
   pickAiBrand,
 } from "../../data/expansionBrands";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
+import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { publicPlayerValue, negativeContractScore } from "../ai/AIValueService";
+import { getCapSheet } from "../cap/CapSheetService";
 import { unlockAchievement } from "../career/AchievementService";
+import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
 import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
@@ -22,6 +25,7 @@ import type {
   ExpansionTradeOffer,
   GameState,
   Player,
+  TeamDirection,
 } from "../state/types";
 
 export type ExpansionCommand =
@@ -70,7 +74,7 @@ export function normalizeAndValidateTeamName(input: string, state: GameState, ci
   if (/\s{2,}/u.test(normalized)) throw new Error("球队名称不能包含连续空格");
   if (/^\d+$/u.test(normalized)) throw new Error("球队名称不能仅由数字组成");
   if (/\bNBA\b|National Basketball Association/iu.test(normalized)) throw new Error("球队名称包含禁用品牌词");
-  const displayName = `${EXPANSION_CITY_NAMES[cityId]} ${normalized}`.toLocaleLowerCase();
+  const displayName = `${EXPANSION_CITY_NAMES[cityId]}${normalized}`.toLocaleLowerCase();
   const duplicates = Object.values(state.teams).some((team) =>
     !EXPANSION_TEAM_IDS.includes(team.id as ExpansionCityId)
     && (team.name.toLocaleLowerCase() === normalized.toLocaleLowerCase() || team.fullName.toLocaleLowerCase() === displayName));
@@ -89,7 +93,7 @@ function applyBrand(state: GameState, teamId: ExpansionCityId, brand: ExpansionB
   const city = EXPANSION_CITY_NAMES[teamId];
   team.city = city;
   team.name = brand.teamName;
-  team.fullName = `${city} ${brand.teamName}`;
+  team.fullName = `${city}${brand.teamName}`;
   team.englishName = brand.teamName;
   team.abbreviation = getCityAbbreviation(teamId);
   team.primaryColor = brand.primaryColor;
@@ -213,6 +217,43 @@ function sortedPlayers(state: GameState, playerIds: string[], strategy: Expansio
     .sort((a, b) => publicPlayerValue(b, strategy) - publicPlayerValue(a, strategy) || a.id.localeCompare(b.id));
 }
 
+export function expansionProtectionValue(state: GameState, teamId: string, player: Player): number {
+  const config = BALANCE_CONFIG.expansion.protectionValue;
+  const overall = calculatePlayerOverall(player);
+  const direction: TeamDirection = state.aiTeamProfiles[teamId]?.direction ?? "COMPETE";
+  const salaryIsHigh = player.contract.salary >= LEAGUE_FINANCE_CONFIG.salaryCap * config.expiringHighSalaryCapShare;
+  const starAssetBonus = Math.max(0, overall - config.starOverallThreshold) * config.starAssetBonusPerOverall;
+  const shortContractBonus = salaryIsHigh
+    ? player.contract.yearsRemaining === 1
+      ? config.expiringHighSalaryBonus
+      : player.contract.yearsRemaining === 2
+        ? config.twoYearHighSalaryBonus
+        : 0
+    : 0;
+  const abilityAboveContenderFloor = Math.max(0, overall - config.contenderAbilityThreshold);
+  const directionBonus = direction === "CONTEND"
+    ? abilityAboveContenderFloor * config.contenderAbilityBonusPerOverall
+    : direction === "COMPETE"
+      ? abilityAboveContenderFloor * config.competeAbilityBonusPerOverall
+      : direction === "RETOOL"
+        ? abilityAboveContenderFloor * config.retoolAbilityBonusPerOverall
+        : player.age >= config.rebuildVeteranAge && salaryIsHigh
+          ? -config.rebuildVeteranHighSalaryPenalty
+          : 0;
+  const durabilityPenalty = Math.max(0, config.durabilityRiskThreshold - player.injuryRating)
+    * config.durabilityRiskPenaltyPerPoint;
+  const currentInjuryPenalty = Math.min(
+    config.currentInjuryPenaltyMaximum,
+    (player.injury?.gamesRemaining ?? 0) * config.currentInjuryPenaltyPerGame,
+  );
+  return publicPlayerValue(player, "BALANCED")
+    + starAssetBonus
+    + shortContractBonus
+    + directionBonus
+    - durabilityPenalty
+    - currentInjuryPenalty;
+}
+
 function generateProtectionLists(state: GameState): void {
   const expansion = state.expansion as ExpansionState;
   for (const teamId of EXISTING_TEAM_IDS(state)) {
@@ -224,7 +265,9 @@ function generateProtectionLists(state: GameState): void {
         && contract.optionDecision !== "PENDING"
         && contract.optionDecision !== "DECLINED";
     });
-    const roster = sortedPlayers(state, eligibleIds, "BALANCED");
+    const roster = eligibleIds.map((id) => state.players[id]).filter(Boolean)
+      .sort((a, b) => expansionProtectionValue(state, teamId, b) - expansionProtectionValue(state, teamId, a)
+        || a.id.localeCompare(b.id));
     if (roster.length <= BALANCE_CONFIG.expansion.protectedPlayersPerExistingTeam) throw new Error(`${teamId} 没有足够球员生成保护名单`);
     const protectedCount = BALANCE_CONFIG.expansion.protectedPlayersPerExistingTeam;
     const protectedPlayerIds = roster.slice(0, protectedCount).map((player) => player.id);
@@ -288,6 +331,9 @@ function acceptOfferMutable(state: GameState, offerId: string, expectedTeamId: E
   if (offer.type === "SELECT_PLAYER") {
     if (expansion.poolStatusByPlayerId[offer.targetPlayerId] !== "AVAILABLE") throw new Error("指定球员已不可选");
     if (expansion.sourceTeamLossOwner[offer.sourceTeamId]) throw new Error("该球队的扩军损失名额已被占用");
+    if (!isExpansionDraftSelectionWithinSalaryLimit(state, expectedTeamId, offer.targetPlayerId)) {
+      throw new Error("指定选择协议将超过扩军选秀工资帽限制");
+    }
   }
   const commitmentId = stableHash(offer.id, "commitment");
   const commitment: ExpansionTradeCommitment = {
@@ -320,7 +366,7 @@ function acceptOfferMutable(state: GameState, offerId: string, expectedTeamId: E
   offer.commitmentId = commitmentId;
   expansion.commitments.push(commitment);
   expansion.lastNotice = offer.type === "SELECT_PLAYER"
-    ? `已接受指定选择协议：${state.players[offer.targetPlayerId].name} 将在下一可用签位自动加入。`
+    ? `已接受指定选择协议：${state.players[offer.targetPlayerId].name} 将在下一可用签位自动加入阵容。`
     : `已接受保护协议：${state.players[offer.targetPlayerId].name} 不会被本队选择。`;
   validatePoolFeasibility(state);
 }
@@ -395,6 +441,44 @@ function canSelect(state: GameState, teamId: ExpansionCityId, playerId: string, 
     entry.status === "ACTIVE" && entry.expansionTeamId === teamId && entry.type === "PROTECT_PLAYER" && entry.targetPlayerId === playerId);
 }
 
+export function getProjectedExpansionDraftCapTotal(state: GameState, teamId: ExpansionCityId, playerId: string): number {
+  const player = state.players[playerId];
+  if (!player) return Number.POSITIVE_INFINITY;
+  const capSheet = getCapSheet(state, teamId);
+  const salaryCharge = player.contract.contractType === "EMERGENCY" ? 0 : player.contract.salary;
+  const incompleteRosterRelief = capSheet.activeStandardContracts < LEAGUE_FINANCE_CONFIG.incompleteRosterMinimumSlots
+    ? LEAGUE_FINANCE_CONFIG.rookieMinimumSalary
+    : 0;
+  return capSheet.total + salaryCharge - incompleteRosterRelief;
+}
+
+export function isExpansionDraftSelectionWithinSalaryLimit(state: GameState, teamId: ExpansionCityId, playerId: string): boolean {
+  const capSheet = getCapSheet(state, teamId);
+  const pendingCommittedPlayers = (state.expansion?.commitments ?? [])
+    .filter((entry) => entry.status === "ACTIVE"
+      && entry.type === "SELECT_PLAYER"
+      && entry.expansionTeamId === teamId
+      && entry.targetPlayerId !== playerId)
+    .map((entry) => state.players[entry.targetPlayerId])
+    .filter(Boolean);
+  let projectedTotal = getProjectedExpansionDraftCapTotal(state, teamId, playerId);
+  let activeContractsAfterPick = capSheet.activeStandardContracts + 1;
+  for (const committedPlayer of pendingCommittedPlayers) {
+    projectedTotal += committedPlayer.contract.salary;
+    if (activeContractsAfterPick < LEAGUE_FINANCE_CONFIG.incompleteRosterMinimumSlots) {
+      projectedTotal -= LEAGUE_FINANCE_CONFIG.rookieMinimumSalary;
+    }
+    activeContractsAfterPick += 1;
+  }
+  const unreservedRosterSlots = Math.max(
+    0,
+    BALANCE_CONFIG.expansion.rosterPlayersPerExpansionTeam
+      - Math.max(activeContractsAfterPick, LEAGUE_FINANCE_CONFIG.incompleteRosterMinimumSlots),
+  );
+  const completionReserve = unreservedRosterSlots * LEAGUE_FINANCE_CONFIG.rookieMinimumSalary;
+  return projectedTotal + completionReserve <= LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit;
+}
+
 function sourceHasSelectablePlayer(state: GameState, teamId: ExpansionCityId, sourceTeamId: string): boolean {
   const expansion = state.expansion as ExpansionState;
   return expansion.protectionLists[sourceTeamId]?.exposedPlayerIds.some((playerId) => {
@@ -449,6 +533,7 @@ function transferCompensation(state: GameState, commitment: ExpansionTradeCommit
 function commitPickMutable(state: GameState, teamId: ExpansionCityId, playerId: string, commitment?: ExpansionTradeCommitment): void {
   const expansion = state.expansion as ExpansionState;
   if (!canSelect(state, teamId, playerId, commitment)) throw new Error("该球员当前不可被选择");
+  if (!isExpansionDraftSelectionWithinSalaryLimit(state, teamId, playerId)) throw new Error("选择该球员将超过扩军选秀工资帽限制");
   const player = state.players[playerId];
   const sourceTeamId = player.teamId;
   const sourceTeam = state.teams[sourceTeamId];
@@ -475,15 +560,13 @@ function commitPickMutable(state: GameState, teamId: ExpansionCityId, playerId: 
   expansion.picks.push(pick);
   expansion.currentPickIndex += 1;
   if (commitment) transferCompensation(state, commitment);
-  expansion.lastNotice = teamId === expansion.aiTeamId
-    ? `${state.teams[teamId].fullName} 选择了 ${player.name}。${state.teams[sourceTeamId].fullName} 其余暴露球员已退出扩军池。`
-    : `你选择了 ${player.name}，并继承其剩余合同。`;
+  expansion.lastNotice = `${state.teams[teamId].fullName}选择了${state.teams[sourceTeamId].fullName}的${player.name}。`;
 }
 
 function selectablePlayers(state: GameState, teamId: ExpansionCityId): Player[] {
   const expansion = state.expansion as ExpansionState;
   return Object.keys(expansion.poolStatusByPlayerId)
-    .filter((playerId) => canSelect(state, teamId, playerId))
+    .filter((playerId) => canSelect(state, teamId, playerId) && isExpansionDraftSelectionWithinSalaryLimit(state, teamId, playerId))
     .map((playerId) => state.players[playerId])
     .sort((a, b) => publicPlayerValue(b, teamId === expansion.aiTeamId ? expansion.aiStrategy : "BALANCED")
       - publicPlayerValue(a, teamId === expansion.aiTeamId ? expansion.aiStrategy : "BALANCED") || a.id.localeCompare(b.id));
@@ -506,7 +589,7 @@ function finalizeExpansionDraftMutable(state: GameState): void {
   state.league.currentPhase = "ROOKIE_DRAFT_PENDING";
 }
 
-function autoAdvanceNonPlayerTurns(state: GameState): void {
+function advanceUntilPlayerChoice(state: GameState): void {
   const expansion = state.expansion as ExpansionState;
   while (expansion.currentPickIndex < expansion.draftOrder.length) {
     const teamId = expansion.draftOrder[expansion.currentPickIndex];
@@ -530,7 +613,7 @@ export function startExpansionDraft(state: GameState): GameState {
   const expansion = next.expansion as ExpansionState;
   expansion.draftOrder = buildDraftOrder(expansion);
   next.league.currentPhase = "EXPANSION_DRAFT";
-  autoAdvanceNonPlayerTurns(next);
+  advanceUntilPlayerChoice(next);
   validateExpansionState(next);
   return next;
 }
@@ -541,15 +624,32 @@ export function selectExpansionPlayer(state: GameState, playerId: string, expect
   if (state.expansion.currentPickIndex + 1 !== expectedPickNumber) throw new Error("该签位已经变化，请刷新后重试");
   if (state.expansion.draftOrder[state.expansion.currentPickIndex] !== state.expansion.playerTeamId) throw new Error("当前不是玩家签位");
   const next = structuredClone(state);
-  commitPickMutable(next, (next.expansion as ExpansionState).playerTeamId, playerId);
-  autoAdvanceNonPlayerTurns(next);
+  const expansion = next.expansion as ExpansionState;
+  const forcedCommitment = activeSelectCommitment(expansion, expansion.playerTeamId);
+  if (forcedCommitment && forcedCommitment.targetPlayerId !== playerId) throw new Error("当前签位必须确认已接受协议指定的球员");
+  commitPickMutable(next, expansion.playerTeamId, playerId, forcedCommitment);
+  advanceUntilPlayerChoice(next);
   validateExpansionState(next);
   return next;
 }
 
 export function getSelectableExpansionPlayers(state: GameState): Player[] {
   if (!state.expansion) return [];
+  const forcedCommitment = activeSelectCommitment(state.expansion, state.expansion.playerTeamId);
+  if (forcedCommitment) return [state.players[forcedCommitment.targetPlayerId]].filter(Boolean);
   return selectablePlayers(state, state.expansion.playerTeamId);
+}
+
+export function getExpansionDraftCandidatePlayers(state: GameState): Player[] {
+  if (!state.expansion) return [];
+  const teamId = state.expansion.playerTeamId;
+  const forcedCommitment = activeSelectCommitment(state.expansion, teamId);
+  const candidates = Object.keys(state.expansion.poolStatusByPlayerId)
+    .filter((playerId) => canSelect(state, teamId, playerId))
+    .map((playerId) => state.players[playerId]);
+  const forcedPlayer = forcedCommitment && state.players[forcedCommitment.targetPlayerId];
+  if (forcedPlayer) candidates.push(forcedPlayer);
+  return candidates.sort((a, b) => publicPlayerValue(b, "BALANCED") - publicPlayerValue(a, "BALANCED") || a.id.localeCompare(b.id));
 }
 
 export function validateExpansionState(state: GameState): void {
@@ -564,6 +664,7 @@ export function validateExpansionState(state: GameState): void {
     }
   }
   for (const player of Object.values(state.players)) {
+    if (["FREE_AGENT", "UNDRAFTED"].includes(player.teamId) && !rosterOwner.has(player.id)) continue;
     if (rosterOwner.get(player.id) !== player.teamId) throw new Error(`球员缺少或错误的名单归属: ${player.id}`);
   }
   if (new Set(expansion.picks.map((pick) => pick.playerId)).size !== expansion.picks.length) throw new Error("Expansion Pick 出现重复球员");

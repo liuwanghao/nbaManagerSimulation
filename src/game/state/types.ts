@@ -164,6 +164,7 @@ export interface Player {
   ageAtSnapshot: number;
   ageSource: "GENERATED_BIRTH_DATE" | "SNAPSHOT_FALLBACK";
   serviceYears: number;
+  serviceYearsSource?: "NBA_OFFICIAL_PROFILE" | "DOCUMENTED_DEBUT" | "AGE_ESTIMATE" | "GENERATED";
   serviceRosterDays?: number;
   birdTeamId?: string | null;
   birdYears?: number;
@@ -298,6 +299,7 @@ export interface RookieDraftPick {
 export interface RookieDraftState {
   draftSeed: string;
   classPlayerIds: string[];
+  revealedProspectIds?: string[];
   pickOrder: RookieDraftPick[];
   currentPickIndex: number;
   completed: boolean;
@@ -376,6 +378,17 @@ export interface FreeAgencyState {
   settledPlayerDay: Record<string, number>;
   transactionLog: string[];
   pendingUserRfaDecision?: { playerId: string; offerId: string; originalTeamId: string; deadline: number };
+}
+
+export interface TeamNotification {
+  id: string;
+  category: "FREE_AGENCY" | "SEASON" | "TEAM";
+  seasonId: string;
+  title: string;
+  message: string;
+  playerId?: string;
+  playerName?: string;
+  read: boolean;
 }
 
 export interface TradeOffer {
@@ -694,6 +707,7 @@ export interface GameState {
   achievements: Record<AchievementId, AchievementRecord>;
   gmCareer: GmCareerRecord;
   eventState: EventState;
+  teamNotifications?: TeamNotification[];
   draftPicks: Record<string, DraftPickAsset>;
   rookieDraft?: RookieDraftState;
   capState: CapState;

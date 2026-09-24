@@ -308,6 +308,8 @@ def main() -> None:
             "teamAbbreviation": player["teamAbbreviation"],
             "jerseyNumber": str(current_rosters.get(player["playerId"], {}).get("NUM") or "") or None,
             "position": player["position"],
+            "secondaryPosition": None,
+            "positionSource": "INFERRED",
             "age": player["age"],
             "heightCm": player["heightCm"],
             "weightKg": player["weightKg"],
@@ -365,10 +367,11 @@ def main() -> None:
 
     generated_at = args.generated_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     payload = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "datasetVersion": f"nba-api-{args.current_season}-{generated_at[:10]}",
         "generatedAt": generated_at,
         "ratingModelVersion": "nba2k27-top100+production-tier-v3",
+        "positionModelVersion": "nba-api-height-stats-inference-v1",
         "source": {
             "nbaApiVersion": NBA_API_VERSION,
             "currentSeason": args.current_season,

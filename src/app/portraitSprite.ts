@@ -1,36 +1,9 @@
 import type { CSSProperties } from "react";
-import { PORTRAIT_ATLAS_PLAYER_IDS } from "../data/portraitAtlasIds";
+import { PORTRAIT_ATLAS_PLAYER_IDS, PORTRAIT_ATLAS_STRIP_PATHS } from "../data/portraitAtlasIds";
 
 const ATLAS_COLUMNS = 25;
-// Explicit paths make every runtime sprite resource auditable in the static package.
-const ATLAS_IMAGES = [
-  "./player-portraits/nba-atlas-000.jpg",
-  "./player-portraits/nba-atlas-001.jpg",
-  "./player-portraits/nba-atlas-002.jpg",
-  "./player-portraits/nba-atlas-003.jpg",
-  "./player-portraits/nba-atlas-004.jpg",
-  "./player-portraits/nba-atlas-005.jpg",
-  "./player-portraits/nba-atlas-006.jpg",
-  "./player-portraits/nba-atlas-007.jpg",
-  "./player-portraits/nba-atlas-008.jpg",
-  "./player-portraits/nba-atlas-009.jpg",
-  "./player-portraits/nba-atlas-010.jpg",
-  "./player-portraits/nba-atlas-011.jpg",
-  "./player-portraits/nba-atlas-012.jpg",
-  "./player-portraits/nba-atlas-013.jpg",
-  "./player-portraits/nba-atlas-014.jpg",
-  "./player-portraits/nba-atlas-015.jpg",
-  "./player-portraits/nba-atlas-016.jpg",
-  "./player-portraits/nba-atlas-017.jpg",
-  "./player-portraits/nba-atlas-018.jpg",
-  "./player-portraits/nba-atlas-019.jpg",
-  "./player-portraits/nba-atlas-020.jpg",
-  "./player-portraits/nba-atlas-021.jpg",
-  "./player-portraits/nba-atlas-022.jpg",
-  "./player-portraits/nba-atlas-023.jpg",
-  "./player-portraits/nba-atlas-024.jpg",
-  "./player-portraits/nba-atlas-025.jpg",
-] as const;
+// Generated explicit paths keep every offline sprite resource auditable.
+const ATLAS_IMAGES = PORTRAIT_ATLAS_STRIP_PATHS;
 const portraitIds = PORTRAIT_ATLAS_PLAYER_IDS;
 
 const portraitIndexById = new Map<string, number>(portraitIds.map((id, index) => [id, index]));

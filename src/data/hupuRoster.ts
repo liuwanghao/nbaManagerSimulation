@@ -1,12 +1,18 @@
 import { TEAM_DEFINITIONS } from "./league";
 import { CURRENT_NBA_ROSTER, CURRENT_NBA_ROSTER_BY_ID } from "./currentNbaRoster";
 import { createFictionalPlayerProfile } from "./playerProfiles";
+import { openingNbaServiceYears } from "./nbaServiceYears";
 import { findNbaProjectionForHupu, NBA_PLAYER_DATASET, type NbaPlayerProjection } from "./nbaPlayerDataset";
-import { REAL_2026_CLASS_ROSTER_EXCLUSIONS } from "./real2026Draft";
+import { salaryContractFor } from "./nbaSalaryContracts";
+import { NBA_SUPPLEMENTAL_PLAYER_PROJECTIONS } from "./nbaSupplementalPlayers";
+import { NBA_FREE_AGENT_PROJECTIONS } from "./nbaFreeAgentProjections";
+import { NBA_2026_FREE_AGENTS } from "./nbaFreeAgents";
+import { REAL_2026_CLASS_ROSTER_EXCLUSIONS, REAL_2026_DRAFT } from "./real2026Draft";
 import { stableHash } from "../game/random/hash";
 import { createExpansionCareer } from "../game/season/career";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { emptyPlayerSeasonStats, type GameState, type Player, type PlayerAttributes, type Position, type RotationRole, type TeamRole } from "../game/state/types";
+import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 
 export interface HupuRosterPlayer {
   playerId?: string;
@@ -132,11 +138,12 @@ const TEAM_ROLES: TeamRole[] = [
 
 function createPlayer(careerSeed: string, teamId: string, raw: HupuRosterPlayer, salary: HupuSalaryPlayer | undefined, ordinal: number): Player {
   const id = raw.playerId as string;
-  const position = primaryPosition(raw);
   const age = parseAge(salary?.age) ?? 19 + Number.parseInt(stableHash(id, "age").slice(-2), 16) % 16;
-  const profile = createFictionalPlayerProfile(careerSeed, ordinal, id, position, age);
   const teamAbbreviation = TEAM_DEFINITIONS.find((team) => team.id === teamId)?.abbreviation;
   const nbaProjection = findNbaProjectionForHupu(id, raw.player_name_en ?? raw.en_name, teamAbbreviation, raw.number);
+  const position = nbaProjection?.position ?? primaryPosition(raw);
+  const profile = createFictionalPlayerProfile(careerSeed, ordinal, id, position, age);
+  const service = openingNbaServiceYears(id, age);
   const threePoint = numberFrom(raw.tpp);
   const points = numberFrom(raw.pts);
   const minutes = numberFrom(raw.min);
@@ -145,11 +152,14 @@ function createPlayer(careerSeed: string, teamId: string, raw: HupuRosterPlayer,
     id,
     teamId,
     ...profile,
+    serviceYears: service.years,
+    serviceYearsSource: service.source,
     name: raw.player_name as string,
     age,
     ageAtSnapshot: age,
     ageSource: "SNAPSHOT_FALLBACK",
     position,
+    secondaryPosition: nbaProjection?.secondaryPosition ?? (nbaProjection ? position : profile.secondaryPosition),
     profileSource: "HUPU_LIVE_ROSTER",
     heightCm: nbaProjection?.heightCm ?? profile.heightCm,
     weightKg: nbaProjection?.weightKg ?? profile.weightKg,
@@ -185,12 +195,54 @@ function projectionStat(player: NbaPlayerProjection, group: string, key: string)
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-const BUNDLED_CONTRACT_SNAPSHOT_OVERRIDES: Record<string, { salary: number; yearsRemaining: number }> = {
-  // NBA/Lakers announced a four-year re-signing in July 2026; reported value $185M.
-  "nba:1630559": { salary: 46_250_000, yearsRemaining: 4 },
-};
+function inferredThreeRate(player: NbaPlayerProjection): number {
+  const shooting = player.projection.attributes.shooting;
+  const finishing = player.projection.attributes.finishing;
+  return Math.max(0.18, Math.min(0.62, 0.32 + (shooting - finishing) * 0.006));
+}
 
-function bundledContract(player: NbaPlayerProjection, rank: number): Player["contract"] {
+function inferredUsage(player: NbaPlayerProjection): number {
+  const { shooting, finishing, playmaking } = player.projection.attributes;
+  return Math.max(35, Math.min(95, Math.round(48 + (player.projection.overall - 70) * 0.8
+    + (shooting + finishing + playmaking - 195) * 0.15)));
+}
+
+function rosterIdentity(value: string): string {
+  return value.normalize("NFKD").replace(/[^a-z0-9]/giu, "").toLowerCase().replace(/jr$/u, "");
+}
+
+const REAL_2026_DRAFT_NAMES = new Set(REAL_2026_DRAFT.map((entry) => rosterIdentity(entry.fullName)));
+
+function isReal2026ClassPlayer(player: NbaPlayerProjection): boolean {
+  return REAL_2026_CLASS_ROSTER_EXCLUSIONS.has(player.canonicalPlayerId)
+    || REAL_2026_DRAFT_NAMES.has(rosterIdentity(player.fullName));
+}
+
+function bundledContract(player: NbaPlayerProjection, teamId: string, rank: number): Player["contract"] {
+  const imported = salaryContractFor(player.canonicalPlayerId);
+  if (imported) {
+    const salaryByYear = [...imported.salaryByYear];
+    const guaranteedByYear = [...imported.guaranteedByYear];
+    const optionByYear = [...imported.optionByYear];
+    return {
+      salary: salaryByYear[0],
+      yearsRemaining: salaryByYear.length,
+      guaranteedAmount: guaranteedByYear.reduce((total, value) => total + value, 0),
+      status: "STANDARD",
+      optionType: "NONE",
+      optionDecision: "NOT_APPLICABLE",
+      contractId: `hupu-salary-2026-${imported.sourcePlayerId}`,
+      contractType: "STANDARD",
+      startSeason: 2026,
+      endSeason: 2025 + salaryByYear.length,
+      currentYearIndex: 0,
+      salaryByYear,
+      guaranteedByYear,
+      optionByYear,
+      signedTeamId: teamId,
+      signedPhase: "DATASET_SALARY_SNAPSHOT",
+    };
+  }
   const overall = player.projection.overall;
   const baseSalary = overall >= 90 ? 42_000_000
     : overall >= 85 ? 32_000_000
@@ -199,17 +251,15 @@ function bundledContract(player: NbaPlayerProjection, rank: number): Player["con
           : overall >= 70 ? 7_000_000
             : rank < 12 ? 3_500_000 : 2_000_000;
   const contractSeed = Number.parseInt(stableHash(player.canonicalPlayerId, "bundled_contract").slice(-4), 16);
-  const snapshot = BUNDLED_CONTRACT_SNAPSHOT_OVERRIDES[player.canonicalPlayerId];
-  const salary = snapshot?.salary ?? baseSalary;
-  const yearsRemaining = snapshot?.yearsRemaining ?? 1 + contractSeed % 4;
+  const salary = baseSalary;
+  const yearsRemaining = 1 + contractSeed % 4;
   return {
     salary,
     yearsRemaining,
     guaranteedAmount: salary * yearsRemaining,
     status: "STANDARD",
-    // The bundled roster snapshot confirms team membership, but it does not
-    // contain contract-option data. Do not invent an option that can release a
-    // currently signed player during the opening expansion option phase.
+    // Unmatched players keep the previous safe fallback until their source ID
+    // can be reconciled; never invent an option that releases a signed player.
     optionType: "NONE",
     optionDecision: "NOT_APPLICABLE",
   };
@@ -228,6 +278,7 @@ function potentialGrade(value: number): NonNullable<Player["scoutedPotentialGrad
 export function createBundledPlayer(careerSeed: string, teamId: string, projection: NbaPlayerProjection, rank: number, ordinal: number): Player {
   const age = projection.age;
   const profile = createFictionalPlayerProfile(careerSeed, ordinal, projection.canonicalPlayerId, projection.position, age);
+  const service = openingNbaServiceYears(projection.canonicalPlayerId, age);
   const fieldGoalAttempts = projectionStat(projection, "base", "FGA");
   const threePointAttempts = projectionStat(projection, "base", "FG3A");
   const usage = projectionStat(projection, "advanced", "USG_PCT");
@@ -235,14 +286,17 @@ export function createBundledPlayer(careerSeed: string, teamId: string, projecti
     id: projection.canonicalPlayerId,
     teamId,
     ...profile,
+    serviceYears: service.years,
+    serviceYearsSource: service.source,
     name: projection.fullName,
     age,
     ageAtSnapshot: age,
     ageSource: "SNAPSHOT_FALLBACK",
-    heightCm: projection.heightCm,
-    weightKg: projection.weightKg,
+    heightCm: projection.heightCm ?? profile.heightCm,
+    weightKg: projection.weightKg ?? profile.weightKg,
     portraitPath: projection.portraitPath ?? null,
     position: projection.position,
+    secondaryPosition: projection.secondaryPosition ?? projection.position,
     profileSource: "CURATED_DATASET",
     projectionSource: "NBA_API_MODEL_V1",
     projectionDataVersion: NBA_PLAYER_DATASET.datasetVersion,
@@ -251,8 +305,8 @@ export function createBundledPlayer(careerSeed: string, teamId: string, projecti
       attributes: projection.projection.attributes,
       position: projection.position,
     }),
-    threeRate: Math.max(0.18, Math.min(0.62, fieldGoalAttempts > 0 ? threePointAttempts / fieldGoalAttempts : 0.33)),
-    usageTendency: Math.max(35, Math.min(95, Math.round(35 + usage * 165))),
+    threeRate: Math.max(0.18, Math.min(0.62, fieldGoalAttempts > 0 ? threePointAttempts / fieldGoalAttempts : inferredThreeRate(projection))),
+    usageTendency: usage > 0 ? Math.max(35, Math.min(95, Math.round(35 + usage * 165))) : inferredUsage(projection),
     health: 100,
     morale: 50,
     fatigue: 0,
@@ -264,7 +318,7 @@ export function createBundledPlayer(careerSeed: string, teamId: string, projecti
     truePotential: projection.projection.potential,
     scoutedPotentialGrade: potentialGrade(projection.projection.potential),
     scoutingConfidence: 100,
-    contract: bundledContract(projection, rank),
+    contract: bundledContract(projection, teamId, rank),
     seasonStats: emptyPlayerSeasonStats(),
     postseasonStats: emptyPlayerSeasonStats(),
   };
@@ -279,11 +333,22 @@ export function createExpansionCareerFromBundledDataset(careerSeed: string): Gam
   const state = createExpansionCareer(careerSeed);
   const existingTeams = TEAM_DEFINITIONS.filter((team) => team.sourceTeamId);
   const byAbbreviation = new Map<string, NbaPlayerProjection[]>();
-  for (const player of NBA_PLAYER_DATASET.players) {
-    if (REAL_2026_CLASS_ROSTER_EXCLUSIONS.has(player.canonicalPlayerId)) continue;
+  const bundledProjections = [...NBA_PLAYER_DATASET.players, ...NBA_SUPPLEMENTAL_PLAYER_PROJECTIONS];
+  const bundledPlayerIds = new Set(bundledProjections.map((player) => player.canonicalPlayerId));
+  const bundledNames = new Set(bundledProjections.map((player) => rosterIdentity(player.fullName)));
+  for (const [playerId, player] of Object.entries(state.players)) {
+    if (!bundledPlayerIds.has(playerId) && !bundledNames.has(rosterIdentity(player.name))) continue;
+    delete state.players[playerId];
+    for (const team of Object.values(state.teams)) team.playerIds = team.playerIds.filter((id) => id !== playerId);
+  }
+  for (const player of bundledProjections) {
+    // The 2026 class belongs to the in-game rookie draft pool at opening. Even
+    // when the salary workbook already has a real-world contract, do not place
+    // the prospect on an NBA roster before the game's draft signs them.
+    if (isReal2026ClassPlayer(player)) continue;
     const currentRosterPlayer = CURRENT_NBA_ROSTER_BY_ID.get(player.nbaPlayerId);
-    if (!currentRosterPlayer) continue;
-    const abbreviation = currentRosterPlayer.teamAbbreviation;
+    const abbreviation = currentRosterPlayer?.teamAbbreviation;
+    if (!abbreviation) continue;
     const roster = byAbbreviation.get(abbreviation) ?? [];
     roster.push(player);
     byAbbreviation.set(abbreviation, roster);
@@ -292,9 +357,12 @@ export function createExpansionCareerFromBundledDataset(careerSeed: string): Gam
   let ordinal = 0;
   for (const team of existingTeams) {
     for (const playerId of state.teams[team.id].playerIds) delete state.players[playerId];
-    const projections = [...(byAbbreviation.get(team.id) ?? [])]
-      .sort((left, right) => right.projection.overall - left.projection.overall || left.canonicalPlayerId.localeCompare(right.canonicalPlayerId))
-      .slice(0, 18);
+    const projections = [...new Map((byAbbreviation.get(team.id) ?? []).map((projection) => [projection.canonicalPlayerId, projection] as const)).values()]
+      .sort((left, right) => {
+        const contractPriority = Number(Boolean(salaryContractFor(right.canonicalPlayerId))) - Number(Boolean(salaryContractFor(left.canonicalPlayerId)));
+        return contractPriority || right.projection.overall - left.projection.overall || left.canonicalPlayerId.localeCompare(right.canonicalPlayerId);
+      })
+      .slice(0, LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum);
     if (projections.length < 9) throw new Error(`${team.fullName}的离线阵容评分球员不足 9 人`);
     state.teams[team.id].playerIds = projections.map((projection, rank) => {
       const player = createBundledPlayer(careerSeed, team.id, projection, rank, ordinal);
@@ -304,7 +372,22 @@ export function createExpansionCareerFromBundledDataset(careerSeed: string): Gam
     });
   }
 
-  state.meta.dataVersion = `bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}`;
+  const freeAgentStatusById = new Map(NBA_2026_FREE_AGENTS.players.map((player) => [player.nbaPlayerId, player.status] as const));
+  for (const projection of NBA_FREE_AGENT_PROJECTIONS) {
+    const player = createBundledPlayer(careerSeed, "FREE_AGENT", projection, 21, ordinal);
+    ordinal += 1;
+    player.rotationRole = "OUT";
+    player.teamRole = "BENCH";
+    player.contract = {
+      salary: 0, yearsRemaining: 0, guaranteedAmount: 0,
+      status: freeAgentStatusById.get(projection.nbaPlayerId) ?? "UFA",
+      optionType: "NONE", optionDecision: "NOT_APPLICABLE",
+    };
+    if (state.players[player.id]) throw new Error(`Duplicate initial free agent ${player.id}`);
+    state.players[player.id] = player;
+  }
+
+  state.meta.dataVersion = `bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}+fa.${NBA_2026_FREE_AGENTS.retrievedAt.slice(0, 10)}+salary.2026-27.0923+retired.2026-09-24+service.2026.v2`;
   state.meta.gameVersion = "0.5.0";
   return state;
 }
@@ -343,7 +426,7 @@ export function createExpansionCareerFromHupu(careerSeed: string, snapshots: Hup
 
   if (seenPlayerIds.size < 270) throw new Error(`虎扑全联盟仅返回 ${seenPlayerIds.size} 名有效球员，请稍后重试`);
   const freshestUpdate = snapshots.map((snapshot) => snapshot.updatedAt).filter(Boolean).sort().at(-1) ?? "live";
-  state.meta.dataVersion = `hupu.nba.live-roster.${freshestUpdate}+${NBA_PLAYER_DATASET.datasetVersion}`;
+  state.meta.dataVersion = `hupu.nba.live-roster.${freshestUpdate}+${NBA_PLAYER_DATASET.datasetVersion}+service.2026.v2`;
   state.meta.gameVersion = "0.5.0";
   return state;
 }

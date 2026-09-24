@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFixtureDataset } from "./fixture";
+import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 
 describe("fictional fixture player profiles", () => {
   it("creates deterministic, unique names without placeholder labels", () => {
@@ -27,6 +28,7 @@ describe("fictional fixture player profiles", () => {
       expect(player.injuryRating).toBeLessThanOrEqual(99);
       expect(player.marketPreference).toBeGreaterThanOrEqual(0);
       expect(player.marketPreference).toBeLessThanOrEqual(100);
+      expect(player.marketPreference).toBe(calculateMarketPreference(player.personality, player.ageAtSnapshot));
       expect(player.profileSource).toBe("FICTIONAL_FIXTURE");
     }
   });

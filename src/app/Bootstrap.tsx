@@ -13,8 +13,11 @@ import { unlockAchievement } from "../game/career/AchievementService";
 import { enqueueEvent, resolveAllEvents } from "../game/events/EventService";
 import App from "./App";
 import { ExpansionCinematic } from "./ExpansionCinematic";
+import { createBrowserPlatform } from "../platform/PlatformAdapter";
+import { SaveService, type SaveSlotSummary } from "../storage/SaveService";
 
 const CAREER_SEED = "expansion-era-demo";
+const launcherSaveService = typeof window === "undefined" ? null : new SaveService(createBrowserPlatform().storage);
 
 const fixtureMode = (): string | null => new URLSearchParams(window.location.search).get("fixture");
 
@@ -167,17 +170,60 @@ export default function Bootstrap() {
   const [initialState, setInitialState] = useState<GameState>(() => createFixturePreview());
   const [openLoadOnStart, setOpenLoadOnStart] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
+  const [initialActiveSlot, setInitialActiveSlot] = useState<1 | 2 | 3>(1);
+  const [launcherNotice, setLauncherNotice] = useState<string | null>(null);
+  const [loadMenuOpen, setLoadMenuOpen] = useState(false);
+  const [newGameMenuOpen, setNewGameMenuOpen] = useState(false);
+  const [pendingOverwriteSlot, setPendingOverwriteSlot] = useState<1 | 2 | 3 | null>(null);
+  const [homeSaveSlots, setHomeSaveSlots] = useState<SaveSlotSummary[]>([]);
 
-  const launch = (load = false) => {
-    setInitialState(createFixturePreview());
-    setOpenLoadOnStart(load);
+  const launchLatest = async () => {
+    const latest = await launcherSaveService?.loadMostRecent();
+    if (!latest) {
+      setLauncherNotice("暂无可继续的存档，请先开始新游戏或读取已有槽位。");
+      return;
+    }
+    setInitialState(latest.state);
+    setInitialActiveSlot(latest.slotId);
+    setOpenLoadOnStart(false);
+    setLauncherNotice(null);
     setSessionKey((value) => value + 1);
     setScreen("game");
   };
 
-  const startNewGame = () => {
-    setInitialState(createFixturePreview());
+  const openLoadMenu = async () => {
+    setHomeSaveSlots(await launcherSaveService?.listSlotSummaries() ?? []);
+    setLauncherNotice(null);
+    setLoadMenuOpen(true);
+  };
+
+  const openNewGameMenu = async () => {
+    setHomeSaveSlots(await launcherSaveService?.listSlotSummaries() ?? []);
+    setLauncherNotice(null);
+    setPendingOverwriteSlot(null);
+    setNewGameMenuOpen(true);
+  };
+
+  const loadFromHome = async (slotId: 1 | 2 | 3) => {
+    const loaded = await launcherSaveService?.load(slotId);
+    if (!loaded) {
+      setLauncherNotice(`槽位 0${slotId} 暂无可读取的存档。`);
+      return;
+    }
+    setInitialState(loaded);
+    setInitialActiveSlot(slotId);
     setOpenLoadOnStart(false);
+    setLoadMenuOpen(false);
+    setSessionKey((value) => value + 1);
+    setScreen("game");
+  };
+
+  const startNewGame = (slotId: 1 | 2 | 3) => {
+    setInitialState(createFixturePreview());
+    setInitialActiveSlot(slotId);
+    setOpenLoadOnStart(false);
+    setPendingOverwriteSlot(null);
+    setNewGameMenuOpen(false);
     setSessionKey((value) => value + 1);
     setScreen("intro");
   };
@@ -186,19 +232,56 @@ export default function Bootstrap() {
     return <main className="launcher-shell home-screen" style={{ backgroundImage: 'linear-gradient(180deg, rgba(2, 6, 16, .28) 0%, rgba(2, 6, 16, .7) 47%, rgba(2, 6, 16, .96) 100%), url("./story/opening-arena.jpg")' }}>
       <section className="launcher-center">
         <div className="launcher-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 6H4v1a4 4 0 0 0 4 4M16 6h4v1a4 4 0 0 1-4 4M12 12v5M8 21h8M10 17h4v4"/></svg></div>
-        <h1>篮球经理：扩军时代</h1>
+        <h1>篮球经理：联盟扩军时代</h1>
         <p>管理扩军新星，改写职业篮球历史版图</p>
       </section>
-      <section className="launcher-actions">
-        <button className="launcher-primary" data-testid="start-new-game" onClick={startNewGame}><i className="launcher-play-icon" aria-hidden="true" /><span>开始新游戏</span></button>
-        <button onClick={() => launch(true)}><i className="launcher-folder-icon" aria-hidden="true" /><span>读取存档</span></button>
-        <button className="launcher-dark" onClick={() => launch(false)}><i className="launcher-rotate-icon" aria-hidden="true">↻</i><span>继续上次进度</span></button>
+      <section className="launcher-guide" aria-label="游戏说明">
+        <b>游戏简介</b>
+        <p>这是一个以扩军球队为起点的篮球经营模拟。你将从组建阵容开始，经历选秀、交易、自由市场与完整赛季，在不断变化的联盟中打造属于自己的球队历史。</p>
+        <small>每个决定都会影响薪资空间、球队适配度与未来竞争力。</small>
       </section>
+      <section className="launcher-actions">
+        <button className="launcher-primary" data-testid="start-new-game" onClick={() => void openNewGameMenu()}><i className="launcher-play-icon" aria-hidden="true" /><span>开始新游戏</span></button>
+        <button onClick={() => void openLoadMenu()}><i className="launcher-folder-icon" aria-hidden="true" /><span>读取存档</span></button>
+        <button className="launcher-dark" onClick={() => void launchLatest()}><i className="launcher-rotate-icon" aria-hidden="true">↻</i><span>继续上次进度</span></button>
+      </section>
+      {launcherNotice && <p className="launcher-notice" role="status">{launcherNotice}</p>}
+      {loadMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLoadMenuOpen(false); }}>
+        <section className="home-load-menu" role="dialog" aria-modal="true" aria-label="读取存档">
+          <header><div><b>读取存档</b><small>选择一个生涯继续游戏</small></div><button onClick={() => setLoadMenuOpen(false)} aria-label="关闭读取存档">×</button></header>
+          <div className="home-load-slots">
+            {([1, 2, 3] as const).map((slotId) => {
+              const summary = homeSaveSlots.find((slot) => slot.slotId === slotId);
+              return <article key={slotId} className={summary ? "has-save" : "empty-save"}>
+                <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
+                <small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${summary.phase}` : "尚未保存任何生涯"}</small>
+                <button disabled={!summary} onClick={() => void loadFromHome(slotId)}>{summary ? "读取并继续" : "暂无存档"}</button>
+              </article>;
+            })}
+          </div>
+        </section>
+      </div>}
+      {newGameMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setNewGameMenuOpen(false); setPendingOverwriteSlot(null); } }}>
+        <section className="home-load-menu" role="dialog" aria-modal="true" aria-label="选择新生涯槽位">
+          <header><div><b>选择新生涯槽位</b><small>选定后将作为后续自动保存与手动保存的位置</small></div><button onClick={() => { setNewGameMenuOpen(false); setPendingOverwriteSlot(null); }} aria-label="关闭选择槽位">×</button></header>
+          <div className="home-load-slots">
+            {([1, 2, 3] as const).map((slotId) => {
+              const summary = homeSaveSlots.find((slot) => slot.slotId === slotId);
+              const needsConfirm = Boolean(summary) && pendingOverwriteSlot === slotId;
+              return <article key={slotId} className={`${summary ? "has-save" : "empty-save"}${needsConfirm ? " pending-overwrite" : ""}`}>
+                <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
+                <small className={needsConfirm ? "home-load-warning" : undefined}>{needsConfirm ? `将覆盖「${summary?.teamName}」的现有进度，确认后无法恢复。` : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${summary.phase}` : "在此位置创建新的扩军生涯"}</small>
+                {needsConfirm ? <div className="home-load-confirm-actions"><button className="home-load-cancel" onClick={() => setPendingOverwriteSlot(null)}>取消</button><button onClick={() => startNewGame(slotId)}>确认覆盖</button></div> : <button onClick={() => summary ? setPendingOverwriteSlot(slotId) : startNewGame(slotId)}>{summary ? "覆盖并开始" : "使用此槽位"}</button>}
+              </article>;
+            })}
+          </div>
+        </section>
+      </div>}
       <small className="launcher-version">版本 2.0.0｜扩军纪念版</small>
     </main>;
   }
 
   if (screen === "intro") return <ExpansionCinematic state={initialState} onComplete={() => setScreen("game")} />;
 
-  return <App key={sessionKey} initialState={initialState} openSaveOnStart={openLoadOnStart} onExitToHome={() => setScreen("home")} />;
+  return <App key={sessionKey} initialState={initialState} initialActiveSlot={initialActiveSlot} openSaveOnStart={openLoadOnStart} onExitToHome={() => setScreen("home")} />;
 }

@@ -1,4 +1,4 @@
-import type { AwardType, GameResult, GameState, Player, PlayerCareerRecord, PlayerSeasonStats, SeasonAwardsRecord } from "../state/types";
+import type { AwardType, GameResult, GameState, Player, PlayerBoxScore, PlayerCareerRecord, PlayerSeasonStats, SeasonAwardsRecord } from "../state/types";
 import { emptyPlayerSeasonStats } from "../state/types";
 import { evaluateAwardAchievements } from "../career/AchievementService";
 import { enqueueCareerMilestoneEvents } from "../events/EventService";
@@ -40,6 +40,39 @@ function teamWinScore(state: GameState, player: Player): number {
 
 function availability(player: Player): number {
   return Math.min(1, player.seasonStats.games / BALANCE_CONFIG.awards.availabilityGames);
+}
+
+function mvpScore(state: GameState, player: Player): number {
+  return (productionScore(player) + teamWinScore(state, player)) * availability(player);
+}
+
+export function getAwardRace(state: GameState, type: AwardType = "MVP", limit = 5): Player[] {
+  const candidates = awardCandidates(state);
+  if (type !== "MVP") {
+    const winner = awardWinner(state, type, candidates);
+    return winner ? [winner] : [];
+  }
+  return [...candidates]
+    .sort((left, right) => mvpScore(state, right) - mvpScore(state, left) || left.id.localeCompare(right.id))
+    .slice(0, limit);
+}
+
+export function getLeagueLeaders(state: GameState): { points?: Player; rebounds?: Player; assists?: Player } {
+  const candidates = awardCandidates(state);
+  const leader = (key: "pts" | "reb" | "ast") => pick(candidates, (player) => perGame(player.seasonStats, key));
+  return {
+    points: leader("pts"),
+    rebounds: leader("reb"),
+    assists: leader("ast"),
+  };
+}
+
+export function getGameMvpStat(game: GameResult): PlayerBoxScore | undefined {
+  const weights = BALANCE_CONFIG.awards.productionWeights;
+  const impact = (stat: PlayerBoxScore) => stat.pts * weights.points + stat.reb * weights.rebounds
+    + stat.ast * weights.assists + stat.stl * weights.steals + stat.blk * weights.blocks + stat.tov * weights.turnovers;
+  return [game.awayBoxScore, game.homeBoxScore].flatMap((box) => box?.playerStats ?? [])
+    .sort((left, right) => impact(right) - impact(left) || left.playerId.localeCompare(right.playerId))[0];
 }
 
 function awardCandidates(state: GameState): Player[] {
@@ -88,7 +121,7 @@ function previousProduction(player: Player): number {
 }
 
 function awardWinner(state: GameState, type: AwardType, candidates: Player[]): Player | undefined {
-  if (type === "MVP") return pick(candidates, (player) => (productionScore(player) + teamWinScore(state, player)) * availability(player));
+  if (type === "MVP") return pick(candidates, (player) => mvpScore(state, player));
   if (type === "DPOY") return pick(candidates, (player) => (
     perGame(player.seasonStats, "stl") * BALANCE_CONFIG.awards.dpoyWeights.steals + perGame(player.seasonStats, "blk") * BALANCE_CONFIG.awards.dpoyWeights.blocks
     + perGame(player.seasonStats, "reb") * BALANCE_CONFIG.awards.dpoyWeights.rebounds

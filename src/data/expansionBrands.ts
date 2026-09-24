@@ -15,12 +15,13 @@ export const SAFE_TEAM_COLORS = [
   "#072e33", "#172554", "#052e16", "#111827", "#4c1d95", "#431407", "#312e81", "#581c87",
 ];
 
+// Preset IDs are persisted in careers; keep them stable when display names change.
 export const EXPANSION_BRAND_PRESETS: Record<ExpansionCityId, ExpansionBrand[]> = {
   SEA: [
-    { presetId: "sea-emerald-tide", teamName: "翡翠潮", shortName: "翡翠潮", logoAssetId: "seattle-default", logoUrl: expansionLogo("seattle-default.png"), primaryColor: "#19d3ae", secondaryColor: "#072e33" },
+    { presetId: "sea-emerald-tide", teamName: "超音速", shortName: "超音速", logoAssetId: "seattle-default", logoUrl: expansionLogo("seattle-default.png"), primaryColor: "#19d3ae", secondaryColor: "#072e33" },
   ],
   LVG: [
-    { presetId: "lvg-voltage", teamName: "电压", shortName: "电压", logoAssetId: "las-vegas-default", logoUrl: expansionLogo("las-vegas-default.png"), primaryColor: "#581c87", secondaryColor: "#facc15" },
+    { presetId: "lvg-voltage", teamName: "幻影", shortName: "幻影", logoAssetId: "las-vegas-default", logoUrl: expansionLogo("las-vegas-default.png"), primaryColor: "#581c87", secondaryColor: "#facc15" },
   ],
 };
 

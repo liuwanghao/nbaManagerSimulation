@@ -30,6 +30,7 @@ int main(int argc, const char *argv[]) {
     }
     const NSInteger tile = 80;
     const NSInteger columns = 25;
+    NSUInteger christieIndex = [expectedIds indexOfObject:@"1631108"];
     for (NSInteger row = 0; row < (files.count + columns - 1) / columns; row++) {
       CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
       CGContextRef context = CGBitmapContextCreate(NULL, columns * tile, tile, 8, 0, colorSpace, kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big);
@@ -52,9 +53,9 @@ int main(int argc, const char *argv[]) {
         CGImageRelease(picture);
         CFRelease(reader);
       }
-      if (row == 12) {
+      if (christieIndex != NSNotFound && row == christieIndex / columns) {
         unsigned char *bytes = CGBitmapContextGetData(context);
-        NSUInteger pixel = (30 * columns * tile + 22 * tile + 40) * 4;
+        NSUInteger pixel = (30 * columns * tile + (christieIndex % columns) * tile + 40) * 4;
         if (bytes[pixel] + bytes[pixel + 1] + bytes[pixel + 2] < 50) {
           NSLog(@"Max Christie tile is still black"); return 1;
         }

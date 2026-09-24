@@ -31,6 +31,15 @@ export function createGmCareerState(): GameState["gmCareer"] {
   };
 }
 
+export function getGmLevelLabel(state: GameState): string {
+  if (state.gmCareer.championships >= 4 || state.gmCareer.dynastyScore >= 7_500) return "传奇经理";
+  if (state.gmCareer.championships >= 2 || state.gmCareer.dynastyScore >= 4_000) return "王朝经理";
+  if (state.gmCareer.championships >= 1) return "冠军经理";
+  if (state.gmCareer.dynastyScore >= 1_500) return "联盟精英";
+  if (state.gmCareer.seasons >= 2) return "优秀经理";
+  return "新手经理";
+}
+
 export function unlockAchievement(state: GameState, id: AchievementId): void {
   const achievement = state.achievements[id];
   if (achievement.unlocked) return;

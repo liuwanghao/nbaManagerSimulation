@@ -3,7 +3,7 @@ import type { Player } from "../game/state/types";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { playerNameZh } from "./playerNameZh";
 import { portraitSpriteMeta } from "./portraitSprite";
-import { moneyLabel } from "./uiText";
+import { measurementLabel, moneyLabel } from "./uiText";
 
 const ATTRIBUTE_LABELS: Array<[keyof Player["attributes"], string]> = [
   ["finishing", "终结"],
@@ -21,7 +21,7 @@ const PERSONALITY_LABELS: Record<Player["personality"], string> = {
   MONEY_FOCUSED: "薪资优先",
   LOYAL: "忠诚型",
   ROLE_FOCUSED: "角色优先",
-  MARKET_FOCUSED: "市场偏好",
+  MARKET_FOCUSED: "曝光优先",
   BALANCED: "均衡型",
 };
 
@@ -68,9 +68,9 @@ export function ReferencePlayerCard({ player, teamName }: { player: Player; team
 
       <div className="reference-basic-stats">
         <div className="reference-stat-item"><b>{player.age}</b><span>年龄</span></div>
-        <div className="reference-stat-item"><b>{player.heightCm ? `${player.heightCm}cm` : "—"}</b><span>身高</span></div>
-        <div className="reference-stat-item"><b>{player.weightKg ? `${player.weightKg}kg` : "—"}</b><span>体重</span></div>
-        <div className="reference-stat-item"><b>{player.serviceYears}年</b><span>球龄</span></div>
+        <div className="reference-stat-item"><b>{measurementLabel(player.heightCm, "cm")}</b><span>身高</span></div>
+        <div className="reference-stat-item"><b>{measurementLabel(player.weightKg, "kg")}</b><span>体重</span></div>
+        <div className="reference-stat-item"><b>{player.serviceYears}年</b><span>{player.serviceYearsSource === "AGE_ESTIMATE" ? "球龄（估）" : "球龄"}</span></div>
       </div>
 
       <div className="reference-contract-bar">
@@ -94,7 +94,7 @@ export function ReferencePlayerCard({ player, teamName }: { player: Player; team
       <footer className="reference-card-footer">
         <span>性格 <b>{PERSONALITY_LABELS[player.personality]}</b></span>
         <span>耐伤 <b>{player.injuryRating}</b></span>
-        <span>市场偏好 <b>{player.marketPreference}</b></span>
+        <span>大市场偏好 <b>{player.marketPreference}</b></span>
       </footer>
     </article>
   );

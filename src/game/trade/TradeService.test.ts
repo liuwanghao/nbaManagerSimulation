@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { stableHash, stableSerialize } from "../random/hash";
 import { createCareer } from "../season/career";
-import { acceptTradeOffer, executeTradeCommand, generateTradeOffers } from "./TradeService";
+import { acceptTradeOffer, evaluateTradeOffer, executeTradeCommand, generateTradeOffers, isTradePhaseAllowed } from "./TradeService";
 
 function tradeState() {
   const state = createCareer("player-trade-tests");
@@ -41,5 +41,25 @@ describe("TradeService", () => {
     const before = stableHash(stableSerialize(queried));
     expect(() => acceptTradeOffer(queried, queried.tradeDesk.offers[0].offerId)).toThrow(/not allowed/);
     expect(stableHash(stableSerialize(queried))).toBe(before);
+  });
+
+  it("evaluates phase, salary matching, ownership and fit without mutating the offer", () => {
+    const state = tradeState();
+    const playerId = state.teams[state.userTeamId].playerIds[5];
+    const queried = generateTradeOffers(state, playerId, false);
+    const offer = queried.tradeDesk.offers[0];
+    const before = stableHash(stableSerialize(queried));
+    const evaluation = evaluateTradeOffer(queried, offer.offerId);
+
+    expect(isTradePhaseAllowed(queried.league.currentPhase)).toBe(true);
+    expect(evaluation.legal).toBe(true);
+    expect(evaluation.outgoingSalary).toBeGreaterThan(0);
+    expect(evaluation.incomingSalary).toBeGreaterThan(0);
+    expect(Number.isFinite(evaluation.userFitDelta)).toBe(true);
+    expect(stableHash(stableSerialize(queried))).toBe(before);
+
+    queried.league.currentPhase = "REGULAR_POST_DEADLINE";
+    expect(isTradePhaseAllowed(queried.league.currentPhase)).toBe(false);
+    expect(evaluateTradeOffer(queried, offer.offerId)).toMatchObject({ legal: false, reason: "当前阶段不开放交易" });
   });
 });

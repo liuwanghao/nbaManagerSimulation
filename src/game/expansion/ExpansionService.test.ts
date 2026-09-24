@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { EXPANSION_BRAND_PRESETS } from "../../data/expansionBrands";
+import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
+import { getCapSheet } from "../cap/CapSheetService";
 import { stableHash, stableSerialize } from "../random/hash";
 import { createExpansionCareer } from "../season/career";
+import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import type { ExpansionCityId, GameState } from "../state/types";
 import {
   executeExpansionCommand,
+  getExpansionDraftCandidatePlayers,
   getSelectableExpansionPlayers,
   type ExpansionCommand,
 } from "./ExpansionService";
@@ -35,6 +39,24 @@ function reachTrade(seed: string): GameState {
   }
   state = dispatch(state, { commandId: "resolve-options", type: "RESOLVE_OPTION_PHASE", payload: {} });
   return dispatch(state, { commandId: "prepare-trade", type: "PREPARE_EXPANSION_TRADE", payload: {} });
+}
+
+function reachBundledTrade(seed: string): GameState {
+  const preset = EXPANSION_BRAND_PRESETS.SEA[0];
+  let state = dispatch(createExpansionCareerFromBundledDataset(seed), {
+    commandId: "create-bundled-team",
+    type: "CREATE_EXPANSION_TEAM",
+    payload: {
+      cityId: "SEA",
+      presetId: preset.presetId,
+      teamName: preset.teamName,
+      primaryColor: preset.primaryColor,
+      secondaryColor: preset.secondaryColor,
+    },
+  });
+  state = dispatch(state, { commandId: "choose-bundled-package", type: "CHOOSE_RIGHTS_PACKAGE", payload: { packageId: "A" } });
+  state = dispatch(state, { commandId: "resolve-bundled-options", type: "RESOLVE_OPTION_PHASE", payload: {} });
+  return dispatch(state, { commandId: "prepare-bundled-trade", type: "PREPARE_EXPANSION_TRADE", payload: {} });
 }
 
 function finishDraft(seed: string): GameState {
@@ -102,8 +124,8 @@ describe("Stage 3 expansion flow", () => {
     expect(EXPANSION_BRAND_PRESETS.LVG).toHaveLength(1);
     expect(state.teams.SEA.logoUrl).toBe("./expansion-logos/seattle-default.png");
     expect(state.teams.LVG.logoUrl).toBe("./expansion-logos/las-vegas-default.png");
-    expect(state.teams.SEA.fullName).toBe("西雅图 翡翠潮");
-    expect(state.teams.LVG.fullName).toBe("拉斯维加斯 电压");
+    expect(state.teams.SEA.fullName).toBe("西雅图超音速");
+    expect(state.teams.LVG.fullName).toBe("拉斯维加斯幻影");
   });
 
   it("uses the submitted team name instead of the city preset name", () => {
@@ -121,7 +143,14 @@ describe("Stage 3 expansion flow", () => {
       },
     });
     expect(state.teams.SEA.name).toBe("雨城先锋");
-    expect(state.teams.SEA.fullName).toBe("西雅图 雨城先锋");
+    expect(state.teams.SEA.fullName).toBe("西雅图雨城先锋");
+    expect(state.teams.LVG.fullName).toBe("拉斯维加斯幻影");
+  });
+
+  it("uses the Seattle default name when Las Vegas is player-controlled", () => {
+    const state = createTeam("stage3-seattle-ai-default", "LVG");
+    expect(state.teams.SEA.fullName).toBe("西雅图超音速");
+    expect(state.teams.LVG.fullName).toBe("拉斯维加斯幻影");
   });
 
   it("atomically settles options and opens draft preparation after the rights choice", () => {
@@ -166,6 +195,29 @@ describe("Stage 3 expansion flow", () => {
     }
   });
 
+  it("protects Anthony Davis as an elite short-term veteran asset", () => {
+    const state = reachBundledTrade("stage3-protect-davis");
+    expect(state.expansion?.protectionLists.WAS.protectedPlayerIds).toContain("nba:203076");
+  });
+
+  it("protects expiring Jimmy Butler for a competitive team but allows a rebuild to expose him", () => {
+    const competitive = reachBundledTrade("stage3-protect-butler-competitive");
+    expect(competitive.expansion?.protectionLists.GSW.protectedPlayerIds).toContain("nba:202710");
+
+    let rebuild = createExpansionCareerFromBundledDataset("stage3-expose-butler-rebuild");
+    rebuild.aiTeamProfiles.GSW.direction = "REBUILD";
+    const preset = EXPANSION_BRAND_PRESETS.SEA[0];
+    rebuild = dispatch(rebuild, {
+      commandId: "create-rebuild-team",
+      type: "CREATE_EXPANSION_TEAM",
+      payload: { cityId: "SEA", presetId: preset.presetId, teamName: preset.teamName, primaryColor: preset.primaryColor, secondaryColor: preset.secondaryColor },
+    });
+    rebuild = dispatch(rebuild, { commandId: "choose-rebuild-package", type: "CHOOSE_RIGHTS_PACKAGE", payload: { packageId: "A" } });
+    rebuild = dispatch(rebuild, { commandId: "resolve-rebuild-options", type: "RESOLVE_OPTION_PHASE", payload: {} });
+    rebuild = dispatch(rebuild, { commandId: "prepare-rebuild-trade", type: "PREPARE_EXPANSION_TRADE", payload: {} });
+    expect(rebuild.expansion?.protectionLists.GSW.protectedPlayerIds).not.toContain("nba:202710");
+  });
+
   it("reserves a trade atomically and makes command retries idempotent", () => {
     const state = reachTrade("stage3-trade");
     const offer = state.expansion?.tradeOffers.find((entry) => entry.targetExpansionTeamId === state.userTeamId && entry.status === "AVAILABLE");
@@ -191,6 +243,54 @@ describe("Stage 3 expansion flow", () => {
     expect(accepted.expansion?.sourceTeamLossOwner[offer?.sourceTeamId as string]).toBe(accepted.userTeamId);
   });
 
+  it("automatically brings a trade-designated player into the draft roster without asking for confirmation", () => {
+    let state = reachTrade("stage3-player-turn-feedback");
+    const offer = state.expansion?.tradeOffers.find((entry) => entry.targetExpansionTeamId === state.userTeamId
+      && entry.type === "SELECT_PLAYER" && entry.status === "AVAILABLE");
+    expect(offer).toBeDefined();
+    state = dispatch(state, { commandId: "accept-forced-player", type: "ACCEPT_EXPANSION_TRADE", payload: { offerId: offer?.id as string } });
+    expect(state.expansion?.lastNotice).toContain("自动加入阵容");
+    const commitment = state.expansion?.commitments.find((entry) => entry.targetPlayerId === offer?.targetPlayerId);
+    const before = stableHash(stableSerialize(state));
+    const startCommand = { commandId: "start-forced-draft", type: "START_EXPANSION_DRAFT", payload: {} } as const;
+    const started = dispatch(state, startCommand);
+
+    expect(stableHash(stableSerialize(state))).toBe(before);
+    expect(dispatch(started, startCommand)).toBe(started);
+    const automaticPick = started.expansion?.picks.find((pick) => pick.commitmentId === commitment?.id);
+    expect(automaticPick?.playerId).toBe(offer?.targetPlayerId);
+    expect(automaticPick?.teamId).toBe(state.userTeamId);
+    expect(started.players[offer?.targetPlayerId as string].teamId).toBe(state.userTeamId);
+    expect(started.teams[state.userTeamId].playerIds).toContain(offer?.targetPlayerId);
+    expect(started.expansion?.poolStatusByPlayerId[offer?.targetPlayerId as string]).toBe("SELECTED");
+    expect(started.expansion?.commitments.find((entry) => entry.id === commitment?.id)?.status).toBe("FULFILLED");
+    expect(started.draftPicks[commitment?.compensationAssetIds[0] as string].ownerTeamId).toBe(state.userTeamId);
+    expect(started.expansion?.draftOrder[started.expansion.currentPickIndex]).toBe(state.userTeamId);
+    expect(getSelectableExpansionPlayers(started).length).toBeGreaterThan(1);
+    expect(getExpansionDraftCandidatePlayers(started).some((player) => player.id === offer?.targetPlayerId)).toBe(false);
+  });
+
+  it("automatically fulfills multiple designated-player agreements in accepted order", () => {
+    let state = reachTrade("stage3-multiple-forced-players");
+    const offers = state.expansion?.tradeOffers.filter((entry) => entry.targetExpansionTeamId === state.userTeamId
+      && entry.type === "SELECT_PLAYER" && entry.status === "AVAILABLE") ?? [];
+    const acceptedPlayerIds: string[] = [];
+    for (const offer of offers) {
+      try {
+        state = dispatch(state, { commandId: `accept-${offer.id}`, type: "ACCEPT_EXPANSION_TRADE", payload: { offerId: offer.id } });
+        acceptedPlayerIds.push(offer.targetPlayerId);
+      } catch { /* try another legal offer */ }
+      if (acceptedPlayerIds.length === 2) break;
+    }
+    expect(acceptedPlayerIds).toHaveLength(2);
+
+    const started = dispatch(state, { commandId: "start-multiple-forced", type: "START_EXPANSION_DRAFT", payload: {} });
+    expect(started.teams[state.userTeamId].playerIds).toEqual(acceptedPlayerIds);
+    expect(started.expansion?.picks.filter((pick) => pick.teamId === state.userTeamId).map((pick) => pick.playerId)).toEqual(acceptedPlayerIds);
+    expect(started.expansion?.commitments.filter((entry) => entry.type === "SELECT_PLAYER" && entry.expansionTeamId === state.userTeamId).every((entry) => entry.status === "FULFILLED")).toBe(true);
+    expect(started.expansion?.draftOrder[started.expansion.currentPickIndex]).toBe(state.userTeamId);
+  });
+
   it("completes the deterministic 28-pick snake draft with unique ownership", () => {
     const state = finishDraft("stage3-complete");
     expect(state.league.currentPhase).toBe("ROOKIE_DRAFT_PENDING");
@@ -201,6 +301,41 @@ describe("Stage 3 expansion flow", () => {
     expect(new Set(state.expansion?.picks.map((pick) => pick.sourceTeamId)).size).toBe(28);
     expect(state.expansion?.commitments.every((entry) => entry.status === "FULFILLED")).toBe(true);
     expect(state.achievements.EXPANSION_COMPLETE.unlocked).toBe(true);
+    expect(getCapSheet(state, "SEA").total).toBeLessThanOrEqual(LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit);
+    expect(getCapSheet(state, "LVG").total).toBeLessThanOrEqual(LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit);
+  });
+
+  it("rejects a player who would exceed the expansion draft salary limit without mutating state", () => {
+    let state = reachTrade("stage3-salary-limit");
+    state = dispatch(state, { commandId: "start-salary-limit", type: "START_EXPANSION_DRAFT", payload: {} });
+    const expectedPickNumber = (state.expansion?.currentPickIndex ?? 0) + 1;
+    const player = getSelectableExpansionPlayers(state)[0];
+    expect(player).toBeDefined();
+    state.players[player.id].contract.salary = LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit;
+    const before = stableHash(stableSerialize(state));
+
+    expect(() => dispatch(state, {
+      commandId: "over-expansion-cap",
+      type: "SELECT_EXPANSION_PLAYER",
+      payload: { playerId: player.id, expectedPickNumber },
+    })).toThrow(/扩军选秀工资帽限制/);
+    expect(stableHash(stableSerialize(state))).toBe(before);
+  });
+
+  it("rejects a forced-player trade that cannot fit under the expansion draft salary limit", () => {
+    const state = reachTrade("stage3-forced-salary-limit");
+    const offer = state.expansion?.tradeOffers.find((entry) => entry.targetExpansionTeamId === state.userTeamId
+      && entry.type === "SELECT_PLAYER" && entry.status === "AVAILABLE");
+    expect(offer).toBeDefined();
+    state.players[offer?.targetPlayerId as string].contract.salary = LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit;
+    const before = stableHash(stableSerialize(state));
+
+    expect(() => dispatch(state, {
+      commandId: "over-cap-forced-trade",
+      type: "ACCEPT_EXPANSION_TRADE",
+      payload: { offerId: offer?.id as string },
+    })).toThrow(/扩军选秀工资帽限制/);
+    expect(stableHash(stableSerialize(state))).toBe(before);
   });
 
   it("replays the complete Stage 3 command sequence from one seed", () => {
