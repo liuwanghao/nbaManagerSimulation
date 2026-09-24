@@ -3,9 +3,15 @@ import { NBA_PLAYER_DATASET } from "../data/nbaPlayerDataset";
 import { CURRENT_NBA_ROSTER_BY_ID } from "../data/currentNbaRoster";
 import { REAL_2026_DRAFT } from "../data/real2026Draft";
 import { fictionalNameAt } from "../data/playerProfiles";
-import { playerNameZh } from "./playerNameZh";
+import { playerNameZh, playerSurnameZh } from "./playerNameZh";
 
 describe("playerNameZh", () => {
+  it("shows only the surname in compact draft picks", () => {
+    expect(playerSurnameZh("Darryn Peterson")).toBe("彼得森");
+    expect(playerSurnameZh("杨瀚森")).toBe("杨");
+    expect(playerSurnameZh("Nene")).toBe("内内");
+    expect(playerSurnameZh("Example Unknownname")).toBe("Unknownname");
+  });
   it("keeps verified Chinese names and never invents a pseudo-Chinese fallback", () => {
     expect(playerNameZh("张伟")).toBe("张伟");
     expect(playerNameZh("LeBron James")).toBe("勒布朗·詹姆斯");

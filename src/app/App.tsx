@@ -33,9 +33,11 @@ import { GameChrome, SeasonNavigation, type SeasonTab } from "./GameChrome";
 import { playerNameZh } from "./playerNameZh";
 import {
   awardLabel, conferenceLabel, divisionLabel, eventCategoryLabel, humanizeUiText, injurySeverityLabel,
-  moneyLabel, phaseLabel, positionLabel, rotationRoleLabel, slotLabel, teamRoleLabel,
+  moneyLabel, phaseLabel, positionLabel, slotLabel, teamRoleLabel,
 } from "./uiText";
 import { ReferencePlayerCard } from "./ReferencePlayerCard";
+import { TeamRosterPanel } from "./TeamRosterPanel";
+import { SeasonOpeningScreen } from "./SeasonOpeningScreen";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 
@@ -667,12 +669,15 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const runEventCommand = async (command: EventCommand) => {
     if (!saveService) return;
     const targetSlot = activeSlot;
+    const enteringRegularSeason = state.eventState.queue.some((event) => event.eventInstanceId === command.payload.eventInstanceId
+      && (event.definitionId === "franchise_season_opening_001"
+        || event.definitionId === "expansion_complete_001" && playedGames === 0 && state.history.seasons.length === 0));
     setBusy(true);
     try {
       const next = executeEventCommand(state, command);
       await persistState(next, targetSlot);
       setState(next);
-      setStatus(nextPendingEvent(next) ? "事件已处理 · 队列还有待确认事件" : "事件队列已清空 · 可继续模拟");
+      setStatus(enteringRegularSeason ? "常规赛已开启 · 赛程已公布" : nextPendingEvent(next) ? "事件已处理 · 队列还有待确认事件" : "事件队列已清空 · 可继续模拟");
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "事件处理失败，状态未改变");
     } finally {
@@ -727,6 +732,18 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
 
   if (["ROOKIE_DRAFT_PENDING", "OPTION_PHASE", "OFFSEASON_PRE_DRAFT", "DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON"].includes(state.league.currentPhase)) {
     return <><Stage4Flow state={state} busy={busy} status={status} onCommand={runDraftCommand} onContractCommand={runContractCommand} onFreeAgencyCommand={runFreeAgencyCommand} onTradeCommand={runManagerCommand} onRosterCommand={runManagerCommand} onSave={save} onLoad={load} onLoadLatest={loadLatest} saveSlots={saveSlots} activeSlot={activeSlot} onSlotChange={changeActiveSlot} onHome={onExitToHome} onMarkNotificationsRead={markTeamNotificationsRead} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{conflictModal}</>;
+  }
+
+  const seasonOpeningEvent = queuedEvent && (
+    queuedEvent.definitionId === "franchise_season_opening_001"
+    || queuedEvent.definitionId === "expansion_complete_001" && playedGames === 0 && state.history.seasons.length === 0
+  ) ? queuedEvent : null;
+  if (seasonOpeningEvent) {
+    return <><SeasonOpeningScreen seasonId={state.league.seasonId} teamName={myTeam.fullName} rosterCount={myTeam.playerIds.length} busy={busy} onEnter={() => void runEventCommand({
+      commandId: `enter-regular-season-${seasonOpeningEvent.eventInstanceId}`,
+      type: "RESOLVE_EVENT",
+      payload: { eventInstanceId: seasonOpeningEvent.eventInstanceId, choiceId: seasonOpeningEvent.choices[0]?.id ?? "acknowledge" },
+    })} />{conflictModal}</>;
   }
 
   const phaseDone = state.schedule.every((game) => game.status === "FINAL");
@@ -852,8 +869,8 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
         <div className="team-core-metrics regular-team-metrics"><span><small>市场评级</small><b>{myTeam.marketRating.toFixed(0)}</b></span><span><small>球队声望</small><b>{myTeam.franchiseReputation.toFixed(0)}</b></span><span><small>球迷支持</small><b>{myTeam.fanSupport.toFixed(0)}</b></span><span><small>自由球员吸引力</small><b>{myFreeAgentAttraction.toFixed(0)}</b></span></div>
       </section>
 
-      <section hidden={activeTab !== "manage" || manageSubTab !== "roster"} id="season-roster" data-testid="team-roster-card" className="prototype-roster-list cyber-manage-roster">
-        {myRoster.map((player) => <button type="button" className="prototype-roster-player" data-player-id={player.id} onClick={() => setSelectedPlayerId(player.id)} key={player.id}><span className="prototype-position-mark">{positionLabel(player.position)}</span><span className="prototype-player-copy"><b>{playerNameZh(player.name, player.id)}{!player.available && <em>伤病</em>}</b><small>{player.age}岁 ｜ {shortMoney(player.contract.salary)} ｜ {rotationRoleLabel(player.rotationRole)}</small></span><span className="prototype-player-overall"><b>{playerOverall(player).toFixed(0)}</b><small>综合</small></span></button>)}
+      <section hidden={activeTab !== "manage" || manageSubTab !== "roster"} id="season-roster" data-testid="team-roster-card" className="cyber-manage-roster">
+        <TeamRosterPanel players={myRoster} variant="season" onOpenPlayer={setSelectedPlayerId} />
       </section>
 
       {activeTab === "home" && recentUserGames.length > 0 && <section className="recent-games-card regular-recent-games legacy-season-block"><div className="section-heading"><div><span className="section-kicker">比赛归档</span><h2>最近赛果</h2></div><small>{Object.keys(state.userGameDetails).length} / {userSchedule.length}</small></div><div className="recent-game-list">{recentUserGames.map((game, index) => { const won = game.winnerTeamId === state.userTeamId; const opponent = game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId; return <button data-testid={index === 0 ? "latest-game-detail" : undefined} key={game.gameId} onClick={() => setSelectedGameId(game.gameId)}><span className={won ? "game-result win" : "game-result loss"}>{won ? "胜" : "负"}</span><b>{state.teams[opponent].name}</b><small>{game.homeTeamId === state.userTeamId ? "主场" : "客场"}</small><strong>{game.awayScore}–{game.homeScore}</strong></button>; })}</div></section>}
@@ -966,9 +983,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
         ] as const).map(([label, player, key]) => <span key={label}><small>{label}王</small><b>{player?.name ?? "赛季尚未开始"}</b><i>{player ? `${(player.seasonStats[key] / player.seasonStats.games).toFixed(1)} / 场` : "—"}</i></span>)}</div>
       </section>
 
-      <section className="history-card league-hub-card prototype-secondary-details cyber-panel" hidden={activeTab !== "league" || leagueSubTab !== "awards"}><div className="section-heading"><div><span className="section-kicker">赛季荣誉</span><h2>奖项竞争</h2></div></div><div className="awards-race-list">{awardsRace.map((player, index) => <span key={player.id}><b>{index + 1}. {playerNameZh(player.name, player.id)}</b><small>{state.teams[player.teamId]?.name ?? player.teamId} · 综合 {playerOverall(player).toFixed(0)} · 场均 {(player.seasonStats.pts / Math.max(1, player.seasonStats.games)).toFixed(1)} 分</small></span>)}</div><div className="cyber-list-row muted"><span>DPOY / ROY / MIP / Sixth Man</span><small>赛季结束后结算</small></div></section>
+      <section className="history-card league-hub-card prototype-secondary-details cyber-panel" hidden={activeTab !== "league" || leagueSubTab !== "awards"}><div className="section-heading"><div><span className="section-kicker">赛季荣誉</span><h2>奖项竞争</h2></div></div><div className="awards-race-list">{awardsRace.map((player, index) => <span key={player.id}><b>{index + 1}. {playerNameZh(player.name, player.id)}</b><small>{state.teams[player.teamId]?.name ?? player.teamId} · OVR {playerOverall(player).toFixed(0)} · 场均 {(player.seasonStats.pts / Math.max(1, player.seasonStats.games)).toFixed(1)} 分</small></span>)}</div><div className="cyber-list-row muted"><span>DPOY / ROY / MIP / Sixth Man</span><small>赛季结束后结算</small></div></section>
 
-      <section className="history-card league-hub-card prototype-secondary-details cyber-panel" hidden={activeTab !== "league" || leagueSubTab !== "history"}><div className="section-heading"><div><span className="section-kicker">联盟档案</span><h2>球队、动态与名人堂</h2></div></div><div className="league-team-list">{Object.values(state.teams).sort((left, right) => left.conference.localeCompare(right.conference) || left.name.localeCompare(right.name)).map((team) => <span key={team.id}><LogoMark team={team} variant="compact" /><b>{team.fullName}</b><small>{conferenceLabel(team.conference)} · {formatRecord(state.standings[team.id].wins, state.standings[team.id].losses)}</small></span>)}</div><div className="league-news-list">{state.eventState.leagueLog.length ? state.eventState.leagueLog.slice(0, 12).map((entry, index) => <span key={`${index}-${entry}`}>{humanizeUiText(entry)}</span>) : <span>联盟新赛季刚刚开始，暂无重大动态。</span>}</div><div className="hall-list">{hallOfFamers.length ? hallOfFamers.slice(0, 12).map((player) => <span key={player.id}><b>{playerNameZh(player.name, player.id)}</b><small>{player.career?.hallOfFameClass} 届 · 巅峰综合 {player.career?.peakOverall.toFixed(1)}</small></span>) : <span>暂无名人堂球员。</span>}</div></section>
+      <section className="history-card league-hub-card prototype-secondary-details cyber-panel" hidden={activeTab !== "league" || leagueSubTab !== "history"}><div className="section-heading"><div><span className="section-kicker">联盟档案</span><h2>球队、动态与名人堂</h2></div></div><div className="league-team-list">{Object.values(state.teams).sort((left, right) => left.conference.localeCompare(right.conference) || left.name.localeCompare(right.name)).map((team) => <span key={team.id}><LogoMark team={team} variant="compact" /><b>{team.fullName}</b><small>{conferenceLabel(team.conference)} · {formatRecord(state.standings[team.id].wins, state.standings[team.id].losses)}</small></span>)}</div><div className="league-news-list">{state.eventState.leagueLog.length ? state.eventState.leagueLog.slice(0, 12).map((entry, index) => <span key={`${index}-${entry}`}>{humanizeUiText(entry)}</span>) : <span>联盟新赛季刚刚开始，暂无重大动态。</span>}</div><div className="hall-list">{hallOfFamers.length ? hallOfFamers.slice(0, 12).map((player) => <span key={player.id}><b>{playerNameZh(player.name, player.id)}</b><small>{player.career?.hallOfFameClass} 届 · 巅峰 OVR {player.career?.peakOverall.toFixed(1)}</small></span>) : <span>暂无名人堂球员。</span>}</div></section>
 
       {activeTab === "career" && <div className="cyber-subnav" role="tablist" aria-label="生涯档案">{(["overview", "achievements", "history", "milestones"] as const).map((tab) => <button key={tab} className={careerSubTab === tab ? "selected" : ""} onClick={() => setCareerSubTab(tab)}>{({ overview: "生涯总览", achievements: "成就系统", history: "球队历史", milestones: "里程碑" })[tab]}</button>)}</div>}
 
@@ -984,7 +1001,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
         <label className="slot-picker">存档<select disabled={busy} value={activeSlot} onChange={(event) => changeActiveSlot(Number(event.target.value) as 1 | 2 | 3)}><option value={1}>{slotLabel(1)}</option><option value={2}>{slotLabel(2)}</option><option value={3}>{slotLabel(3)}</option></select></label>
         <button className="footer-action" disabled={busy} onClick={() => void save()}>保存{slotLabel(activeSlot)}</button>
         <button className="footer-action" disabled={busy} onClick={() => void load()}>读取{slotLabel(activeSlot)}</button>
-        <span>{usesHupuRoster ? "球员：虎扑阵容/合同 · nba_api 统计可用时叠加 · 能力值为游戏推演" : "数据：虚构测试数据集 · 本地开发预览"}</span>
+        <span>{usesHupuRoster ? "球员：虎扑阵容/合同 · nba_api 统计可用时叠加 · OVR 为游戏推演" : "数据：虚构测试数据集 · 本地开发预览"}</span>
       </footer>
       <SeasonNavigation activeTab={activeTab} onChange={setActiveTab} />
       {queuedEvent?.effectivePause && <EventCard event={queuedEvent} busy={busy} onResolve={runEventCommand} mode="modal" />}

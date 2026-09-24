@@ -26,6 +26,7 @@ describe("RosterService", () => {
     expect(locked.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
     expect(locked.teams[locked.userTeamId].playerIds.length).toBeGreaterThanOrEqual(14);
     expect(locked.schedule).toHaveLength(1312);
+    expect(locked.eventState.queue.map((event) => event.definitionId)).toContain("franchise_season_opening_001");
   });
 
   it("limits the user to two preseason development assignments", () => {

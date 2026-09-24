@@ -11,6 +11,7 @@ import { prepareEmergencyRostersForDay } from "../game/injuries/EmergencyRosterS
 import { emptyPlayerSeasonStats, type GameState } from "../game/state/types";
 import { unlockAchievement } from "../game/career/AchievementService";
 import { enqueueEvent, resolveAllEvents } from "../game/events/EventService";
+import { lockOpeningRoster } from "../game/roster/RosterService";
 import App from "./App";
 import { ExpansionCinematic } from "./ExpansionCinematic";
 import { createBrowserPlatform } from "../platform/PlatformAdapter";
@@ -119,8 +120,8 @@ function createFixturePreview(): GameState {
   }
   if (import.meta.env.DEV && fixtureMode() === "opening") {
     const event = createCareer(CAREER_SEED);
-    enqueueEvent(event, "expansion_complete_001");
-    return event;
+    event.league.currentPhase = "PRESEASON";
+    return lockOpeningRoster(event, true);
   }
   if (import.meta.env.DEV && fixtureMode() === "game") {
     let game = simulateNextGameDay(createCareer(CAREER_SEED));

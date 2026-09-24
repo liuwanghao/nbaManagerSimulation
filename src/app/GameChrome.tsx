@@ -55,6 +55,7 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
   const [inboxOpen, setInboxOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<"save" | "load">(initialDrawerTab ?? "save");
   const openDrawer = (tab: "save" | "load") => {
+    setInboxOpen(false);
     setDrawerTab(tab);
     setDrawerOpen(true);
   };
@@ -72,7 +73,7 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
           {seasonProfile ? <span className="season-chrome-profile"><b>{seasonProfile.teamName}</b><small>{seasonProfile.record} · {seasonProfile.rank}</small></span> : <span>{chromePhase}</span>}
         </div>
         <div className="chrome-actions" title={dataLabel}>
-          {onMarkNotificationsRead && <button className="team-inbox-trigger" type="button" aria-label={`球队通知，${attentionCount} 条未读或待处理`} aria-expanded={inboxOpen} onClick={() => setInboxOpen(true)}><UiIcon name="bell" /><span>通知</span>{attentionCount > 0 && <b>{attentionCount > 99 ? "99+" : attentionCount}</b>}</button>}
+          {onMarkNotificationsRead && <button className="sync-chip team-inbox-trigger" type="button" aria-label={`球队通知，${attentionCount} 条未读或待处理`} aria-expanded={inboxOpen} aria-controls="team-inbox-panel" onClick={() => { setDrawerOpen(false); setInboxOpen((open) => !open); }}><UiIcon name="bell" /><span>通知</span>{attentionCount > 0 && <b>{attentionCount > 99 ? "99+" : attentionCount}</b>}</button>}
           <button className="sync-chip" type="button" disabled={busy} onClick={() => openDrawer("save")}><UiIcon name="save" />存/读档</button>
         </div>
       </header>
@@ -125,7 +126,7 @@ function TeamInboxDrawer({ notifications, attentionCount, unreadIds, busy, onClo
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
   return <div className="team-inbox-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="team-inbox-panel" role="dialog" aria-modal="true" aria-label="球队通知">
+    <section className="team-inbox-panel" id="team-inbox-panel" role="dialog" aria-label="球队通知">
       <header><div><small>球队消息</small><h2>球队通知</h2><span>{attentionCount ? `${attentionCount} 条未读或待处理` : "暂无待处理消息"}</span></div><button type="button" autoFocus aria-label="关闭球队通知" onClick={onClose}>×</button></header>
       <div className="team-inbox-list">{notifications.length ? notifications.map((item) => <article className={`team-inbox-item${item.pending ? " pending" : item.read ? " read" : " unread"}`} key={item.id}>
         <div><small>{item.category === "FREE_AGENCY" ? "自由市场" : item.category === "SEASON" ? "赛季" : "球队"} · {item.seasonId}</small><em>{item.pending ? "待处理" : item.read ? "已读" : "未读"}</em></div>

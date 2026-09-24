@@ -301,6 +301,8 @@ describe("Stage 3 expansion flow", () => {
     expect(new Set(state.expansion?.picks.map((pick) => pick.sourceTeamId)).size).toBe(28);
     expect(state.expansion?.commitments.every((entry) => entry.status === "FULFILLED")).toBe(true);
     expect(state.achievements.EXPANSION_COMPLETE.unlocked).toBe(true);
+    expect(state.eventState.queue.some((event) => event.definitionId === "expansion_complete_001")).toBe(false);
+    expect(state.eventState.lastOccurrenceByDefinition.expansion_complete_001).toBeDefined();
     expect(getCapSheet(state, "SEA").total).toBeLessThanOrEqual(LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit);
     expect(getCapSheet(state, "LVG").total).toBeLessThanOrEqual(LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit);
   });

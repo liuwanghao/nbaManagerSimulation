@@ -12,6 +12,8 @@ import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import type { GameState } from "../state/types";
 import {
   executeFreeAgencyCommand,
+  getFreeAgentContractTerms,
+  getFreeAgentCustomOfferPreview,
   getFreeAgentOfferPreview,
   getFreeAgents,
   getProjectedMarketSalary,
@@ -70,7 +72,7 @@ describe("Stage 4 free agency", () => {
     expect(state.capState.capHolds.length).toBeGreaterThan(0);
   });
 
-  it("reserves cap, keeps the first three-day deadline and makes retries idempotent", () => {
+  it("reserves cap, keeps the first three-day deadline and prevents duplicate offers in one market window", () => {
     let state = executeFreeAgencyCommand(postDraftState("fa-offer"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
     const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA") as (typeof state.players)[string];
     const command = { commandId: "offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 3, year1Salary: 8_000_000, guaranteedPercent: 0.8, rolePromised: "ROTATION" } } as const;
@@ -78,8 +80,55 @@ describe("Stage 4 free agency", () => {
     const deadline = state.freeAgency?.markets[player.id].decisionDeadline;
     expect(state.capState.offerReservations.some((entry) => entry.playerId === player.id)).toBe(true);
     expect(executeFreeAgencyCommand(state, command)).toBe(state);
-    const next = executeFreeAgencyCommand(state, { commandId: "offer-2", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 2, year1Salary: 7_000_000, guaranteedPercent: 1, rolePromised: "BENCH" } });
-    expect(next.freeAgency?.markets[player.id].decisionDeadline).toBe(deadline);
+    expect(getFreeAgentOfferPreview(state, player.id).reason).toBe("本队已向该球员提交报价");
+    expect(() => executeFreeAgencyCommand(state, { commandId: "offer-2", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 2, year1Salary: 7_000_000, guaranteedPercent: 1, rolePromised: "BENCH" } })).toThrow(/already submitted an offer/);
+    expect(state.freeAgency?.markets[player.id].decisionDeadline).toBe(deadline);
+  });
+
+  it("does not reopen bidding after a team offer is rejected during the current market window", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-rejected-reoffer"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA") as (typeof state.players)[string];
+    state = executeFreeAgencyCommand(state, { commandId: "offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 3, year1Salary: 8_000_000, guaranteedPercent: 0.8, rolePromised: "ROTATION" } });
+    const offer = Object.values(state.freeAgency?.offers ?? {}).find((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId);
+    if (!offer) throw new Error("User offer missing");
+    offer.status = "REJECTED";
+    offer.resolutionReason = "ACTIVE_OFFER_LIMIT";
+    state.capState.offerReservations = state.capState.offerReservations.filter((entry) => entry.offerId !== offer.offerId);
+    expect(getFreeAgentOfferPreview(state, player.id)).toMatchObject({ valid: false, reason: "本队已向该球员提交报价" });
+    expect(() => executeFreeAgencyCommand(state, { commandId: "retry", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 3, year1Salary: 9_000_000, guaranteedPercent: 1, rolePromised: "ROTATION" } })).toThrow(/already submitted an offer/);
+    state.freeAgency!.markets[player.id].marketWindowStatus = "CLOSED_NO_SIGNING";
+    expect(getFreeAgentOfferPreview(state, player.id).valid).toBe(true);
+    const reopened = executeFreeAgencyCommand(state, { commandId: "new-window", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 3, year1Salary: 9_000_000, guaranteedPercent: 1, rolePromised: "ROTATION" } });
+    expect(Object.values(reopened.freeAgency?.offers ?? {}).filter((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId && entry.status === "ACTIVE")).toHaveLength(1);
+  });
+
+  it("stores an editable yearly salary schedule and carries it into the signed contract", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-custom-salary-schedule"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    state.capState.capHolds = [];
+    for (const player of Object.values(state.players)) player.contract.salary = 0;
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    const salaryByYear = [20_000_000, 20_500_000, 21_000_000, 21_500_000];
+    const draft = { years: 4, year1Salary: salaryByYear[0], salaryByYear, guaranteedPercent: 1, rolePromised: "STARTER" as const };
+    expect(getFreeAgentCustomOfferPreview(state, player.id, draft).valid).toBe(true);
+    state = executeFreeAgencyCommand(state, { commandId: "custom-offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...draft } });
+    const offer = Object.values(state.freeAgency?.offers ?? {}).find((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId);
+    expect(offer?.salaryByYear).toEqual(salaryByYear);
+    expect(offer?.totalValue).toBe(salaryByYear.reduce((sum, salary) => sum + salary, 0));
+    for (let day = 0; day < 3 && state.players[player.id].teamId === "FREE_AGENT"; day += 1) {
+      state = executeFreeAgencyCommand(state, { commandId: `custom-day-${day}`, type: "ADVANCE_FA_DAY", payload: {} });
+    }
+    expect(state.players[player.id].teamId).toBe(state.userTeamId);
+    expect(state.players[player.id].contract.salaryByYear).toEqual(salaryByYear);
+  });
+
+  it("rejects a custom yearly schedule that exceeds the annual change limit", () => {
+    const state = executeFreeAgencyCommand(postDraftState("fa-illegal-salary-schedule"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    const draft = { years: 2, year1Salary: 8_000_000, salaryByYear: [8_000_000, 9_000_000], guaranteedPercent: 0.8, rolePromised: "ROTATION" as const };
+    expect(getFreeAgentCustomOfferPreview(state, player.id, draft).reason).toMatch(/5%/);
+    expect(() => executeFreeAgencyCommand(state, { commandId: "bad-schedule", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...draft } })).toThrow(/annual change limit/);
   });
 
   it("rejects an unaffordable offer without mutating the input", () => {
@@ -101,6 +150,110 @@ describe("Stage 4 free agency", () => {
     expect(state.capState.offerReservations.some((entry) => entry.playerId === player.id)).toBe(false);
     expect(state.freeAgency?.markets[player.id].marketWindowStatus).toBe("SIGNED");
     expect(state.teamNotifications?.some((notice) => notice.playerId === player.id && !notice.read)).toBe(true);
+    const accepted = Object.values(state.freeAgency?.offers ?? {}).find((offer) => offer.playerId === player.id && offer.status === "ACCEPTED");
+    expect(accepted).toBeDefined();
+    expect(state.players[player.id].contract.salaryByYear).toHaveLength(accepted?.years ?? 0);
+    expect(state.players[player.id].contract.salaryByYear?.reduce((sum, salary) => sum + salary, 0)).toBe(accepted?.totalValue);
+  });
+
+  it("distinguishes a rejected contract, a signing elsewhere and a roster-system rejection", () => {
+    let offered = executeFreeAgencyCommand(postDraftState("fa-rejection-notifications"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    offered.capState.capHolds = [];
+    for (const player of Object.values(offered.players)) player.contract.salary = 0;
+    const player = getFreeAgents(offered).find((candidate) => candidate.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    offered = executeFreeAgencyCommand(offered, {
+      commandId: "user-offer",
+      type: "SUBMIT_FA_OFFER",
+      payload: {
+        playerId: player.id,
+        years: 1,
+        year1Salary: LEAGUE_FINANCE_CONFIG.minimumSalary,
+        guaranteedPercent: 0,
+        rolePromised: "BENCH",
+      },
+    });
+    const userOffer = Object.values(offered.freeAgency?.offers ?? {}).find((offer) => offer.teamId === offered.userTeamId && offer.playerId === player.id);
+    if (!userOffer || !offered.freeAgency) throw new Error("User offer missing");
+
+    const fillAiRosters = (state: GameState, exceptTeamId?: string) => {
+      for (const team of Object.values(state.teams)) {
+        if (team.id === state.userTeamId || team.id === exceptTeamId) continue;
+        team.playerIds = Array.from({ length: LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum }, (_, index) => `blocked-${team.id}-${index}`);
+      }
+    };
+
+    const rejectedInput = structuredClone(offered);
+    fillAiRosters(rejectedInput);
+    rejectedInput.freeAgency!.offers[userOffer.offerId].utility = 0;
+    rejectedInput.freeAgency!.markets[player.id].decisionDeadline = rejectedInput.freeAgency!.currentDay;
+    const rejected = executeFreeAgencyCommand(rejectedInput, { commandId: "reject-day", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(rejected.freeAgency?.offers[userOffer.offerId]).toMatchObject({ status: "REJECTED", resolutionReason: "PLAYER_REJECTED" });
+    expect(rejected.teamNotifications).toContainEqual(expect.objectContaining({
+      playerId: player.id,
+      title: "球员拒绝合同报价",
+      message: "球员拒绝了本队的合同报价，预留薪资已释放。",
+    }));
+
+    const signedElsewhereInput = structuredClone(offered);
+    const originalTeamId = signedElsewhereInput.freeAgency!.markets[player.id].originalTeamId;
+    const destinationTeamId = Object.keys(signedElsewhereInput.teams).find((teamId) => teamId !== signedElsewhereInput.userTeamId && teamId !== originalTeamId);
+    if (!destinationTeamId) throw new Error("AI destination team missing");
+    fillAiRosters(signedElsewhereInput, destinationTeamId);
+    signedElsewhereInput.freeAgency!.offers[userOffer.offerId].utility = 0;
+    signedElsewhereInput.freeAgency!.markets[player.id].decisionDeadline = signedElsewhereInput.freeAgency!.currentDay;
+    const destinationDraft = { ...getRecommendedFreeAgentOffer(signedElsewhereInput, player.id, destinationTeamId), years: 1 };
+    const destinationTerms = getFreeAgentContractTerms(signedElsewhereInput, player.id, destinationDraft, destinationTeamId);
+    const destinationOfferId = "test-destination-offer";
+    signedElsewhereInput.freeAgency!.offers[destinationOfferId] = {
+      offerId: destinationOfferId,
+      playerId: player.id,
+      teamId: destinationTeamId,
+      createdDay: signedElsewhereInput.freeAgency!.currentDay,
+      expiresDay: signedElsewhereInput.freeAgency!.currentDay,
+      years: destinationDraft.years,
+      year1Salary: destinationDraft.year1Salary,
+      totalValue: destinationTerms.totalValue,
+      guaranteedValue: destinationTerms.guaranteedValue,
+      rolePromised: destinationDraft.rolePromised,
+      capReservation: destinationDraft.year1Salary,
+      utility: 100,
+      status: "ACTIVE",
+      kind: "UFA_OFFER",
+    };
+    signedElsewhereInput.capState.offerReservations.push({
+      offerId: destinationOfferId,
+      playerId: player.id,
+      teamId: destinationTeamId,
+      amount: destinationDraft.year1Salary,
+    });
+    for (let index = 1; index < BALANCE_CONFIG.ai.maxNewFreeAgentOffersPerTeamDay; index += 1) {
+      signedElsewhereInput.freeAgency!.offers[`test-ai-slot-${index}`] = {
+        ...signedElsewhereInput.freeAgency!.offers[destinationOfferId],
+        offerId: `test-ai-slot-${index}`,
+        playerId: `unused-player-${index}`,
+        status: "WITHDRAWN",
+      };
+    }
+    const signedElsewhere = executeFreeAgencyCommand(signedElsewhereInput, { commandId: "sign-day", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(signedElsewhere.players[player.id].teamId).toBe(destinationTeamId);
+    expect(signedElsewhere.teamNotifications).toContainEqual(expect.objectContaining({
+      playerId: player.id,
+      title: "球员拒绝合同报价",
+      message: `球员拒绝了本队的合同报价，并与 ${signedElsewhere.teams[destinationTeamId].fullName} 签约。预留薪资已释放。`,
+    }));
+
+    const rosterFullInput = structuredClone(offered);
+    fillAiRosters(rosterFullInput);
+    rosterFullInput.teams[rosterFullInput.userTeamId].playerIds = Array.from(
+      { length: LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum },
+      (_, index) => `user-roster-slot-${index}`,
+    );
+    const rosterFull = executeFreeAgencyCommand(rosterFullInput, { commandId: "roster-full-day", type: "ADVANCE_FA_DAY", payload: {} });
+    const rosterNotice = rosterFull.teamNotifications?.find((notice) => notice.playerId === player.id && notice.title === "报价因名单已满失效");
+    expect(rosterFull.freeAgency?.offers[userOffer.offerId]).toMatchObject({ status: "REJECTED", resolutionReason: "ROSTER_FULL" });
+    expect(rosterNotice?.message).toBe("球队名单已满，系统已撤销本次合同报价并释放预留薪资。");
+    expect(rosterNotice?.message).not.toContain("球员拒绝");
   });
 
   it("continues settling after a three-day offer for Jalen Duren", () => {
@@ -184,9 +337,18 @@ describe("Stage 4 free agency", () => {
 
     const recommended = getRecommendedFreeAgentOffer(state, player.id);
     const preview = getFreeAgentOfferPreview(state, player.id);
-    expect(preview).toEqual({ draft: recommended, valid: true });
+    expect(preview).toMatchObject({ draft: recommended, valid: true });
+    expect(preview.salaryByYear).toHaveLength(recommended.years);
+    expect(preview.salaryByYear[0]).toBe(recommended.year1Salary);
+    expect(preview.totalValue).toBe(preview.salaryByYear.reduce((sum, salary) => sum + salary, 0));
+    expect(preview.guaranteedValue).toBe(Math.round(preview.totalValue * recommended.guaranteedPercent));
+    expect(preview.salaryByYear.slice(1).every((salary, index) => salary >= preview.salaryByYear[index])).toBe(true);
     expect(recommended.year1Salary).toBe(Math.round(getProjectedMarketSalary(player) / 10_000) * 10_000);
     expect(recommended.guaranteedPercent).toBe(BALANCE_CONFIG.ai.freeAgency.guaranteedPercent);
+    expect(getFreeAgentCustomOfferPreview(state, player.id, {
+      ...recommended,
+      salaryByYear: preview.salaryByYear.map((salary) => Math.round(salary / 10_000) * 10_000),
+    }).valid).toBe(true);
 
     const capped = structuredClone(state);
     for (const playerId of capped.teams[capped.userTeamId].playerIds) capped.players[playerId].contract.salary = 50_000_000;

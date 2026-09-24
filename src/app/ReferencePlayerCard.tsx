@@ -3,6 +3,7 @@ import type { Player } from "../game/state/types";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { playerNameZh } from "./playerNameZh";
 import { portraitSpriteMeta } from "./portraitSprite";
+import { playerRatingStyle } from "./playerRatingColor";
 import { measurementLabel, moneyLabel } from "./uiText";
 
 const ATTRIBUTE_LABELS: Array<[keyof Player["attributes"], string]> = [
@@ -25,14 +26,9 @@ const PERSONALITY_LABELS: Record<Player["personality"], string> = {
   BALANCED: "均衡型",
 };
 
-function ratingClass(value: number): "high" | "mid" | "low" {
-  if (value >= 80) return "high";
-  if (value >= 70) return "mid";
-  return "low";
-}
-
 export function ReferencePlayerCard({ player, teamName }: { player: Player; teamName: string }) {
   const displayName = playerNameZh(player.name, player.id);
+  const overall = calculatePlayerOverall(player);
   const portrait = portraitSpriteMeta(player.id, player.portraitPath);
   const [portraitUnavailable, setPortraitUnavailable] = useState(!portrait);
   useEffect(() => {
@@ -60,8 +56,8 @@ export function ReferencePlayerCard({ player, teamName }: { player: Player; team
             {player.secondaryPosition && player.secondaryPosition !== player.position && <b>{player.secondaryPosition}</b>}
           </div>
         </div>
-        <div className="reference-ovr-badge">
-          <div className="reference-ovr-value">{calculatePlayerOverall(player).toFixed(0)}</div>
+        <div className="reference-ovr-badge player-rating-surface" style={playerRatingStyle(overall)}>
+          <div className="reference-ovr-value player-rating-tone">{overall.toFixed(0)}</div>
           <div className="reference-ovr-label">OVR</div>
         </div>
       </header>
@@ -82,11 +78,10 @@ export function ReferencePlayerCard({ player, teamName }: { player: Player; team
       <div className="reference-attributes-grid">
         {ATTRIBUTE_LABELS.map(([key, label]) => {
           const value = player.attributes[key];
-          const tone = ratingClass(value);
           return <div className="reference-attr-row" key={key}>
             <span className="reference-attr-name">{label}</span>
-            <i className="reference-progress-bg"><em className={tone} style={{ width: `${value}%` }} /></i>
-            <b className={`reference-attr-num ${tone}-text`}>{value.toFixed(0)}</b>
+            <i className="reference-progress-bg"><em className="player-rating-fill" style={{ ...playerRatingStyle(value), width: `${value}%` }} /></i>
+            <b className="reference-attr-num player-rating-tone" style={playerRatingStyle(value)}>{value.toFixed(0)}</b>
           </div>;
         })}
       </div>
