@@ -81,6 +81,7 @@ describe("ContractLifecycleService", () => {
     const first = run();
     const second = run();
     expect(first.players[player.id].contract.status).toBe("RFA");
+    expect(first.players[player.id].contract.qualifyingOfferDecision).toBe("PENDING");
     expect(first.players[player.id].teamId).toBe("FREE_AGENT");
     expect(first.teams.ATL.playerIds).not.toContain(player.id);
     expect(stableHash(stableSerialize(first))).toBe(stableHash(stableSerialize(second)));

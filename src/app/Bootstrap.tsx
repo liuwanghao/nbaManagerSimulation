@@ -6,6 +6,7 @@ import { chooseRightsPackage, createExpansionTeam, getSelectableExpansionPlayers
 import { advanceRookieDraftAiPick, draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../game/draft/DraftService";
 import { enterFreeAgency } from "../game/freeAgency/FreeAgencyService";
 import { rolloverLeagueYear } from "../game/contracts/ContractLifecycleService";
+import { getRfaCapHoldAmount } from "../game/contracts/ContractRules";
 import { applyInjuryEvents } from "../game/simulation/injuries";
 import { prepareEmergencyRostersForDay } from "../game/injuries/EmergencyRosterService";
 import { emptyPlayerSeasonStats, type GameState } from "../game/state/types";
@@ -48,11 +49,23 @@ function createStage4Fixture(mode: string): GameState {
       ? draftPlayer(visual, getAvailableDraftProspects(visual)[0].id, pick.pickNumber)
       : advanceRookieDraftAiPick(visual, pick.pickNumber);
   }
+  if (mode === "qualifying-offer") {
+    const player = Object.values(visual.players).find((candidate) => candidate.teamId === "FREE_AGENT" && candidate.contract.status === "UFA");
+    if (player) {
+      player.contract.status = "RFA";
+      player.contract.qualifyingOfferDecision = "PENDING";
+      player.birdTeamId = visual.userTeamId;
+      player.birdYears = 4;
+      visual.capState.capHolds = visual.capState.capHolds.filter((hold) => hold.playerId !== player.id);
+      visual.capState.capHolds.push({ playerId: player.id, teamId: visual.userTeamId, amount: getRfaCapHoldAmount(player), type: "RFA" });
+    }
+    return visual;
+  }
   return mode === "free-agency" ? enterFreeAgency(visual) : visual;
 }
 
 function createFixturePreview(): GameState {
-  if (import.meta.env.DEV && ["stage4-intro", "rookie-draft", "post-draft", "free-agency"].includes(fixtureMode() ?? "")) {
+  if (import.meta.env.DEV && ["stage4-intro", "rookie-draft", "post-draft", "qualifying-offer", "free-agency"].includes(fixtureMode() ?? "")) {
     return createStage4Fixture(fixtureMode() as string);
   }
   if (import.meta.env.DEV && fixtureMode() === "preseason") {

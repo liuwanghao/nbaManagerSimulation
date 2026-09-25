@@ -8,12 +8,14 @@ import { createRng } from "../random/xoshiro";
 import { marketFitScore, personalityOfferWeights } from "../player/MarketPreferenceService";
 import { addTeamNotification } from "../notifications/TeamNotificationService";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
-import type { FreeAgentOffer, FreeAgentOfferResolutionReason, FreeAgencyState, GameState, Player, PromisedRole } from "../state/types";
+import type { ContractYearOption, FreeAgentOffer, FreeAgentOfferResolutionReason, FreeAgencyState, GameState, Player, PromisedRole } from "../state/types";
 import { freeAgentAttraction } from "../team/TeamSystemService";
+import { getQualifyingOfferAmount, getRfaCapHoldAmount } from "../contracts/ContractRules";
 
 export type FreeAgencyCommand =
   | { commandId: string; type: "ENTER_FREE_AGENCY"; payload: Record<string, never> }
-  | { commandId: string; type: "SUBMIT_FA_OFFER"; payload: { playerId: string; years: number; year1Salary: number; salaryByYear?: number[]; guaranteedPercent: number; rolePromised: PromisedRole } }
+  | { commandId: string; type: "RESOLVE_QUALIFYING_OFFER"; payload: { playerId: string; decision: "TENDER" | "DECLINE" } }
+  | { commandId: string; type: "SUBMIT_FA_OFFER"; payload: { playerId: string; years: number; year1Salary: number; annualRaiseRate?: number; salaryByYear?: number[]; finalYearOption?: ContractYearOption; guaranteedPercent: number; rolePromised: PromisedRole } }
   | { commandId: string; type: "WITHDRAW_FA_OFFER"; payload: { offerId: string } }
   | { commandId: string; type: "ADVANCE_FA_DAY"; payload: Record<string, never> }
   | { commandId: string; type: "RESOLVE_USER_RFA"; payload: { decision: "MATCH" | "DECLINE" } };
@@ -21,7 +23,9 @@ export type FreeAgencyCommand =
 export interface FreeAgentOfferDraft {
   years: number;
   year1Salary: number;
+  annualRaiseRate?: number;
   salaryByYear?: number[];
+  finalYearOption?: ContractYearOption;
   guaranteedPercent: number;
   rolePromised: PromisedRole;
 }
@@ -32,6 +36,9 @@ export interface FreeAgentOfferPreview {
   totalValue: number;
   guaranteedValue: number;
   annualRaiseRate: number;
+  maximumAnnualRaiseRate: number;
+  finalYearOption: ContractYearOption;
+  optionByYear: ContractYearOption[];
   valid: boolean;
   reason?: string;
 }
@@ -41,11 +48,15 @@ export interface FreeAgentContractTerms {
   totalValue: number;
   guaranteedValue: number;
   annualRaiseRate: number;
+  maximumAnnualRaiseRate: number;
+  finalYearOption: ContractYearOption;
+  optionByYear: ContractYearOption[];
 }
 
 const cfg = BALANCE_CONFIG.freeAgency;
 const clamp = (value: number): number => Math.max(0, Math.min(100, value));
 const salaryDisplayRoundingTolerance = 5_000;
+const contractYearOptions: ContractYearOption[] = ["NONE", "TEAM_OPTION", "PLAYER_OPTION"];
 
 function hasSubmittedOfferInCurrentWindow(freeAgency: FreeAgencyState, teamId: string, playerId: string): boolean {
   const market = freeAgency.markets[playerId];
@@ -81,9 +92,14 @@ export function getRecommendedFreeAgentOffer(state: GameState, playerId: string,
   const rolePromised = expectedRole(player);
   const originalTeamId = state.freeAgency?.markets[playerId]?.originalTeamId;
   const maxYears = originalTeamId === teamId ? LEAGUE_FINANCE_CONFIG.contractYears.ownTeamMaximum : LEAGUE_FINANCE_CONFIG.contractYears.otherTeamMaximum;
+  const annualRaiseRate = originalTeamId === teamId
+    ? LEAGUE_FINANCE_CONFIG.annualRaisePercentages.ownTeam
+    : LEAGUE_FINANCE_CONFIG.annualRaisePercentages.otherTeam;
   return {
     years: Math.max(LEAGUE_FINANCE_CONFIG.contractYears.minimum, Math.min(maxYears, years)),
     year1Salary: Math.min(maxSalary(player), Math.max(LEAGUE_FINANCE_CONFIG.minimumSalary, marketSalary)),
+    annualRaiseRate,
+    finalYearOption: "NONE",
     guaranteedPercent: BALANCE_CONFIG.ai.freeAgency.guaranteedPercent,
     rolePromised,
   };
@@ -97,21 +113,33 @@ export function getFreeAgentContractTerms(
 ): FreeAgentContractTerms {
   if (!state.players[playerId]) throw new Error("Unknown free agent");
   const originalTeamId = state.freeAgency?.markets[playerId]?.originalTeamId;
-  const annualRaiseRate = originalTeamId === teamId
+  const maximumAnnualRaiseRate = originalTeamId === teamId
     ? LEAGUE_FINANCE_CONFIG.annualRaisePercentages.ownTeam
     : LEAGUE_FINANCE_CONFIG.annualRaisePercentages.otherTeam;
+  const annualRaiseRate = draft.annualRaiseRate ?? maximumAnnualRaiseRate;
   const salaryByYear = draft.salaryByYear
     ? [...draft.salaryByYear]
     : Array.from(
       { length: draft.years },
       (_, index) => Math.round(draft.year1Salary * Math.pow(1 + annualRaiseRate, index)),
     );
+  const finalYearOption = draft.finalYearOption ?? "NONE";
+  const optionByYear = Array.from(
+    { length: draft.years },
+    (_, index): ContractYearOption => index === draft.years - 1 ? finalYearOption : "NONE",
+  );
   const totalValue = salaryByYear.reduce((sum, salary) => sum + salary, 0);
+  const guaranteeEligibleValue = finalYearOption === "TEAM_OPTION"
+    ? totalValue - (salaryByYear[salaryByYear.length - 1] ?? 0)
+    : totalValue;
   return {
     salaryByYear,
     totalValue,
-    guaranteedValue: Math.round(totalValue * draft.guaranteedPercent),
+    guaranteedValue: Math.round(guaranteeEligibleValue * draft.guaranteedPercent),
     annualRaiseRate,
+    maximumAnnualRaiseRate,
+    finalYearOption,
+    optionByYear,
   };
 }
 
@@ -134,12 +162,15 @@ export function getFreeAgentCustomOfferPreview(
   if (player.contract.status === "RFA" && market?.originalTeamId === teamId) return { ...preview, valid: false, reason: "原球队不能提交 RFA 报价单" };
   const maxYears = market?.originalTeamId === teamId ? LEAGUE_FINANCE_CONFIG.contractYears.ownTeamMaximum : LEAGUE_FINANCE_CONFIG.contractYears.otherTeamMaximum;
   if (!Number.isInteger(draft.years) || draft.years < LEAGUE_FINANCE_CONFIG.contractYears.minimum || draft.years > maxYears) return { ...preview, valid: false, reason: `合同年限必须为 ${LEAGUE_FINANCE_CONFIG.contractYears.minimum}～${maxYears} 年` };
+  if (!contractYearOptions.includes(terms.finalYearOption)) return { ...preview, valid: false, reason: "末年选项类型无效" };
+  if (terms.finalYearOption !== "NONE" && draft.years < 2) return { ...preview, valid: false, reason: "球队/球员选项只能用于至少 2 年的合同" };
   if (terms.salaryByYear.length !== draft.years) return { ...preview, valid: false, reason: "逐年薪资数量必须与合同年限一致" };
   if (terms.salaryByYear[0] !== draft.year1Salary) return { ...preview, valid: false, reason: "首年薪资与逐年薪资表不一致" };
   if (terms.salaryByYear.some((salary) => !Number.isFinite(salary) || salary < LEAGUE_FINANCE_CONFIG.minimumSalary)) return { ...preview, valid: false, reason: `每年薪资不得低于 ${Math.round(LEAGUE_FINANCE_CONFIG.minimumSalary / 10_000)} 万美元` };
   const annualRaiseRate = terms.annualRaiseRate;
-  if (terms.salaryByYear.some((salary, index) => salary > Math.round(maxSalary(player) * Math.pow(1 + annualRaiseRate, index)) + salaryDisplayRoundingTolerance)) return { ...preview, valid: false, reason: "逐年薪资超过该球员允许的最高合同" };
-  if (terms.salaryByYear.some((salary, index) => index > 0 && Math.abs(salary - terms.salaryByYear[index - 1]) > Math.ceil(terms.salaryByYear[index - 1] * annualRaiseRate) + salaryDisplayRoundingTolerance)) return { ...preview, valid: false, reason: `相邻年份薪资变动不能超过 ${Math.round(annualRaiseRate * 100)}%` };
+  if (!Number.isFinite(annualRaiseRate) || annualRaiseRate < 0 || annualRaiseRate > terms.maximumAnnualRaiseRate) return { ...preview, valid: false, reason: `年涨幅必须为 0～${Math.round(terms.maximumAnnualRaiseRate * 100)}%` };
+  if (terms.salaryByYear.some((salary, index) => salary > Math.round(maxSalary(player) * Math.pow(1 + terms.maximumAnnualRaiseRate, index)) + salaryDisplayRoundingTolerance)) return { ...preview, valid: false, reason: "逐年薪资超过该球员允许的最高合同" };
+  if (terms.salaryByYear.some((salary, index) => index > 0 && Math.abs(salary - terms.salaryByYear[index - 1]) > Math.ceil(terms.salaryByYear[index - 1] * terms.maximumAnnualRaiseRate) + salaryDisplayRoundingTolerance)) return { ...preview, valid: false, reason: `相邻年份薪资变动不能超过 ${Math.round(terms.maximumAnnualRaiseRate * 100)}%` };
   if (!Number.isFinite(draft.guaranteedPercent) || draft.guaranteedPercent < 0 || draft.guaranteedPercent > 1) return { ...preview, valid: false, reason: "保障比例必须为 0～100%" };
   if (state.teams[teamId].playerIds.length >= getRosterLimit(state.league.currentPhase)) return { ...preview, valid: false, reason: "球队名单已满" };
   const available = getAvailableCapSpace(state, teamId);
@@ -242,23 +273,31 @@ function signAcceptedOffer(state: GameState, offer: FreeAgentOffer, destinationT
   const team = state.teams[destinationTeamId];
   if (!player || !team) throw new Error("Offer references an invalid player or team");
   if (team.playerIds.length >= getRosterLimit(state.league.currentPhase)) throw new Error(`${team.fullName} has reached its roster limit`);
+  const offeredSalaryByYear = offer.salaryByYear ?? [offer.year1Salary];
+  const guaranteeEligibleValue = offer.finalYearOption === "TEAM_OPTION"
+    ? offer.totalValue - (offeredSalaryByYear[offeredSalaryByYear.length - 1] ?? 0)
+    : offer.totalValue;
   const terms = getFreeAgentContractTerms(state, player.id, {
     years: offer.years,
     year1Salary: offer.year1Salary,
+    annualRaiseRate: offer.annualRaiseRate,
     salaryByYear: offer.salaryByYear,
-    guaranteedPercent: offer.totalValue > 0 ? offer.guaranteedValue / offer.totalValue : 0,
+    finalYearOption: offer.finalYearOption,
+    guaranteedPercent: guaranteeEligibleValue > 0 ? offer.guaranteedValue / guaranteeEligibleValue : 0,
     rolePromised: offer.rolePromised,
   }, offer.teamId);
   const salaryByYear = terms.salaryByYear;
   player.teamId = destinationTeamId;
   player.contract = {
     salary: salaryByYear[0], yearsRemaining: offer.years, guaranteedAmount: offer.guaranteedValue,
-    status: "STANDARD", optionType: "NONE", optionDecision: "NOT_APPLICABLE",
+    status: "STANDARD",
+    optionType: terms.finalYearOption === "TEAM_OPTION" ? "TEAM" : terms.finalYearOption === "PLAYER_OPTION" ? "PLAYER" : "NONE",
+    optionDecision: "NOT_APPLICABLE",
     contractId: stableHash(offer.offerId, destinationTeamId, "contract"), contractType: "STANDARD",
     startSeason: state.league.seasonYear, endSeason: state.league.seasonYear + offer.years - 1,
     currentYearIndex: 0, salaryByYear,
     guaranteedByYear: salaryByYear.map((salary, index) => Math.min(salary, Math.max(0, offer.guaranteedValue - salaryByYear.slice(0, index).reduce((sum, value) => sum + value, 0)))),
-    optionByYear: salaryByYear.map(() => "NONE"), signedTeamId: destinationTeamId, signedPhase: state.league.currentPhase,
+    optionByYear: terms.optionByYear, signedTeamId: destinationTeamId, signedPhase: state.league.currentPhase,
   };
   player.birdTeamId = destinationTeamId;
   player.birdYears = 1;
@@ -273,7 +312,7 @@ function signAcceptedOffer(state: GameState, offer: FreeAgentOffer, destinationT
   (state.freeAgency as FreeAgencyState).transactionLog.unshift(`${player.name} 与 ${team.fullName} 签约 ${offer.years} 年 / ${Math.round(offer.totalValue / 1_000_000)}M`);
 }
 
-function createOfferMutable(state: GameState, teamId: string, playerId: string, years: number, year1Salary: number, guaranteedPercent: number, rolePromised: PromisedRole, salaryByYear?: number[]): FreeAgentOffer {
+function createOfferMutable(state: GameState, teamId: string, playerId: string, years: number, year1Salary: number, guaranteedPercent: number, rolePromised: PromisedRole, annualRaiseRate?: number, salaryByYear?: number[], finalYearOption: ContractYearOption = "NONE"): FreeAgentOffer {
   assertPhaseAllowed(state, "Submit free-agent offer", ["OFFSEASON_POST_DRAFT", "PRESEASON"]);
   const freeAgency = state.freeAgency;
   const player = state.players[playerId];
@@ -289,11 +328,14 @@ function createOfferMutable(state: GameState, teamId: string, playerId: string, 
   if (!Number.isFinite(year1Salary) || year1Salary < LEAGUE_FINANCE_CONFIG.minimumSalary || year1Salary > maxSalary(player)) throw new Error("Year-one salary is outside legal limits");
   if (guaranteedPercent < 0 || guaranteedPercent > 1) throw new Error("Guaranteed percentage is invalid");
   if (state.teams[teamId].playerIds.length >= getRosterLimit(state.league.currentPhase)) throw new Error("Team roster is already full");
-  const terms = getFreeAgentContractTerms(state, playerId, { years, year1Salary, salaryByYear, guaranteedPercent, rolePromised }, teamId);
+  const terms = getFreeAgentContractTerms(state, playerId, { years, year1Salary, annualRaiseRate, salaryByYear, finalYearOption, guaranteedPercent, rolePromised }, teamId);
+  if (!contractYearOptions.includes(terms.finalYearOption)) throw new Error("Final-year option type is invalid");
+  if (terms.finalYearOption !== "NONE" && years < 2) throw new Error("Contract options require at least two years");
   if (terms.salaryByYear.length !== years || terms.salaryByYear[0] !== year1Salary) throw new Error("Salary schedule must match contract length and year-one salary");
   if (terms.salaryByYear.some((salary) => !Number.isFinite(salary) || salary < LEAGUE_FINANCE_CONFIG.minimumSalary)) throw new Error("Each contract year must meet the minimum salary");
-  if (terms.salaryByYear.some((salary, index) => salary > Math.round(maxSalary(player) * Math.pow(1 + terms.annualRaiseRate, index)) + salaryDisplayRoundingTolerance)) throw new Error("Salary schedule exceeds legal limits");
-  if (terms.salaryByYear.some((salary, index) => index > 0 && Math.abs(salary - terms.salaryByYear[index - 1]) > Math.ceil(terms.salaryByYear[index - 1] * terms.annualRaiseRate) + salaryDisplayRoundingTolerance)) throw new Error("Salary schedule exceeds the annual change limit");
+  if (!Number.isFinite(terms.annualRaiseRate) || terms.annualRaiseRate < 0 || terms.annualRaiseRate > terms.maximumAnnualRaiseRate) throw new Error("Annual raise rate exceeds the legal limit");
+  if (terms.salaryByYear.some((salary, index) => salary > Math.round(maxSalary(player) * Math.pow(1 + terms.maximumAnnualRaiseRate, index)) + salaryDisplayRoundingTolerance)) throw new Error("Salary schedule exceeds legal limits");
+  if (terms.salaryByYear.some((salary, index) => index > 0 && Math.abs(salary - terms.salaryByYear[index - 1]) > Math.ceil(terms.salaryByYear[index - 1] * terms.maximumAnnualRaiseRate) + salaryDisplayRoundingTolerance)) throw new Error("Salary schedule exceeds the annual change limit");
   const { totalValue, guaranteedValue } = terms;
   const offerId = stableHash(state.seeds.seasonSeed, "fa-offer", teamId, playerId, freeAgency.currentDay, Object.keys(freeAgency.offers).length);
   const market = freeAgency.markets[playerId] ?? {
@@ -310,7 +352,8 @@ function createOfferMutable(state: GameState, teamId: string, playerId: string, 
   const draftOffer: Omit<FreeAgentOffer, "utility"> = {
     offerId, playerId, teamId, createdDay: freeAgency.currentDay,
     expiresDay: Math.min(freeAgency.currentDay + cfg.offerValidDays - 1, market.decisionDeadline),
-    years, year1Salary, salaryByYear: terms.salaryByYear, totalValue, guaranteedValue, rolePromised,
+    years, year1Salary, annualRaiseRate: terms.annualRaiseRate, salaryByYear: terms.salaryByYear,
+    finalYearOption: terms.finalYearOption, totalValue, guaranteedValue, rolePromised,
     capReservation: year1Salary, status: "ACTIVE",
     kind: player.contract.status === "RFA" ? "RFA_OFFER_PROPOSAL" : "UFA_OFFER",
   };
@@ -331,11 +374,73 @@ function createOfferMutable(state: GameState, teamId: string, playerId: string, 
   return offer;
 }
 
+function replaceFreeAgentCapHold(state: GameState, player: Player, teamId: string): void {
+  state.capState.capHolds = state.capState.capHolds.filter((hold) => hold.playerId !== player.id);
+  if (player.contract.status === "RFA") {
+    state.capState.capHolds.push({ playerId: player.id, teamId, amount: getRfaCapHoldAmount(player), type: "RFA" });
+  } else if ((player.birdYears ?? 0) >= LEAGUE_FINANCE_CONFIG.capHolds.birdEligibilityYears) {
+    state.capState.capHolds.push({
+      playerId: player.id,
+      teamId,
+      amount: Math.min(
+        Math.max(player.contract.salary * LEAGUE_FINANCE_CONFIG.capHolds.birdUfaPreviousSalaryMultiplier, LEAGUE_FINANCE_CONFIG.minimumSalary),
+        maxSalary(player),
+      ),
+      type: "BIRD_UFA",
+    });
+  }
+}
+
+export function getPendingUserQualifyingOfferPlayers(state: GameState): Player[] {
+  if (state.freeAgency?.opened) return [];
+  return Object.values(state.players)
+    .filter((player) => player.teamId === "FREE_AGENT"
+      && player.contract.status === "RFA"
+      && player.birdTeamId === state.userTeamId
+      && !["TENDERED", "DECLINED"].includes(player.contract.qualifyingOfferDecision ?? "PENDING"))
+    .sort((left, right) => publicPlayerValue(right) - publicPlayerValue(left) || left.id.localeCompare(right.id));
+}
+
+export function resolveQualifyingOffer(input: GameState, playerId: string, decision: "TENDER" | "DECLINE"): GameState {
+  assertPhaseAllowed(input, "Resolve qualifying offer", ["OFFSEASON_POST_DRAFT"]);
+  if (input.freeAgency?.opened) throw new Error("Qualifying offers must be resolved before free agency opens");
+  const player = input.players[playerId];
+  if (!player || player.teamId !== "FREE_AGENT" || player.contract.status !== "RFA" || player.birdTeamId !== input.userTeamId) throw new Error("QUALIFYING_OFFER_NOT_CONTROLLED");
+  if (["TENDERED", "DECLINED"].includes(player.contract.qualifyingOfferDecision ?? "PENDING")) throw new Error("QUALIFYING_OFFER_ALREADY_RESOLVED");
+  const state = structuredClone(input);
+  const nextPlayer = state.players[playerId];
+  if (decision === "TENDER") {
+    nextPlayer.contract.qualifyingOfferDecision = "TENDERED";
+  } else {
+    nextPlayer.contract.qualifyingOfferDecision = "DECLINED";
+    nextPlayer.contract.status = "UFA";
+  }
+  replaceFreeAgentCapHold(state, nextPlayer, state.userTeamId);
+  state.contractLifecycle?.transactionLog.push(decision === "TENDER"
+    ? `你向 ${nextPlayer.name} 提交了资质报价 ${Math.round(getQualifyingOfferAmount(nextPlayer) / 10_000)} 万美元`
+    : `你未向 ${nextPlayer.name} 提交资质报价，球员转为 UFA`);
+  return state;
+}
+
+function resolveAiQualifyingOffers(state: GameState): void {
+  for (const player of Object.values(state.players).sort((left, right) => left.id.localeCompare(right.id))) {
+    if (player.teamId !== "FREE_AGENT" || player.contract.status !== "RFA" || player.contract.qualifyingOfferDecision === "TENDERED") continue;
+    const originalTeamId = player.birdTeamId ?? undefined;
+    if (!originalTeamId || originalTeamId === state.userTeamId) continue;
+    const tender = publicPlayerValue(player) >= BALANCE_CONFIG.ai.freeAgency.rfaMatchValue;
+    player.contract.qualifyingOfferDecision = tender ? "TENDERED" : "DECLINED";
+    if (!tender) player.contract.status = "UFA";
+    replaceFreeAgentCapHold(state, player, originalTeamId);
+  }
+}
+
 export function enterFreeAgency(input: GameState): GameState {
   assertPhaseAllowed(input, "Enter free agency", ["OFFSEASON_POST_DRAFT"]);
   if (!input.rookieDraft?.completed) throw new Error("Rookie Draft must be completed first");
   if (input.freeAgency?.opened) return input;
+  if (getPendingUserQualifyingOfferPlayers(input).length) throw new Error("Resolve every qualifying offer before entering free agency");
   const state = structuredClone(input);
+  resolveAiQualifyingOffers(state);
   const freeAgency: FreeAgencyState = { opened: true, currentDay: 1, offers: {}, markets: {}, settledPlayerDay: {}, transactionLog: [] };
   state.freeAgency = freeAgency;
   for (const player of Object.values(state.players).sort((a, b) => a.id.localeCompare(b.id))) {
@@ -344,16 +449,7 @@ export function enterFreeAgency(input: GameState): GameState {
     if (originalTeamId && state.teams[originalTeamId]) state.teams[originalTeamId].playerIds = state.teams[originalTeamId].playerIds.filter((id) => id !== player.id);
     player.teamId = "FREE_AGENT";
     freeAgency.markets[player.id] = { playerId: player.id, marketWindowStartDay: 0, decisionDeadline: 0, marketWindowStatus: "CLOSED_NO_SIGNING", originalTeamId };
-    if (originalTeamId && player.contract.status === "RFA") {
-      const qo = Math.max(player.contract.salary * LEAGUE_FINANCE_CONFIG.capHolds.qualifyingOfferPreviousSalaryMultiplier, LEAGUE_FINANCE_CONFIG.minimumSalary);
-      if (!state.capState.capHolds.some((hold) => hold.playerId === player.id && hold.teamId === originalTeamId)) {
-        state.capState.capHolds.push({ playerId: player.id, teamId: originalTeamId, amount: qo, type: "RFA" });
-      }
-    } else if (originalTeamId && (player.birdYears ?? LEAGUE_FINANCE_CONFIG.capHolds.birdEligibilityYears) >= LEAGUE_FINANCE_CONFIG.capHolds.birdEligibilityYears) {
-      if (!state.capState.capHolds.some((hold) => hold.playerId === player.id && hold.teamId === originalTeamId)) {
-        state.capState.capHolds.push({ playerId: player.id, teamId: originalTeamId, amount: Math.min(Math.max(player.contract.salary * LEAGUE_FINANCE_CONFIG.capHolds.birdUfaPreviousSalaryMultiplier, LEAGUE_FINANCE_CONFIG.minimumSalary), maxSalary(player)), type: "BIRD_UFA" });
-      }
-    }
+    if (originalTeamId) replaceFreeAgentCapHold(state, player, originalTeamId);
   }
   freeAgency.transactionLog.push("自由市场开启：UFA 与 RFA 已进入统一报价状态机");
   return state;
@@ -361,7 +457,7 @@ export function enterFreeAgency(input: GameState): GameState {
 
 export function submitFreeAgentOffer(input: GameState, payload: Extract<FreeAgencyCommand, { type: "SUBMIT_FA_OFFER" }>["payload"]): GameState {
   const state = structuredClone(input);
-  createOfferMutable(state, state.userTeamId, payload.playerId, payload.years, payload.year1Salary, payload.guaranteedPercent, payload.rolePromised, payload.salaryByYear);
+  createOfferMutable(state, state.userTeamId, payload.playerId, payload.years, payload.year1Salary, payload.guaranteedPercent, payload.rolePromised, payload.annualRaiseRate, payload.salaryByYear, payload.finalYearOption);
   return state;
 }
 
@@ -402,6 +498,7 @@ function generateAiOffers(state: GameState): void {
           Math.min(salary, maxSalary(target)),
           aiFa.guaranteedPercent,
           expectedRole(target),
+          undefined,
         );
         createdOffers += 1;
       } catch { /* deterministic legal skip */ }
@@ -553,6 +650,7 @@ export function executeFreeAgencyCommand(state: GameState, command: FreeAgencyCo
   let next: GameState;
   switch (command.type) {
     case "ENTER_FREE_AGENCY": next = enterFreeAgency(state); break;
+    case "RESOLVE_QUALIFYING_OFFER": next = resolveQualifyingOffer(state, command.payload.playerId, command.payload.decision); break;
     case "SUBMIT_FA_OFFER": next = submitFreeAgentOffer(state, command.payload); break;
     case "WITHDRAW_FA_OFFER": next = withdrawFreeAgentOffer(state, command.payload.offerId); break;
     case "ADVANCE_FA_DAY": next = advanceFreeAgencyDay(state); break;

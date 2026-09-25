@@ -16,6 +16,7 @@ import {
   getFreeAgentCustomOfferPreview,
   getFreeAgentOfferPreview,
   getFreeAgents,
+  getPendingUserQualifyingOfferPlayers,
   getProjectedMarketSalary,
   getRecommendedFreeAgentOffer,
 } from "./FreeAgencyService";
@@ -46,6 +47,88 @@ function postDraftState(seed: string, bundled = false): GameState {
 }
 
 describe("Stage 4 free agency", () => {
+  it("requires the user to resolve qualifying offers before opening the market", () => {
+    const input = postDraftState("fa-qualifying-offer");
+    const player = Object.values(input.players).find((candidate) => candidate.teamId === "FREE_AGENT" && candidate.contract.status === "UFA");
+    if (!player) throw new Error("Free agent missing from test state");
+    player.contract.status = "RFA";
+    player.contract.qualifyingOfferDecision = "PENDING";
+    player.birdTeamId = input.userTeamId;
+    player.birdYears = 4;
+    input.capState.capHolds = input.capState.capHolds.filter((hold) => hold.playerId !== player.id);
+
+    expect(getPendingUserQualifyingOfferPlayers(input).map((candidate) => candidate.id)).toContain(player.id);
+    expect(() => executeFreeAgencyCommand(input, { commandId: "open-too-soon", type: "ENTER_FREE_AGENCY", payload: {} })).toThrow(/qualifying offer/);
+
+    const tendered = executeFreeAgencyCommand(input, { commandId: "tender-qo", type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "TENDER" } });
+    expect(tendered.players[player.id].contract).toMatchObject({ status: "RFA", qualifyingOfferDecision: "TENDERED" });
+    expect(tendered.capState.capHolds).toContainEqual(expect.objectContaining({ playerId: player.id, teamId: input.userTeamId, type: "RFA" }));
+    expect(getPendingUserQualifyingOfferPlayers(tendered)).toHaveLength(0);
+
+    const declined = executeFreeAgencyCommand(input, { commandId: "decline-qo", type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "DECLINE" } });
+    expect(declined.players[player.id].contract).toMatchObject({ status: "UFA", qualifyingOfferDecision: "DECLINED" });
+    expect(declined.capState.capHolds).toContainEqual(expect.objectContaining({ playerId: player.id, teamId: input.userTeamId, type: "BIRD_UFA" }));
+    expect(executeFreeAgencyCommand(declined, { commandId: "open-after-qo", type: "ENTER_FREE_AGENCY", payload: {} }).freeAgency?.opened).toBe(true);
+  });
+
+  it("generates later salaries from the selected raise and enforces the 5% or 8% rights limit", () => {
+    const state = executeFreeAgencyCommand(postDraftState("fa-selected-raise"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    state.capState.capHolds = [];
+    for (const playerId of state.teams[state.userTeamId].playerIds) state.players[playerId].contract.salary = 0;
+    const player = getFreeAgents(state).find((candidate) => candidate.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    const draft = { years: 4, year1Salary: 10_000_000, annualRaiseRate: 0.03, guaranteedPercent: 0.8, rolePromised: "ROTATION" as const };
+    const preview = getFreeAgentCustomOfferPreview(state, player.id, draft);
+    expect(preview).toMatchObject({ valid: true, annualRaiseRate: 0.03, maximumAnnualRaiseRate: 0.05 });
+    expect(preview.salaryByYear).toEqual([10_000_000, 10_300_000, 10_609_000, 10_927_270]);
+    expect(getFreeAgentCustomOfferPreview(state, player.id, { ...draft, annualRaiseRate: 0.06 })).toMatchObject({ valid: false, reason: "年涨幅必须为 0～5%" });
+    expect(() => executeFreeAgencyCommand(state, { commandId: "illegal-raise", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...draft, annualRaiseRate: 0.06 } })).toThrow(/Annual raise rate/);
+
+    state.freeAgency!.markets[player.id].originalTeamId = state.userTeamId;
+    expect(getFreeAgentCustomOfferPreview(state, player.id, { ...draft, annualRaiseRate: 0.08 })).toMatchObject({ valid: true, maximumAnnualRaiseRate: 0.08 });
+  });
+
+  it("stores a final-year team or player option and carries it into the signed contract", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-contract-options"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    state.capState.capHolds = [];
+    for (const playerId of state.teams[state.userTeamId].playerIds) state.players[playerId].contract.salary = 0;
+    const player = getFreeAgents(state).find((candidate) => candidate.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    const draft = {
+      years: 4,
+      year1Salary: 30_000_000,
+      annualRaiseRate: 0,
+      finalYearOption: "TEAM_OPTION" as const,
+      guaranteedPercent: 1,
+      rolePromised: "STARTER" as const,
+    };
+    const teamOptionPreview = getFreeAgentCustomOfferPreview(state, player.id, draft);
+    expect(teamOptionPreview).toMatchObject({ valid: true, finalYearOption: "TEAM_OPTION", guaranteedValue: 90_000_000 });
+    expect(teamOptionPreview.optionByYear).toEqual(["NONE", "NONE", "NONE", "TEAM_OPTION"]);
+    expect(getFreeAgentCustomOfferPreview(state, player.id, { ...draft, finalYearOption: "PLAYER_OPTION" })).toMatchObject({
+      valid: true,
+      guaranteedValue: 120_000_000,
+      optionByYear: ["NONE", "NONE", "NONE", "PLAYER_OPTION"],
+    });
+    expect(getFreeAgentCustomOfferPreview(state, player.id, { ...draft, years: 1 })).toMatchObject({
+      valid: false,
+      reason: "球队/球员选项只能用于至少 2 年的合同",
+    });
+
+    state = executeFreeAgencyCommand(state, { commandId: "team-option-offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...draft } });
+    const offer = Object.values(state.freeAgency?.offers ?? {}).find((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId);
+    if (!offer) throw new Error("Option offer missing");
+    expect(offer).toMatchObject({ finalYearOption: "TEAM_OPTION", guaranteedValue: 90_000_000 });
+    offer.utility = 100;
+    state = executeFreeAgencyCommand(state, { commandId: "settle-team-option", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(state.players[player.id].teamId).toBe(state.userTeamId);
+    expect(state.players[player.id].contract).toMatchObject({
+      optionType: "TEAM",
+      optionByYear: ["NONE", "NONE", "NONE", "TEAM_OPTION"],
+      guaranteedByYear: [30_000_000, 30_000_000, 30_000_000, 0],
+    });
+  });
+
   it("identifies cap space rather than roster size as the block for a 16-player team", () => {
     const state = executeFreeAgencyCommand(postDraftState("fa-sixteen-over-cap"), { commandId: "open-over-cap", type: "ENTER_FREE_AGENCY", payload: {} });
     const team = state.teams[state.userTeamId];

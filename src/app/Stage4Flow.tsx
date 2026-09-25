@@ -3,10 +3,11 @@ import { createPortal } from "react-dom";
 import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 import { getCapSheet } from "../game/cap/CapSheetService";
 import { getAvailableDraftProspects, getNextAiDraftProspect, type DraftCommand } from "../game/draft/DraftService";
-import { getFreeAgentContractTerms, getFreeAgentCustomOfferPreview, getFreeAgents, getFreeAgentOfferPreview, type FreeAgencyCommand } from "../game/freeAgency/FreeAgencyService";
+import { getFreeAgentContractTerms, getFreeAgentCustomOfferPreview, getFreeAgents, getFreeAgentOfferPreview, getPendingUserQualifyingOfferPlayers, type FreeAgencyCommand } from "../game/freeAgency/FreeAgencyService";
+import { getQualifyingOfferAmount } from "../game/contracts/ContractRules";
 import { evaluateTradeOffer, type TradeCommand } from "../game/trade/TradeService";
 import type { RosterCommand } from "../game/roster/RosterService";
-import type { GameState, Player, PromisedRole, TrainingFocus } from "../game/state/types";
+import type { ContractYearOption, GameState, Player, PromisedRole, TrainingFocus } from "../game/state/types";
 import type { ContractLifecycleCommand } from "../game/contracts/ContractLifecycleService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
@@ -63,7 +64,9 @@ const PROMISED_ROLE_OPTIONS: Array<{ value: PromisedRole; label: string }> = [
 interface FreeAgentOfferEditorState {
   playerId: string;
   years: number;
-  salaryByYear: number[];
+  year1Salary: number;
+  annualRaiseRate: number;
+  finalYearOption: ContractYearOption;
   guaranteedPercent: number;
   rolePromised: PromisedRole;
 }
@@ -344,6 +347,7 @@ function PostDraftHub({ state, busy, onFreeAgencyCommand, onRosterCommand }: Pic
   const draft = state.rookieDraft;
   const team = state.teams[state.userTeamId];
   const sheet = getCapSheet(state, state.userTeamId);
+  const pendingQualifyingOffers = getPendingUserQualifyingOfferPlayers(state);
   const myPicks = draft?.pickOrder.filter((pick) => pick.ownerTeamId === state.userTeamId && pick.playerId) ?? [];
   const draftResults = (draft?.pickOrder ?? [])
     .filter((pick) => pick.playerId)
@@ -368,8 +372,16 @@ function PostDraftHub({ state, busy, onFreeAgencyCommand, onRosterCommand }: Pic
         <div><small>可用空间</small><b className={sheet.availableCapSpace < 0 ? "negative" : ""}>{money(sheet.availableCapSpace)}</b></div>
         <div><small>休赛期名单</small><b>{team.playerIds.length} / {LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum}</b></div>
       </div>
+      {pendingQualifyingOffers.length > 0 && <section className="qualifying-offer-panel" aria-labelledby="qualifying-offer-title">
+        <header><div><small>RFA RIGHTS</small><h3 id="qualifying-offer-title">资质报价决策</h3></div><b>{pendingQualifyingOffers.length} 人待处理</b></header>
+        <p>提交资质报价可保留匹配权；不提交则球员转为 UFA，但已有 Bird Rights 与对应 Cap Hold 仍保留。</p>
+        <div>{pendingQualifyingOffers.map((player) => <article key={player.id}>
+          <span><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · OVR {calculatePlayerOverall(player).toFixed(0)} · QO {money(getQualifyingOfferAmount(player))}</small></span>
+          <span><button type="button" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `qo-tender-${state.league.seasonId}-${player.id}`, type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "TENDER" } })}>提交 QO</button><button type="button" className="decline" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `qo-decline-${state.league.seasonId}-${player.id}`, type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "DECLINE" } })}>不提交</button></span>
+        </article>)}</div>
+      </section>}
       <div className="terminal-notice"><span>i</span><p>下一阶段：开放常规交易、受限自由球员报价单与 {BALANCE_CONFIG.freeAgency.decisionWindowDays} 日决策窗口。</p></div>
-      <div className="terminal-sticky-action"><button className="terminal-primary-button" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `enter-free-agency-${state.league.seasonId}`, type: "ENTER_FREE_AGENCY", payload: {} })}>进入自由市场 ➔</button></div>
+      <div className="terminal-sticky-action"><button className="terminal-primary-button" disabled={busy || pendingQualifyingOffers.length > 0} onClick={() => onFreeAgencyCommand({ commandId: `enter-free-agency-${state.league.seasonId}`, type: "ENTER_FREE_AGENCY", payload: {} })}>{pendingQualifyingOffers.length > 0 ? `请先处理 ${pendingQualifyingOffers.length} 份资质报价` : "进入自由市场 ➔"}</button></div>
       {resultsOpen && <div className="draft-results-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setResultsOpen(false); }}><section className="draft-results-dialog" role="dialog" aria-modal="true" aria-label="完整选秀结果"><header><div><span>全联盟选秀档案</span><h2>{state.league.seasonYear} 选秀结果</h2><small>按选秀顺位排列 · {draftResults.length} 个完成签位</small></div><button type="button" onClick={() => setResultsOpen(false)} aria-label="关闭">×</button></header><div className="draft-results-list"><ol className="draft-result-pick-list">{draftResults.map((entry) => {
         const player = state.players[entry.playerId as string];
         const owner = state.teams[entry.ownerTeamId];
@@ -527,8 +539,9 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
   const offerPlayer = offerEditor ? state.players[offerEditor.playerId] : undefined;
   const offerDraft = offerEditor ? {
     years: offerEditor.years,
-    year1Salary: offerEditor.salaryByYear[0] ?? 0,
-    salaryByYear: offerEditor.salaryByYear,
+    year1Salary: offerEditor.year1Salary,
+    annualRaiseRate: offerEditor.annualRaiseRate,
+    finalYearOption: offerEditor.finalYearOption,
     guaranteedPercent: offerEditor.guaranteedPercent,
     rolePromised: offerEditor.rolePromised,
   } : undefined;
@@ -551,27 +564,30 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
     { length: maxOfferYears - LEAGUE_FINANCE_CONFIG.contractYears.minimum + 1 },
     (_, index) => index + LEAGUE_FINANCE_CONFIG.contractYears.minimum,
   );
+  const maximumAnnualRaiseRate = offerEditor
+    ? (freeAgency.markets[offerEditor.playerId]?.originalTeamId === currentTeamId
+      ? LEAGUE_FINANCE_CONFIG.annualRaisePercentages.ownTeam
+      : LEAGUE_FINANCE_CONFIG.annualRaisePercentages.otherTeam)
+    : LEAGUE_FINANCE_CONFIG.annualRaisePercentages.otherTeam;
+  const offerRaiseOptions = Array.from({ length: Math.round(maximumAnnualRaiseRate * 100) + 1 }, (_, index) => index / 100);
   const openOfferEditor = (playerId: string) => {
     const preview = getFreeAgentOfferPreview(state, playerId, currentTeamId);
     setOfferEditor({
       playerId,
       years: preview.draft.years,
-      salaryByYear: [...preview.salaryByYear],
+      year1Salary: preview.draft.year1Salary,
+      annualRaiseRate: preview.annualRaiseRate,
+      finalYearOption: preview.finalYearOption,
       guaranteedPercent: preview.draft.guaranteedPercent,
       rolePromised: preview.draft.rolePromised,
     });
   };
   const setOfferYears = (years: number) => {
-    setOfferEditor((current) => {
-      if (!current) return current;
-      const generated = getFreeAgentContractTerms(state, current.playerId, {
-        years,
-        year1Salary: current.salaryByYear[0],
-        guaranteedPercent: current.guaranteedPercent,
-        rolePromised: current.rolePromised,
-      }, currentTeamId).salaryByYear;
-      return { ...current, years, salaryByYear: generated.map((salary, index) => current.salaryByYear[index] ?? salary) };
-    });
+    setOfferEditor((current) => current ? {
+      ...current,
+      years,
+      finalYearOption: years < 2 ? "NONE" : current.finalYearOption,
+    } : current);
   };
   const visiblePlayers = players
     .filter((player) => positionFilter === "ALL" || player.position === positionFilter || player.secondaryPosition === positionFilter)
@@ -624,7 +640,7 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
         return <article className="fa-reference-player-card" key={player.id} role="button" tabIndex={0} aria-label={`查看${playerNameZh(player.name, player.id)}球员详情`} onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; setSelectedPlayerId(player.id); }} onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); setSelectedPlayerId(player.id); }}>
           <div className="fa-player-copy">
             <div className="fa-player-name"><b>{playerNameZh(player.name, player.id)}</b><em>{positionPairLabel(player.position, player.secondaryPosition)}</em></div>
-            <small className="fa-player-meta-line"><span><strong>自由球员</strong></span><i>·</i><span><strong>{player.age}岁</strong></span><i>·</i><span className="fa-player-contract-summary" title={`${submittedOffer ? "报价首年" : "建议年薪"} ${money(submittedOffer?.year1Salary ?? offer.year1Salary)} · ${submittedOffer?.years ?? offer.years} 年`}>{submittedOffer ? "报价首年" : "建议年薪"} <strong className="cyan">{money(submittedOffer?.year1Salary ?? offer.year1Salary)}</strong> · {submittedOffer?.years ?? offer.years} 年</span></small>
+            <small className="fa-player-meta-line"><span className={`fa-status-badge ${player.contract.status.toLowerCase()}`} title={player.contract.status === "RFA" ? "受限制自由球员：原球队拥有报价匹配权" : "完全自由球员：签约不受原球队匹配限制"}><strong>{player.contract.status}</strong></span><i>·</i><span><strong>{player.age}岁</strong></span><i>·</i><span className="fa-player-contract-summary" title={`${submittedOffer ? "报价首年" : "建议年薪"} ${money(submittedOffer?.year1Salary ?? offer.year1Salary)} · ${submittedOffer?.years ?? offer.years} 年`}>{submittedOffer ? "报价首年" : "建议年薪"} <strong className="cyan">{money(submittedOffer?.year1Salary ?? offer.year1Salary)}</strong> · {submittedOffer?.years ?? offer.years} 年</span></small>
             <small className={`fa-player-status-line deadline${waitingForFirstOffer ? " waiting-first-offer" : ""}${!existing && preview.reason ? " blocked" : ""}`} title={statusText}>{statusText}</small>
           </div>
           <span className="fa-player-ovr" aria-label={`OVR ${ability}`}><small>OVR</small><strong className="player-rating-tone" style={playerRatingStyle(ability)}>{ability}</strong></span>
@@ -636,7 +652,27 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
         </article>;
       })}</div>
       {selectedPlayer && <div className="player-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedPlayerId(null); }}><section className="reference-player-dialog" role="dialog" aria-modal="true" aria-label={`${playerNameZh(selectedPlayer.name, selectedPlayer.id)} 球员详情`}><button className="detail-close" type="button" onClick={() => setSelectedPlayerId(null)} aria-label="关闭球员详情">×</button><ReferencePlayerCard player={selectedPlayer} teamName={selectedPlayerTeamName} /></section></div>}
-      {offerEditor && offerPlayer && offerDraft && customOfferPreview && expectedOfferTerms && createPortal(<div className="player-detail-backdrop fa-offer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setOfferEditor(null); }}><section className="fa-offer-dialog" role="dialog" aria-modal="true" aria-labelledby="fa-offer-dialog-title" aria-describedby="fa-offer-dialog-description" data-testid="fa-offer-dialog"><header><div><small>CONTRACT OFFER</small><h2 id="fa-offer-dialog-title">向 {playerNameZh(offerPlayer.name, offerPlayer.id)} 发起报价</h2><p id="fa-offer-dialog-description">{positionPairLabel(offerPlayer.position, offerPlayer.secondaryPosition)} · OVR {calculatePlayerOverall(offerPlayer).toFixed(0)} · {offerPlayer.age} 岁</p></div><button type="button" aria-label="关闭报价弹窗" disabled={busy} onClick={() => setOfferEditor(null)}>×</button></header><div className="fa-offer-dialog-scroll"><section className="fa-offer-expectation"><div><b>球员期望合同</b><span>系统估算</span></div><p>下方每年左侧为球员期望，输入框为你的报价。外队合同相邻年份薪资变动最多 {Math.round(customOfferPreview.annualRaiseRate * 100)}%。</p></section><div className="fa-offer-controls"><label><span>合同年限</span><select data-testid="fa-offer-years" disabled={busy} value={offerEditor.years} onChange={(event) => setOfferYears(Number(event.target.value))}>{offerYearOptions.map((years) => <option key={years} value={years}>{years} 年</option>)}</select></label><label><span>保障比例</span><div className="fa-offer-percent"><input data-testid="fa-offer-guarantee" type="number" inputMode="numeric" min={0} max={100} step={5} disabled={busy} value={Math.round(offerEditor.guaranteedPercent * 100)} onChange={(event) => setOfferEditor((current) => current ? { ...current, guaranteedPercent: Math.max(0, Math.min(1, Number(event.target.value) / 100)) } : current)} /><b>%</b></div></label><label><span>承诺角色</span><select data-testid="fa-offer-role" disabled={busy} value={offerEditor.rolePromised} onChange={(event) => setOfferEditor((current) => current ? { ...current, rolePromised: event.target.value as PromisedRole } : current)}>{PROMISED_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label></div><section className="fa-offer-salary-editor" aria-label="逐年薪资报价"><header><b>逐年薪资</b><span>单位：万美元</span></header>{offerEditor.salaryByYear.map((salary, index) => <label key={index}><span><b>第 {index + 1} 年</b><small>期望 {offerMoney(expectedOfferTerms.salaryByYear[index])}</small></span><div><input data-testid={`fa-offer-salary-${index + 1}`} aria-label={`第 ${index + 1} 年报价，单位万美元`} type="number" inputMode="numeric" min={Math.round(LEAGUE_FINANCE_CONFIG.minimumSalary / 10_000)} step={10} disabled={busy} value={Math.round(salary / 10_000)} onChange={(event) => setOfferEditor((current) => { if (!current) return current; const salaryByYear = [...current.salaryByYear]; salaryByYear[index] = Math.max(0, Math.round(Number(event.target.value) * 10_000)); return { ...current, salaryByYear }; })} /><em>万美元</em></div></label>)}</section><div className="fa-offer-totals"><span><small>合同总额</small><b>{offerMoney(customOfferPreview.totalValue)}</b></span><span><small>保障金额</small><b>{offerMoney(customOfferPreview.guaranteedValue)}</b></span><span><small>首年占用空间</small><b>{offerMoney(offerDraft.year1Salary)}</b></span></div>{!customOfferPreview.valid && <p className="fa-offer-error" role="alert">{customOfferPreview.reason}</p>}</div><footer><button type="button" disabled={busy} onClick={() => setOfferEditor(null)}>取消</button><button type="button" className="primary" data-testid="submit-fa-offer" disabled={busy || !customOfferPreview.valid} onClick={() => { void onFreeAgencyCommand({ commandId: `offer-${state.league.seasonId}-${freeAgency.currentDay}-${offerPlayer.id}`, type: "SUBMIT_FA_OFFER", payload: { playerId: offerPlayer.id, ...offerDraft } }).then(() => setOfferEditor(null)); }}>{busy ? "提交中…" : "提交报价"}</button></footer></section></div>, document.body)}
+      {offerEditor && offerPlayer && offerDraft && customOfferPreview && expectedOfferTerms && createPortal(
+        <div className="player-detail-backdrop fa-offer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setOfferEditor(null); }}>
+          <section className="fa-offer-dialog" role="dialog" aria-modal="true" aria-labelledby="fa-offer-dialog-title" aria-describedby="fa-offer-dialog-description" data-testid="fa-offer-dialog">
+            <header><div><small>CONTRACT OFFER</small><h2 id="fa-offer-dialog-title">向 {playerNameZh(offerPlayer.name, offerPlayer.id)} 发起报价</h2><p id="fa-offer-dialog-description">{positionPairLabel(offerPlayer.position, offerPlayer.secondaryPosition)} · OVR {calculatePlayerOverall(offerPlayer).toFixed(0)} · {offerPlayer.age} 岁</p></div><button type="button" aria-label="关闭报价弹窗" disabled={busy} onClick={() => setOfferEditor(null)}>×</button></header>
+            <div className="fa-offer-dialog-scroll">
+              <section className="fa-offer-expectation"><div><b>球员期望合同</b><span>系统估算</span></div><p>只需填写首年薪资并选择涨幅，后续年度由系统自动计算。选项仅作用于最后一年：球队选项由球队决定且该年不计入保障金额，球员选项由球员决定。</p></section>
+              <div className="fa-offer-controls">
+                <label><span>合同年限</span><select data-testid="fa-offer-years" disabled={busy} value={offerEditor.years} onChange={(event) => setOfferYears(Number(event.target.value))}>{offerYearOptions.map((years) => <option key={years} value={years}>{years} 年</option>)}</select></label>
+                <label><span>首年薪资</span><div className="fa-offer-money-input"><input data-testid="fa-offer-salary-1" aria-label="第一年报价，单位万美元" type="number" inputMode="numeric" min={Math.round(LEAGUE_FINANCE_CONFIG.minimumSalary / 10_000)} step={10} disabled={busy} value={Math.round(offerEditor.year1Salary / 10_000)} onChange={(event) => setOfferEditor((current) => current ? { ...current, year1Salary: Math.max(0, Math.round(Number(event.target.value) * 10_000)) } : current)} /><b>万美元</b></div></label>
+                <label><span>每年涨幅</span><select data-testid="fa-offer-raise" disabled={busy} value={offerEditor.annualRaiseRate} onChange={(event) => setOfferEditor((current) => current ? { ...current, annualRaiseRate: Number(event.target.value) } : current)}>{offerRaiseOptions.map((rate) => <option key={rate} value={rate}>{Math.round(rate * 100)}%</option>)}</select></label>
+                <label><span>保障比例</span><div className="fa-offer-percent"><input data-testid="fa-offer-guarantee" type="number" inputMode="numeric" min={0} max={100} step={5} disabled={busy} value={Math.round(offerEditor.guaranteedPercent * 100)} onChange={(event) => setOfferEditor((current) => current ? { ...current, guaranteedPercent: Math.max(0, Math.min(1, Number(event.target.value) / 100)) } : current)} /><b>%</b></div></label>
+                <label><span>末年选项</span><select data-testid="fa-offer-option" disabled={busy || offerEditor.years < 2} value={offerEditor.finalYearOption} onChange={(event) => setOfferEditor((current) => current ? { ...current, finalYearOption: event.target.value as ContractYearOption } : current)}><option value="NONE">无选项</option><option value="TEAM_OPTION">球队选项</option><option value="PLAYER_OPTION">球员选项</option></select></label>
+                <label><span>承诺角色</span><select data-testid="fa-offer-role" disabled={busy} value={offerEditor.rolePromised} onChange={(event) => setOfferEditor((current) => current ? { ...current, rolePromised: event.target.value as PromisedRole } : current)}>{PROMISED_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+              </div>
+              <section className="fa-offer-salary-editor" aria-label="逐年薪资预览"><header><b>逐年薪资预览</b><span>系统自动计算</span></header>{customOfferPreview.salaryByYear.map((salary, index) => { const option = customOfferPreview.optionByYear[index]; return <div className="fa-offer-salary-row" key={index}><span><b>第 {index + 1} 年{option !== "NONE" && <em className={`fa-contract-option ${option === "TEAM_OPTION" ? "team" : "player"}`}>{option === "TEAM_OPTION" ? "球队选项" : "球员选项"}</em>}</b><small>期望 {offerMoney(expectedOfferTerms.salaryByYear[index])}</small></span><strong>{offerMoney(salary)}</strong></div>; })}</section>
+              <div className="fa-offer-totals"><span><small>合同总额</small><b>{offerMoney(customOfferPreview.totalValue)}</b></span><span><small>保障金额</small><b>{offerMoney(customOfferPreview.guaranteedValue)}</b></span><span><small>首年占用空间</small><b>{offerMoney(offerDraft.year1Salary)}</b></span></div>
+              {!customOfferPreview.valid && <p className="fa-offer-error" role="alert">{customOfferPreview.reason}</p>}
+            </div>
+            <footer><button type="button" disabled={busy} onClick={() => setOfferEditor(null)}>取消</button><button type="button" className="primary" data-testid="submit-fa-offer" disabled={busy || !customOfferPreview.valid} onClick={() => { void onFreeAgencyCommand({ commandId: `offer-${state.league.seasonId}-${freeAgency.currentDay}-${offerPlayer.id}`, type: "SUBMIT_FA_OFFER", payload: { playerId: offerPlayer.id, ...offerDraft } }).then(() => setOfferEditor(null)); }}>{busy ? "提交中…" : "提交报价"}</button></footer>
+          </section>
+        </div>, document.body)}
       </div>
       {pending && <div className="fa-settle-footer"><div><b>受限自由球员待决定</b><small>{playerNameZh(state.players[pending.playerId].name, state.players[pending.playerId].id)} · 第 {pending.deadline} 天截止</small></div><div className="fa-settle-actions"><button disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `rfa-match-${pending.offerId}`, type: "RESOLVE_USER_RFA", payload: { decision: "MATCH" } })}>匹配</button><button className="decline" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `rfa-decline-${pending.offerId}`, type: "RESOLVE_USER_RFA", payload: { decision: "DECLINE" } })}>放弃</button></div></div>}
     </section>

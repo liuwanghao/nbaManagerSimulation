@@ -69,11 +69,12 @@ export interface PlayerContract {
   currentYearIndex?: number;
   salaryByYear?: number[];
   guaranteedByYear?: number[];
-  optionByYear?: Array<"NONE" | "TEAM_OPTION" | "PLAYER_OPTION">;
+  optionByYear?: ContractYearOption[];
   signedTeamId?: string;
   signedPhase?: string;
   emergencyStatus?: "ACTIVE" | "PENDING_TERMINATION";
   emergencyDailySalary?: number;
+  qualifyingOfferDecision?: "PENDING" | "TENDERED" | "DECLINED";
 }
 
 export interface PlayerAttributes {
@@ -343,6 +344,7 @@ export interface CapState {
 export type FreeAgentOfferStatus = "DRAFT" | "SUBMITTED" | "ACTIVE" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "WITHDRAWN" | "SIGNED_OFFER_SHEET";
 export type FreeAgentOfferResolutionReason = "PLAYER_REJECTED" | "SIGNED_WITH_OTHER_TEAM" | "RFA_MATCHED" | "ROSTER_FULL" | "ACTIVE_OFFER_LIMIT";
 export type PromisedRole = "STARTER" | "SIXTH_MAN" | "ROTATION" | "BENCH";
+export type ContractYearOption = "NONE" | "TEAM_OPTION" | "PLAYER_OPTION";
 
 export interface FreeAgentOffer {
   offerId: string;
@@ -353,6 +355,8 @@ export interface FreeAgentOffer {
   years: number;
   year1Salary: number;
   salaryByYear?: number[];
+  annualRaiseRate?: number;
+  finalYearOption?: ContractYearOption;
   totalValue: number;
   guaranteedValue: number;
   rolePromised: PromisedRole;
