@@ -9,6 +9,7 @@ import { createRng } from "../random/xoshiro";
 import type { GameState, Player, PlayerContract } from "../state/types";
 import { processOffseasonPlayerLifecycle } from "../development/PlayerDevelopmentService";
 import { compressHistoricalArchives } from "../history/HistoryCompressionService";
+import { getRfaCapHoldAmount } from "./ContractRules";
 
 export type ContractLifecycleCommand =
   | { commandId: string; type: "ROLLOVER_LEAGUE_YEAR"; payload: Record<string, never> }
@@ -68,6 +69,7 @@ function expireContract(state: GameState, player: Player, rfaEligible: boolean, 
   player.contract.yearsRemaining = 0;
   player.contract.optionDecision = reason === "DECLINED" ? "DECLINED" : "NOT_APPLICABLE";
   player.contract.guaranteedAmount = 0;
+  player.contract.qualifyingOfferDecision = rfaEligible ? "PENDING" : undefined;
   if (oldTeamId) player.birdTeamId = oldTeamId;
   state.contractLifecycle?.transactionLog.push(`${player.name} · ${reason} · 进入 ${player.contract.status}`);
 }
@@ -202,7 +204,7 @@ function createCapHolds(state: GameState): void {
     const teamId = player.birdTeamId;
     if (player.teamId !== "FREE_AGENT" || !teamId || !state.teams[teamId]) continue;
     if (player.contract.status === "RFA") {
-      state.capState.capHolds.push({ playerId: player.id, teamId, amount: Math.max(player.contract.salary * LEAGUE_FINANCE_CONFIG.capHolds.qualifyingOfferPreviousSalaryMultiplier, LEAGUE_FINANCE_CONFIG.minimumSalary), type: "RFA" });
+      state.capState.capHolds.push({ playerId: player.id, teamId, amount: getRfaCapHoldAmount(player), type: "RFA" });
     } else if (player.contract.status === "UFA" && (player.birdYears ?? 0) >= LEAGUE_FINANCE_CONFIG.capHolds.birdEligibilityYears) {
       state.capState.capHolds.push({ playerId: player.id, teamId, amount: Math.min(Math.max(player.contract.salary * LEAGUE_FINANCE_CONFIG.capHolds.birdUfaPreviousSalaryMultiplier, LEAGUE_FINANCE_CONFIG.minimumSalary), maxSalary(player)), type: "BIRD_UFA" });
     }
