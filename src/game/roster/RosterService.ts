@@ -1,17 +1,21 @@
 import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { publicPlayerValue } from "../ai/AIValueService";
+import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import { generateSchedule, validateSchedule } from "../schedule/schedule";
-import { emptyStanding, type GameState, type Player, type TeamRole, type TrainingFocus } from "../state/types";
+import { emptyStanding, type GameState, type Player, type TeamRole, type TeamRotationPlan, type TrainingFocus } from "../state/types";
 import { enqueueCareerMilestoneEvents, enqueueEvent } from "../events/EventService";
+import { ensureExpansionWelcomeNotification } from "../notifications/TeamNotificationService";
+import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, reconcileRotationAfterRosterChange, validateRotationPlan } from "./RotationPlanService";
 
 export type RosterCommand =
   | { commandId: string; type: "CLOSE_FREE_AGENCY"; payload: Record<string, never> }
   | { commandId: string; type: "WAIVE_PLAYER"; payload: { playerId: string } }
   | { commandId: string; type: "SET_TEAM_ROLE"; payload: { playerId: string; role: TeamRole } }
   | { commandId: string; type: "SET_TRAINING_FOCUS"; payload: { playerId: string; focus: TrainingFocus | null } }
+  | { commandId: string; type: "SET_ROTATION_PLAN"; payload: { plan: TeamRotationPlan } }
   | { commandId: string; type: "LOCK_OPENING_ROSTER"; payload: { confirmMinimumFill: boolean } };
 
 function addDeadMoney(state: GameState, player: Player, teamId: string): void {
@@ -39,6 +43,10 @@ export function waivePlayer(input: GameState, playerId: string): GameState {
   player.birdTeamId = null;
   player.birdYears = 0;
   if (state.trainingPlan) delete state.trainingPlan.assignments[playerId];
+  const remainingPlayers = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]).filter(Boolean);
+  if (state.teams[state.userTeamId].rotationPlan && remainingPlayers.filter((entry) => entry.available && !entry.injury).length >= 5) {
+    state.teams[state.userTeamId].rotationPlan = reconcileRotationAfterRosterChange(remainingPlayers, state.teams[state.userTeamId].rotationPlan);
+  }
   return state;
 }
 
@@ -71,6 +79,22 @@ export function setTeamRole(input: GameState, playerId: string, role: TeamRole):
     if (coreCount >= LEAGUE_FINANCE_CONFIG.rosterLimits.franchiseCoreMaximum) throw new Error("FRANCHISE_CORE_LIMIT_REACHED");
   }
   player.teamRole = role;
+  return state;
+}
+
+export function setRotationPlan(input: GameState, plan: TeamRotationPlan): GameState {
+  assertPhaseAllowed(input, "Set rotation plan", ["PRESEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE", "POSTSEASON", "REGULAR_SEASON", "PLAY_IN", "PLAYOFFS"]);
+  const players = input.teams[input.userTeamId].playerIds.map((id) => input.players[id]).filter(Boolean);
+  validateRotationPlan(players, plan, ["POSTSEASON", "PLAY_IN", "PLAYOFFS"].includes(input.league.currentPhase));
+  const state = structuredClone(input);
+  const clonedPlayers = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]).filter(Boolean);
+  const automatic = buildDefaultRotationPlan(clonedPlayers);
+  const matchesAutomatic = ["PG", "SG", "SF", "PF", "C"].every((slot) => plan.starters[slot as keyof typeof plan.starters] === automatic.starters[slot as keyof typeof automatic.starters])
+    && clonedPlayers.every((player) => (plan.targetMinutes[player.id] ?? 0) === automatic.targetMinutes[player.id])
+    && (!plan.benchOrder || plan.benchOrder.join("|") === automatic.benchOrder?.join("|"));
+  const normalized = normalizeRotationPlan(clonedPlayers, { ...plan, selectionMode: matchesAutomatic ? "AUTO" : "MANUAL" });
+  state.teams[state.userTeamId].rotationPlan = normalized;
+  applyRotationPlanToPlayers(clonedPlayers, normalized);
   return state;
 }
 
@@ -108,15 +132,40 @@ function availableFreeAgents(state: GameState): Player[] {
     .sort((a, b) => publicPlayerValue(b) - publicPlayerValue(a) || a.id.localeCompare(b.id));
 }
 
+function aiRosterRetentionScore(player: Player): number {
+  // Opening roster decisions value current ability first. Guaranteed money is
+  // still owed after a waiver, so it raises the cost of cutting that player.
+  return calculatePlayerOverall(player) * 0.75 + publicPlayerValue(player) * 0.25
+    + player.contract.guaranteedAmount / BALANCE_CONFIG.trade.salaryValueDivisor;
+}
+
+function trimAiRoster(state: GameState, teamId: string, targetSize: number): void {
+  const team = state.teams[teamId];
+  while (team.playerIds.length > targetSize) {
+    const player = team.playerIds.map((id) => state.players[id]).sort((a, b) => aiRosterRetentionScore(a) - aiRosterRetentionScore(b) || a.id.localeCompare(b.id))[0];
+    addDeadMoney(state, player, team.id);
+    team.playerIds = team.playerIds.filter((id) => id !== player.id);
+    player.teamId = "FREE_AGENT";
+    player.contract = { salary: 0, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA", optionType: "NONE", optionDecision: "NOT_APPLICABLE" };
+  }
+}
+
+export function prepareAiFreeAgencyRosters(state: GameState): void {
+  assertPhaseAllowed(state, "Prepare AI free-agency rosters", ["OFFSEASON_POST_DRAFT"]);
+  for (const team of Object.values(state.teams).filter((entry) => entry.id !== state.userTeamId)) {
+    trimAiRoster(state, team.id, LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum);
+  }
+}
+
+export function reserveAiFreeAgencySlot(state: GameState, teamId: string): void {
+  assertPhaseAllowed(state, "Reserve AI free-agency slot", ["OFFSEASON_POST_DRAFT"]);
+  if (teamId === state.userTeamId || !state.teams[teamId]) throw new Error("Invalid AI team");
+  trimAiRoster(state, teamId, LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMinimum);
+}
+
 function normalizeAiRosters(state: GameState): void {
   for (const team of Object.values(state.teams).filter((entry) => entry.id !== state.userTeamId)) {
-    while (team.playerIds.length > LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum) {
-      const player = team.playerIds.map((id) => state.players[id]).sort((a, b) => publicPlayerValue(a) - publicPlayerValue(b) || a.id.localeCompare(b.id))[0];
-      addDeadMoney(state, player, team.id);
-      team.playerIds = team.playerIds.filter((id) => id !== player.id);
-      player.teamId = "FREE_AGENT";
-      player.contract = { salary: 0, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA", optionType: "NONE", optionDecision: "NOT_APPLICABLE" };
-    }
+    trimAiRoster(state, team.id, LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum);
     while (team.playerIds.length < LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMinimum) {
       const player = availableFreeAgents(state)[0];
       if (!player) throw new Error("Not enough free agents to complete AI rosters");
@@ -126,9 +175,10 @@ function normalizeAiRosters(state: GameState): void {
 }
 
 function setRotation(state: GameState, teamId: string): void {
-  const rotation = BALANCE_CONFIG.rosterRotation;
-  state.teams[teamId].playerIds.map((id) => state.players[id]).sort((a, b) => publicPlayerValue(b) - publicPlayerValue(a) || a.id.localeCompare(b.id))
-    .forEach((player, index) => { player.rotationRole = index < rotation.starters ? "STARTER" : index === rotation.sixthManIndex ? "SIXTH_MAN" : index < rotation.rotationEndIndex ? "ROTATION" : "BENCH"; });
+  const players = state.teams[teamId].playerIds.map((id) => state.players[id]).filter(Boolean);
+  const plan = buildDefaultRotationPlan(players);
+  state.teams[teamId].rotationPlan = plan;
+  applyRotationPlanToPlayers(players, plan);
 }
 
 export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean): GameState {
@@ -153,6 +203,7 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
   state.userGameDetails = {};
   state.calendar.currentDateIndex = 0;
   state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+  ensureExpansionWelcomeNotification(state);
   enqueueCareerMilestoneEvents(state);
   enqueueEvent(state, "franchise_season_opening_001");
   return state;
@@ -166,7 +217,8 @@ export function executeRosterCommand(state: GameState, command: RosterCommand): 
     : command.type === "WAIVE_PLAYER" ? waivePlayer(state, command.payload.playerId)
       : command.type === "SET_TEAM_ROLE" ? setTeamRole(state, command.payload.playerId, command.payload.role)
         : command.type === "SET_TRAINING_FOCUS" ? setTrainingFocus(state, command.payload.playerId, command.payload.focus)
-          : lockOpeningRoster(state, command.payload.confirmMinimumFill);
+          : command.type === "SET_ROTATION_PLAN" ? setRotationPlan(state, command.payload.plan)
+            : lockOpeningRoster(state, command.payload.confirmMinimumFill);
   next.commandReceipts[command.commandId] = { payloadHash };
   return next;
 }

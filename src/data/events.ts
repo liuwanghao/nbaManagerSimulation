@@ -5,22 +5,22 @@ type EventSeed = [id: string, title: string, description: string, priority?: num
 
 const seedGroups: Record<string, EventSeed[]> = {
   INJURY: [
-    ["injury_core_major_001", "核心伤病", "{{player_name}} 遭遇重大伤病，轮换计划必须调整。", 90, true],
-    ["injury_recovery_001", "伤员回归", "{{player_name}} 已通过复出评估。", 45],
+    ["injury_core_major_001", "核心球员受伤", "{{player_name}}受伤，预计缺阵 {{games_out}} 场；首发与轮换已自动调整。", 90],
+    ["injury_recovery_001", "伤员回归", "{{player_name}}已恢复出战，首发与轮换已自动重新调整。", 45],
     ["injury_emergency_roster_001", "紧急名单", "可用球员不足，球队启用紧急名单。", 95, true],
-    ["injury_depth_test_001", "阵容深度考验", "连续伤病正在考验球队阵容深度。", 55],
+    ["injury_depth_test_001", "轮换伤病调整", "{{player_name}}受伤，预计缺阵 {{games_out}} 场；首发与轮换已自动调整。", 55],
   ],
   MORALE: [
-    ["morale_role_unhappy_001", "角色不满", "{{player_name}} 对当前角色感到不满。", 70, true],
-    ["morale_team_first_001", "团队至上", "更衣室认可球队最近的无私表现。", 38],
-    ["morale_minutes_001", "上场时间诉求", "{{player_name}} 希望获得更多上场时间。", 62, true],
-    ["morale_veteran_voice_001", "老将发声", "球队老将主动稳定更衣室。", 40],
+    ["morale_role_unhappy_001", "角色不满", "教练，我想在轮换里承担更多责任。能多给我一些上场时间吗？", 70, true],
+    ["morale_team_first_001", "团队至上", "教练，我愿意为球队打无私篮球，也希望能有稳定的出场时间。", 38],
+    ["morale_minutes_001", "上场时间诉求", "教练，我准备好了。下一场能多给我一些上场时间吗？", 62, true],
+    ["morale_veteran_voice_001", "老将发声", "教练，我还能帮助年轻球员，也希望留在轮换里。", 40],
   ],
   ROLE: [
-    ["role_starter_claim_001", "首发诉求", "一名轮换球员认为自己已经配得上首发。", 60, true],
-    ["role_sixth_man_001", "第六人定位", "替补核心逐渐适应第六人角色。", 35],
-    ["role_rookie_growth_001", "新秀角色升级", "新秀的表现推动教练组重新评估定位。", 42],
-    ["role_veteran_reduced_001", "老将角色调整", "老将需要面对出场顺位下降。", 58, true],
+    ["role_starter_claim_001", "首发诉求", "教练，我觉得自己可以打首发。能让我试试吗？", 60, true],
+    ["role_sixth_man_001", "第六人定位", "教练，我想带领第二阵容，能给我更多上场时间吗？", 35],
+    ["role_rookie_growth_001", "新秀角色升级", "教练，我已经适应联盟节奏了。能多给我一些机会吗？", 42],
+    ["role_veteran_reduced_001", "老将角色调整", "教练，我知道轮换在变化，但我还想继续为球队出场。", 58, true],
   ],
   BREAKOUT: [
     ["breakout_scorer_001", "得分爆发", "{{player_name}} 打出赛季代表作。", 45],
@@ -42,11 +42,11 @@ const seedGroups: Record<string, EventSeed[]> = {
   ],
   STREAK: [
     ["streak_winning_003", "三连胜", "球队建立起三场连胜势头。", 32],
-    ["streak_winning_005", "五连胜", "球队豪取五连胜，联盟开始关注。", 52, true],
-    ["streak_winning_010", "十连胜", "十连胜让球队成为联盟焦点。", 75, true],
+    ["streak_winning_005", "五连胜", "球队豪取五连胜，联盟开始关注。", 52],
+    ["streak_winning_010", "十连胜", "十连胜让球队成为联盟焦点。", 75],
     ["streak_losing_003", "三连败", "球队需要尽快终止连败。", 38],
-    ["streak_losing_005", "五连败", "五连败正在动摇更衣室信心。", 64, true],
-    ["streak_losing_010", "十连败", "漫长连败让赛季进入危机。", 82, true],
+    ["streak_losing_005", "五连败", "五连败正在动摇更衣室信心。", 64],
+    ["streak_losing_010", "十连败", "漫长连败让赛季进入危机。", 82],
   ],
   ROOKIE: [
     ["rookie_debut_001", "新秀首秀", "球队新秀完成职业生涯首秀。", 35],
@@ -110,8 +110,11 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     ? [
       {
         id: "increase_role",
-        label: "回应诉求 · 提升角色",
-        effects: [{ effectId: "morale_role_up", type: "PLAYER_MORALE" as const, target: "{{player_id}}", value: 12, executionPhase: "ON_CHOICE" as const }],
+        label: id === "role_starter_claim_001" ? "安排首发并调整轮换" : "增加出场时间",
+        effects: [
+          { effectId: "morale_role_up", type: "PLAYER_MORALE" as const, target: "{{player_id}}", value: 12, executionPhase: "ON_CHOICE" as const },
+          { effectId: "rotation_response", type: "PLAYER_ROTATION" as const, target: "{{player_id}}", value: 6, executionPhase: "ON_CHOICE" as const },
+        ],
       },
       {
         id: "maintain_plan",

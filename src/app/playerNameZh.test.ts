@@ -3,7 +3,8 @@ import { NBA_PLAYER_DATASET } from "../data/nbaPlayerDataset";
 import { CURRENT_NBA_ROSTER_BY_ID } from "../data/currentNbaRoster";
 import { REAL_2026_DRAFT } from "../data/real2026Draft";
 import { fictionalNameAt } from "../data/playerProfiles";
-import { playerNameZh, playerSurnameZh } from "./playerNameZh";
+import { createCareer } from "../game/season/career";
+import { localizePlayerNamesInText, playerNameZh, playerSurnameZh } from "./playerNameZh";
 
 describe("playerNameZh", () => {
   it("shows only the surname in compact draft picks", () => {
@@ -44,5 +45,16 @@ describe("playerNameZh", () => {
     for (const [name, id] of names) {
       expect(playerNameZh(name, id), name).toMatch(/\p{Script=Han}/u);
     }
+  });
+
+  it("localizes player names embedded in event and transaction text", () => {
+    const state = createCareer("localized-event-copy");
+    const players = Object.values(state.players);
+    const player = players.find((candidate) => /[A-Za-z]/u.test(candidate.name));
+    if (!player) throw new Error("Expected an English source player name");
+    const source = `${player.name}受伤；${player.name}的轮换已调整。`;
+    const localized = `${playerNameZh(player.name, player.id)}受伤；${playerNameZh(player.name, player.id)}的轮换已调整。`;
+    expect(localizePlayerNamesInText(source, players)).toBe(localized);
+    expect(player.name).not.toBe(playerNameZh(player.name, player.id));
   });
 });

@@ -3,9 +3,9 @@ import type { GameState } from "../game/state/types";
 
 const SCENES = [
   {
-    eyebrow: "2026 · 联盟特别公告",
+    eyebrow: "2026 · 联盟扩军公告",
     title: "版图，即将改写",
-    copy: "NBA 正式批准新一轮扩军。三十支球队的时代落幕，联盟将迈入三十二队的新纪元。",
+    copy: "联盟正式批准新一轮扩军。三十支球队的时代落幕，三十二队的新纪元即将开启。",
     metric: "30 → 32",
   },
   {
@@ -59,13 +59,11 @@ export function ExpansionCinematic({ state, onComplete }: { state: GameState; on
     <main className={`cinematic-shell cinematic-scene-${sceneIndex + 1}`} data-testid="cinematic-intro">
       <div className="cinematic-backdrop" style={{ backgroundImage: 'linear-gradient(180deg, rgba(2,6,12,.1), rgba(2,6,12,.46) 44%, rgba(2,6,12,.96) 82%), url("./story/opening-arena.jpg")' }} aria-hidden="true" />
       <div className="cinematic-grain" aria-hidden="true" />
-      <div className="cinematic-letterbox cinematic-letterbox-top" aria-hidden="true" />
-      <div className="cinematic-letterbox cinematic-letterbox-bottom" aria-hidden="true" />
 
-      <button className="cinematic-skip" data-testid="cinematic-skip" onClick={onComplete}>跳过序章</button>
+      <button type="button" className="cinematic-skip" data-testid="cinematic-skip" onClick={onComplete}>跳过序章</button>
 
       <section className="cinematic-frame" key={sceneIndex}>
-        {sceneIndex === 0 && <div className="cinematic-league-mark" aria-hidden="true"><span>NBA</span><b>30</b><i>→</i><strong>32</strong></div>}
+        {sceneIndex === 0 && <div className="cinematic-league-mark" aria-label="联盟由三十支球队扩充至三十二支"><b>30</b><i>→</i><strong>32</strong></div>}
         {sceneIndex === 1 && <div className="cinematic-team-shift" aria-label="明尼苏达森林狼从西部转入东部">
           <span className="cinematic-conference">西部</span>
           <div className="cinematic-logo-disc">{state.teams.MIN.logoUrl ? <img src={state.teams.MIN.logoUrl} alt="明尼苏达森林狼队徽" /> : "MIN"}</div>
@@ -76,7 +74,7 @@ export function ExpansionCinematic({ state, onComplete }: { state: GameState; on
           <i>+</i>
           <span><img src="./expansion-logos/las-vegas-default.png" alt="拉斯维加斯扩军队队徽" /><b>拉斯维加斯</b><small>西部联盟</small></span>
         </div>}
-        {sceneIndex === 3 && <div className="cinematic-gm-mark" aria-hidden="true"><span>GM</span><i /><b>EXPANSION ERA</b></div>}
+        {sceneIndex === 3 && <div className="cinematic-gm-mark" aria-hidden="true"><span>经理人</span><i /><b>扩军时代</b></div>}
 
         <div className="cinematic-copy">
           <span>{scene.eyebrow}</span>
@@ -87,8 +85,8 @@ export function ExpansionCinematic({ state, onComplete }: { state: GameState; on
       </section>
 
       <nav className="cinematic-controls" aria-label="序章进度">
-        <div>{SCENES.map((_, index) => <button key={index} className={index === sceneIndex ? "active" : index < sceneIndex ? "viewed" : ""} aria-label={`第 ${index + 1} 幕`} onClick={() => setSceneIndex(index)}><span /></button>)}</div>
-        <button className="cinematic-next" data-testid="cinematic-next" onClick={next}>{isFinal ? "开始建立球队" : "继续"}<span>→</span></button>
+        <div>{SCENES.map((_, index) => <button type="button" key={index} className={index === sceneIndex ? "active" : index < sceneIndex ? "viewed" : ""} aria-label={`第 ${index + 1} 幕`} aria-current={index === sceneIndex ? "step" : undefined} onClick={() => setSceneIndex(index)}><span /></button>)}</div>
+        <button type="button" className="cinematic-next" data-testid="cinematic-next" onClick={next}>{isFinal ? "开始建立球队" : "继续"}<span>→</span></button>
       </nav>
     </main>
   );

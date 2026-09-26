@@ -1,5 +1,6 @@
-import type { Player } from "../state/types";
+import type { Player, Position } from "../state/types";
 import { SIMULATION_CONFIG } from "./config";
+import { positionMismatchPenalty } from "../roster/RotationPlanService";
 
 export const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.max(minimum, Math.min(maximum, value));
@@ -28,7 +29,7 @@ export function minutesWeightedAttribute(players: Player[], seconds: Record<stri
   return players.reduce((sum, player) => sum + player.attributes[key] * (seconds[player.id] ?? 0) / total, 0);
 }
 
-export function teamTalents(players: Player[], seconds: Record<string, number>): {
+export function teamTalents(players: Player[], seconds: Record<string, number>, starterAssignments?: Partial<Record<Position, string>>): {
   offense: number;
   defense: number;
   athleticism: number;
@@ -41,14 +42,20 @@ export function teamTalents(players: Player[], seconds: Record<string, number>):
 } {
   const total = Object.values(seconds).reduce((sum, value) => sum + value, 0);
   const active = players.filter((player) => (seconds[player.id] ?? 0) > 0);
+  const assignedSlotByPlayer = new Map<string, Position>();
+  if (starterAssignments) for (const [slot, playerId] of Object.entries(starterAssignments)) if (playerId) assignedSlotByPlayer.set(playerId, slot as Position);
+  const lineupPenalty = (player: Player): number => {
+    const slot = assignedSlotByPlayer.get(player.id);
+    return slot ? positionMismatchPenalty(player, slot) : 0;
+  };
   const weighted = (getter: (player: Player) => number): number =>
     active.reduce((sum, player) => sum + getter(player) * (seconds[player.id] ?? 0) / total, 0);
   const starImpacts = active
     .map((player) => (playerOffenseImpact(player) + playerDefenseImpact(player)) / 2)
     .sort((a, b) => b - a);
   return {
-    offense: weighted((player) => playerOffenseImpact(player) - fatiguePenalty(player)),
-    defense: weighted((player) => playerDefenseImpact(player) - fatiguePenalty(player)),
+    offense: weighted((player) => playerOffenseImpact(player) - fatiguePenalty(player) - lineupPenalty(player)),
+    defense: weighted((player) => playerDefenseImpact(player) - fatiguePenalty(player) - lineupPenalty(player)),
     athleticism: minutesWeightedAttribute(active, seconds, "athleticism"),
     playmaking: minutesWeightedAttribute(active, seconds, "playmaking"),
     basketballIq: minutesWeightedAttribute(active, seconds, "basketballIq"),

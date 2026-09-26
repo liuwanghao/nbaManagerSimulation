@@ -9,6 +9,8 @@ import { executeExpansionCommand, getSelectableExpansionPlayers } from "../expan
 import { stableHash, stableSerialize } from "../random/hash";
 import { createExpansionCareer } from "../season/career";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
+import { publicPlayerValue } from "../ai/AIValueService";
+import { executeRosterCommand } from "../roster/RosterService";
 import type { GameState } from "../state/types";
 import {
   executeFreeAgencyCommand,
@@ -47,6 +49,34 @@ function postDraftState(seed: string, bundled = false): GameState {
 }
 
 describe("Stage 4 free agency", () => {
+  it("lets the rights team sign an elite RFA before opening night without cutting rotation veterans", () => {
+    let state = executeFreeAgencyCommand(postDraftState("expansion-era-demo", true), {
+      commandId: "opening-fa", type: "ENTER_FREE_AGENCY", payload: {},
+    });
+    const durenId = "nba:1631105";
+    expect(state.freeAgency?.markets[durenId].originalTeamId).toBe("DET");
+    expect(state.capState.capHolds).toContainEqual(expect.objectContaining({ playerId: durenId, teamId: "DET", type: "RFA" }));
+    expect(state.teams.DET.playerIds).toHaveLength(14);
+    for (let day = 1; day <= 3; day += 1) {
+      state = executeFreeAgencyCommand(state, { commandId: `opening-fa-${day}`, type: "ADVANCE_FA_DAY", payload: {} });
+    }
+    expect(state.players[durenId]).toMatchObject({ teamId: "DET", contract: { status: "STANDARD" } });
+    expect(Object.values(state.freeAgency?.offers ?? {}).some((offer) => offer.playerId === durenId
+      && offer.teamId === "DET" && offer.kind === "RFA_OWN_TEAM_OFFER" && offer.status === "ACCEPTED")).toBe(true);
+
+    state = executeRosterCommand(state, { commandId: "opening-close-fa", type: "CLOSE_FREE_AGENCY", payload: {} });
+    while (state.teams[state.userTeamId].playerIds.length > LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum) {
+      const lowest = state.teams[state.userTeamId].playerIds.map((id) => state.players[id])
+        .sort((left, right) => publicPlayerValue(left) - publicPlayerValue(right))[0];
+      state = executeRosterCommand(state, { commandId: `opening-waive-${lowest.id}`, type: "WAIVE_PLAYER", payload: { playerId: lowest.id } });
+    }
+    state = executeRosterCommand(state, { commandId: "opening-lock", type: "LOCK_OPENING_ROSTER", payload: { confirmMinimumFill: true } });
+    for (const playerId of ["nba:1628398", "nba:201572", "nba:203078", "nba:203084", "nba:203903", "nba:202691", "nba:1627739"]) {
+      expect(state.players[playerId].teamId, state.players[playerId].name).not.toBe("FREE_AGENT");
+    }
+    expect(Math.max(...getFreeAgents(state).map(calculatePlayerOverall))).toBeLessThan(78);
+  });
+
   it("requires the user to resolve qualifying offers before opening the market", () => {
     const input = postDraftState("fa-qualifying-offer");
     const player = Object.values(input.players).find((candidate) => candidate.teamId === "FREE_AGENT" && candidate.contract.status === "UFA");

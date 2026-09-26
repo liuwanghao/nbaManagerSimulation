@@ -1,12 +1,31 @@
 import { describe, expect, it } from "vitest";
+import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
+import { calculateAttributeOverall, calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import { addTeamNotification, executeTeamNotificationCommand } from "../game/notifications/TeamNotificationService";
+import { enqueueEvent } from "../game/events/EventService";
 import { MemoryStorageAdapter } from "../platform/storage/StorageAdapter";
 import type { StorageAdapter } from "../platform/storage/StorageAdapter";
 import { SaveService } from "./SaveService";
 
 describe("SaveService", () => {
+  it("backfills new win achievements in an older slot without adding points twice", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("save-achievement-backfill");
+    state.standings[state.userTeamId].wins = 42;
+    delete (state.achievements as Partial<typeof state.achievements>).TWENTY_FIVE_WINS;
+    delete (state.achievements as Partial<typeof state.achievements>).THIRTY_WIN_SEASON;
+    delete (state.achievements as Partial<typeof state.achievements>).FORTY_WIN_SEASON;
+    await service.save(1, state);
+    const loaded = await service.load(1);
+    expect(loaded?.achievements.TWENTY_FIVE_WINS.unlocked).toBe(true);
+    expect(loaded?.achievements.THIRTY_WIN_SEASON.unlocked).toBe(true);
+    expect(loaded?.achievements.FORTY_WIN_SEASON.unlocked).toBe(true);
+    await service.save(1, loaded!);
+    expect((await service.load(1))?.gmCareer.dynastyScore).toBe(loaded?.gmCareer.dynastyScore);
+  });
+
   it("round-trips an atomic career slot without changing state", async () => {
     const service = new SaveService(new MemoryStorageAdapter());
     const state = simulateNextGameDay(createCareer("save-test"));
@@ -30,6 +49,43 @@ describe("SaveService", () => {
     delete read.teamNotifications;
     await service.save(2, read);
     expect((await service.load(2))?.teamNotifications).toEqual([]);
+  });
+
+  it("clears a saved acknowledgement-only injury card while preserving consequential choices", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("legacy-informational-event");
+    const notice = enqueueEvent(state, "injury_depth_test_001", { player_name: "测试球员" });
+    const choice = enqueueEvent(state, "morale_minutes_001", { player_id: state.teams[state.userTeamId].playerIds[0] });
+    if (!notice || !choice) throw new Error("Expected both event fixtures");
+    notice.status = "PENDING";
+    delete notice.selectedChoiceId;
+    state.eventState.queue.push(notice);
+    state.eventState.resolvedInstanceIds = state.eventState.resolvedInstanceIds.filter((id) => id !== notice.eventInstanceId);
+    state.teamNotifications = [];
+    await service.save(1, state);
+
+    const loaded = await service.load(1);
+    expect(loaded?.eventState.queue.map((event) => event.eventInstanceId)).toEqual([choice.eventInstanceId]);
+    expect(loaded?.eventState.resolvedInstanceIds).toContain(notice.eventInstanceId);
+    expect(loaded?.teamNotifications).toContainEqual(expect.objectContaining({
+      id: `event-${notice.eventInstanceId}`, message: expect.stringContaining("测试球员"), read: false,
+    }));
+  });
+
+  it("turns an older major-injury pause into an unread notice on load", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("old-major-injury-pause");
+    const playerId = state.teams[state.userTeamId].playerIds[0];
+    state.injuryState.pendingUserMajorInjury = {
+      injuryId: "old-major-injury", playerId, teamId: state.userTeamId,
+      severity: "LONG", gamesOut: 20, gameId: "old-game", seasonId: state.league.seasonId,
+    };
+    await service.save(1, state);
+    const loaded = await service.load(1);
+    expect(loaded?.injuryState.pendingUserMajorInjury).toBeUndefined();
+    expect(loaded?.teamNotifications).toContainEqual(expect.objectContaining({
+      id: "injury-old-major-injury", message: expect.stringContaining("轮换已自动调整"), read: false,
+    }));
   });
 
   it.each([
@@ -57,6 +113,26 @@ describe("SaveService", () => {
     const loaded = await service.load(1);
     expect(loaded?.players[playerId]).toBeUndefined();
     expect(loaded?.history.retiredPlayerIds).toContain(playerId);
+  });
+
+  it("repairs Horford's old SF/PF save after a trade without changing his OVR or team", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createExpansionCareerFromBundledDataset("horford-position-save");
+    const horford = state.players["nba:201143"];
+    horford.position = "SF";
+    horford.secondaryPosition = "PF";
+    horford.overallAdjustment = 79 - calculateAttributeOverall(horford.attributes, "SF");
+    state.teams.GSW.playerIds = state.teams.GSW.playerIds.filter((id) => id !== horford.id);
+    state.teams[state.userTeamId].playerIds.push(horford.id);
+    horford.teamId = state.userTeamId;
+    const previousOverall = calculatePlayerOverall(horford);
+    await service.save(1, state);
+
+    const loaded = await service.load(1);
+    expect(loaded?.players[horford.id]).toMatchObject({ teamId: state.userTeamId, position: "C", secondaryPosition: "PF" });
+    expect(calculatePlayerOverall(loaded!.players[horford.id])).toBeCloseTo(previousOverall);
+    expect(loaded?.teams[state.userTeamId].playerIds).toContain(horford.id);
+    expect(loaded?.teams.GSW.playerIds).not.toContain(horford.id);
   });
 
   it("saves and restores a verified expansion checkpoint", async () => {
@@ -250,7 +326,8 @@ describe("SaveService", () => {
     const migrated = await service.load(1);
     const migratedPlayer = migrated?.players[player.id];
 
-    expect(migrated?.meta.schemaVersion).toBe(17);
+    expect(migrated?.meta.schemaVersion).toBe(18);
+    expect(migrated?.teams[migrated.userTeamId].rotationPlan).toBeDefined();
     expect(migrated?.history.rebornHistoricalSourceIds).toEqual([]);
     expect(migratedPlayer?.name).not.toMatch(/ Player \d+$/u);
     expect(migratedPlayer?.heightCm).toBeGreaterThanOrEqual(183);

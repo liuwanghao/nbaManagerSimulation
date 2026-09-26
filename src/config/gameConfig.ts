@@ -7,7 +7,7 @@ import { LEAGUE_FINANCE_CONFIG } from "./leagueFinance";
  * 工具、测试和后续配置面板只需要读取 GAME_CONFIG。
  */
 export const GAME_CONFIG = {
-  version: "game-config.v5",
+  version: "game-config.v6",
   balance: BALANCE_CONFIG,
   simulation: SIMULATION_CONFIG,
   finance: LEAGUE_FINANCE_CONFIG,
@@ -49,6 +49,10 @@ export function validateGameConfig(): string[] {
   assert(Math.abs(Object.values(balance.teamCore.freeAgentAttractionWeights).reduce((sum, value) => sum + value, 0) - 1) < 0.0001, "FA Attraction 权重之和必须为 1");
   assert(Object.values(balance.overall.attributeWeightsByPosition).every((weights) =>
     Math.abs(Object.values(weights).reduce((sum, value) => sum + value, 0) - 1) < 0.0001), "各位置 OVR 权重之和必须为 1");
+  assert(balance.teamOverall.minimum < balance.teamOverall.maximum && balance.teamOverall.rawScale > 0, "球队 OVR 映射必须单调且上下限有效");
+  assert(balance.rotationPlan.defaultMinuteWeights.reduce((sum, value) => sum + value, 0) === balance.rotationPlan.regulationMinutes, "默认轮换分钟必须合计 240");
+  assert(balance.rotationPlan.defaultMinuteWeights.every((value) => value <= balance.rotationPlan.regularSeasonMaximumMinutes), "默认轮换不能超过常规赛单人分钟上限");
+  assert(balance.rotationPlan.positionMismatchPenaltyByDistance.every((value, index, values) => index === 0 || value >= values[index - 1]), "错位惩罚必须随位置距离单调递增");
   assert(finance.minimumTeamSalary < finance.salaryCap, "最低球队工资必须低于工资帽");
   assert(finance.salaryCap < finance.luxuryTaxLine && finance.luxuryTaxLine < finance.firstApron && finance.firstApron < finance.secondApron, "工资帽、奢侈税线和 Apron 顺序非法");
   assert(finance.contractYears.minimum <= finance.contractYears.otherTeamMaximum && finance.contractYears.otherTeamMaximum <= finance.contractYears.ownTeamMaximum, "合同年限配置非法");

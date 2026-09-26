@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { PORTRAIT_ATLAS_STRIP_PATHS } from "./src/data/portraitAtlasIds.ts";
 
 const MAX_CODE_FILE_BYTES = 5 * 1024 * 1024;
+const FEEDBACK_API_BASE = "https://feedback-public-d8fnf79rd0e395c3-1252166086.ap-shanghai.app.tcloudbase.com/api";
 const REQUIRED_LOCAL_IMAGES = [
   "story/opening-arena.jpg",
   "story/championship-celebration.jpg",
@@ -57,7 +58,7 @@ function classicStaticScript(): Plugin {
       if (statSync(scriptPath).size >= MAX_CODE_FILE_BYTES) throw new Error("assets/game.js exceeds the 5 MiB upload limit");
       const script = readFileSync(scriptPath, "utf8");
       const remoteUrls = script.match(/https?:\/\/[^\s"'`<>]+/gu) ?? [];
-      if (remoteUrls.some((url) => !url.startsWith("http://www.w3.org/"))) throw new Error("Non-whitelisted remote URL in game.js");
+      if (remoteUrls.some((url) => !url.startsWith("http://www.w3.org/") && url !== FEEDBACK_API_BASE)) throw new Error("Non-whitelisted remote URL in game.js");
       if (/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\s*\(|\bEventSource\s*\(|ColorboxAI\.request|\bsendBeacon\s*\(/u.test(script)) {
         throw new Error("The offline game must not make runtime network requests");
       }

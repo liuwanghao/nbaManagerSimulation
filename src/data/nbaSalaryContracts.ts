@@ -1,4 +1,5 @@
 import rawContracts from "./nba-2026-27-contracts.json";
+import rawSupplement from "./nba-2026-27-salary-supplement.json";
 
 export type ContractOption = "NONE" | "TEAM_OPTION" | "PLAYER_OPTION";
 
@@ -13,6 +14,9 @@ export interface NbaSalaryContractSnapshot {
   guaranteedByYear: number[];
   optionByYear: ContractOption[];
   futureFreeAgencyStatus: "UFA" | "RFA" | null;
+  sourceProvider?: "HOOPSHYPE" | "SALARYSWISH";
+  sourcePath?: string;
+  sourceContractKind?: "STANDARD" | "TWO_WAY";
 }
 
 export interface NbaSalaryContractDataset {
@@ -46,15 +50,28 @@ export function validateNbaSalaryContractDataset(value: unknown): NbaSalaryContr
     if (contract.salaryByYear.some((salary) => salary <= 0) || contract.optionByYear.some((option) => !OPTIONS.has(option))) {
       throw new Error(`Invalid contract terms for ${contract.canonicalPlayerId}`);
     }
+    if (contract.sourceProvider === "HOOPSHYPE" && (!contract.sourcePath?.startsWith("/salaries/teams/") || !contract.sourceContractKind)) {
+      throw new Error(`Supplemental salary source is incomplete for ${contract.canonicalPlayerId}`);
+    }
+    if (contract.sourceProvider === "SALARYSWISH" && (!contract.sourcePath?.startsWith("/players/") || !contract.sourceContractKind)) {
+      throw new Error(`Supplemental salary source is incomplete for ${contract.canonicalPlayerId}`);
+    }
   }
   return dataset;
 }
 
 export const NBA_2026_27_SALARY_CONTRACTS = validateNbaSalaryContractDataset(rawContracts);
+export const NBA_2026_27_SALARY_SUPPLEMENT = validateNbaSalaryContractDataset(rawSupplement);
 
 const contractsByCanonicalPlayerId = new Map(
   NBA_2026_27_SALARY_CONTRACTS.contracts.map((contract) => [contract.canonicalPlayerId, contract] as const),
 );
+for (const contract of NBA_2026_27_SALARY_SUPPLEMENT.contracts) {
+  if (contractsByCanonicalPlayerId.has(contract.canonicalPlayerId)) {
+    throw new Error(`Supplemental salary overlaps workbook contract for ${contract.canonicalPlayerId}`);
+  }
+  contractsByCanonicalPlayerId.set(contract.canonicalPlayerId, contract);
+}
 
 export function salaryContractFor(canonicalPlayerId: string): NbaSalaryContractSnapshot | undefined {
   return contractsByCanonicalPlayerId.get(canonicalPlayerId);

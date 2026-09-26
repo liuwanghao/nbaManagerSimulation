@@ -7,12 +7,13 @@ import { getExpansionDraftCandidatePlayers, getSelectableExpansionPlayers, isExp
 import type { ExpansionCityId, ExpansionPackage, GameState, Player } from "../game/state/types";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { GameChrome } from "./GameChrome";
-import { playerNameZh } from "./playerNameZh";
+import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import { playerRatingStyle } from "./playerRatingColor";
 import { humanizeUiText, moneyLabel, phaseLabel, positionPairLabel, slotLabel } from "./uiText";
 import { ReferencePlayerCard } from "./ReferencePlayerCard";
 import type { SaveSlotSummary } from "../storage/SaveService";
 import { EXPANSION_POSITION_FILTERS, findExpansionDraftPlayers, findNextSelectableTeamId, getCurrentRosterPositionCounts, getCurrentRosterPositionSummary, getCurrentTeamRoster, getRecentExpansionPickBroadcasts, matchesExpansionPosition, type ExpansionPlayerSort, type ExpansionPositionFilter } from "./expansionDraftView";
+import { PlayerListFilters } from "./PlayerListFilters";
 
 interface ExpansionFlowProps {
   state: GameState;
@@ -53,7 +54,7 @@ export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, 
         <div><span className="section-kicker">扩军时代 · 第三阶段</span><h1>扩军开局</h1></div>
         <span className="phase-pill">{phaseLabel(phase)}</span>
       </header>
-      <section className="status-strip" aria-live="polite"><span className={busy ? "pulse-dot active" : "pulse-dot"} />{phase === "TEAM_CREATION" ? "开始创建新加盟球队" : status}</section>
+      <section className="status-strip" aria-live="polite"><span className={busy ? "pulse-dot active" : "pulse-dot"} />{phase === "TEAM_CREATION" ? "开始创建新加盟球队" : localizePlayerNamesInText(status, Object.values(state.players))}</section>
 
       {phase === "TEAM_CREATION" && <TeamCreation state={state} busy={busy} onCommand={onCommand} />}
       {phase === "EXPANSION_RIGHTS" && <RightsDraw state={state} busy={busy} onCommand={onCommand} />}
@@ -199,7 +200,7 @@ function OptionPhase({ state, busy, onCommand }: Pick<ExpansionFlowProps, "state
       <header className="prototype-flow-heading"><span className="prototype-flow-icon" aria-hidden="true">✓</span><div><span className="step-label">03 / 强制合同选项阶段</span><h2>合同选项已经结算</h2><p>固定随机种子已完成球队选项与球员选项判定。</p></div><b className="prototype-flow-badge">结算完成</b></header>
       <div className="prototype-section-bar"><b>结算摘要</b><span>仅有效合同进入扩军池</span></div>
       <div className="metrics-row"><span><b>{exercised}</b>执行选项</span><span><b>{declined}</b>拒绝选项</span><span><b>{excluded}</b>自由球员排除</span></div>
-      <div className="prototype-info-note success"><span>✓</span><p><b>合同池已校验</b>{humanizeUiText(state.expansion?.lastNotice)}</p></div>
+      <div className="prototype-info-note success"><span>✓</span><p><b>合同池已校验</b>{localizePlayerNamesInText(humanizeUiText(state.expansion?.lastNotice), Object.values(state.players))}</p></div>
       <div className="prototype-sticky-action"><button className="primary-cta" disabled={busy} onClick={() => onCommand({ commandId: "stage3-freeze-pool", type: "PREPARE_EXPANSION_TRADE", payload: {} })}>冻结保护名单并查看报价 →</button></div>
     </section>
   );
@@ -257,7 +258,6 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
   const [rosterPositionFilter, setRosterPositionFilter] = useState<ExpansionPositionFilter>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<ExpansionPlayerSort>("OVERALL");
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [teamSelectorOpen, setTeamSelectorOpen] = useState(false);
   const [currentRosterOpen, setCurrentRosterOpen] = useState(true);
   const [autoPickFailed, setAutoPickFailed] = useState(false);
@@ -295,7 +295,10 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
   const visibleTeam = visibleTeamId === "ALL" ? undefined : state.teams[visibleTeamId];
   const teamAvailablePlayers = players.filter((player) => visibleTeamId === "ALL" || player.teamId === visibleTeamId);
   const availablePlayers = findExpansionDraftPlayers(players, visibleTeamId, positionFilter, searchQuery, sortMode);
-  const sortLabel = EXPANSION_SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? "OVR";
+  const availablePositionCounts = Object.fromEntries(EXPANSION_POSITION_FILTERS.map((position) => [
+    position,
+    teamAvailablePlayers.filter((player) => matchesExpansionPosition(player, position)).length,
+  ])) as Record<ExpansionPositionFilter, number>;
   const protectedPlayers = (visibleTeam ? expansion.protectionLists[visibleTeamId]?.protectedPlayerIds ?? [] : []).map((id) => state.players[id]).filter(Boolean);
   const playerTeam = state.teams[expansion.playerTeamId];
   const currentRoster = getCurrentTeamRoster(state);
@@ -386,22 +389,18 @@ function ExpansionDraft({ state, busy, onCommand }: Pick<ExpansionFlowProps, "st
         </details>}
         <section className="draft-available-player-panel" aria-label="选秀池可用球员">
           <div className="draft-section-label available">🌐 选秀池可用球员（{availablePlayers.length} 人）</div>
-          <div className="draft-player-tools">
-            <div className="draft-player-search">
-              <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
-              <input type="text" inputMode="search" aria-label="搜索候选球员姓名" placeholder="搜索球员姓名" value={searchQuery} maxLength={40} autoComplete="off" onChange={(event) => setSearchQuery(event.target.value)} />
-              {searchQuery && <button type="button" aria-label="清空球员搜索" onClick={() => setSearchQuery("")}>×</button>}
-            </div>
-            <div className="draft-player-sort" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSortMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setSortMenuOpen(false); }}>
-              <button type="button" className="draft-player-sort-trigger" aria-label={`排序方式：${sortLabel}`} aria-expanded={sortMenuOpen} aria-controls="expansion-sort-options" onClick={() => setSortMenuOpen((open) => !open)}><span>排序 · {sortLabel}</span><span aria-hidden="true">⌄</span></button>
-              {sortMenuOpen && <div id="expansion-sort-options" className="draft-player-sort-options" role="group" aria-label="选择排序方式">
-                {EXPANSION_SORT_OPTIONS.map((option) => <button type="button" key={option.value} aria-pressed={sortMode === option.value} onClick={() => { setSortMode(option.value); setSortMenuOpen(false); }}><span>{option.label}</span><small>{option.direction}</small>{sortMode === option.value && <b aria-hidden="true">✓</b>}</button>)}
-              </div>}
-            </div>
-          </div>
-          <div className="draft-position-filter" role="group" aria-label="按球员位置筛选">
-            {EXPANSION_POSITION_FILTERS.map((position) => <button type="button" key={position} className={positionFilter === position ? "active" : ""} aria-pressed={positionFilter === position} onClick={() => setPositionFilter(position)}><b>{position === "ALL" ? "全部" : position}</b><small>{teamAvailablePlayers.filter((player) => matchesExpansionPosition(player, position)).length}</small></button>)}
-          </div>
+          <PlayerListFilters
+            ariaLabel="筛选选秀池可用球员"
+            searchValue={searchQuery}
+            onSearchChange={setSearchQuery}
+            sortValue={sortMode}
+            onSortChange={setSortMode}
+            sortOptions={EXPANSION_SORT_OPTIONS}
+            positionValue={positionFilter}
+            onPositionChange={setPositionFilter}
+            positionCounts={availablePositionCounts}
+            testIdPrefix="expansion-player-filter"
+          />
           <div className="player-pool">
           {availablePlayers.map((player) => {
             const selectable = !forcedPlayer || player.id === forcedPlayer.id;

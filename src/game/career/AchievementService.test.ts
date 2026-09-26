@@ -3,6 +3,7 @@ import { createCareer } from "../season/career";
 import type { GameState, SeasonHistoryArchive } from "../state/types";
 import {
   ACHIEVEMENT_IDS,
+  backfillNewAchievements,
   evaluateAwardAchievements,
   evaluatePostseasonAchievements,
   evaluateRegularSeasonAchievements,
@@ -37,11 +38,16 @@ describe("career achievements", () => {
   it("initializes and unlocks the regular-season achievements idempotently", () => {
     const state = createCareer("achievement-regular");
     expect(Object.keys(state.achievements)).toHaveLength(ACHIEVEMENT_IDS.length);
+    expect(ACHIEVEMENT_IDS).toHaveLength(28);
     state.standings[state.userTeamId].wins = 60;
     state.standings[state.userTeamId].losses = 22;
     evaluateRegularSeasonAchievements(state);
     expect(state.achievements.FIRST_WIN.unlocked).toBe(true);
     expect(state.achievements.TEN_WINS.unlocked).toBe(true);
+    expect(state.achievements.TWENTY_FIVE_WINS.unlocked).toBe(true);
+    expect(state.achievements.FIFTY_CAREER_WINS.unlocked).toBe(true);
+    expect(state.achievements.THIRTY_WIN_SEASON.unlocked).toBe(true);
+    expect(state.achievements.FORTY_WIN_SEASON.unlocked).toBe(true);
     expect(state.achievements.FIFTY_WIN_SEASON.unlocked).toBe(true);
     expect(state.achievements.SIXTY_WIN_SEASON.unlocked).toBe(true);
     const unlockedAt = state.achievements.FIRST_WIN.unlockedAt;
@@ -57,10 +63,13 @@ describe("career achievements", () => {
     evaluateAwardAchievements(state, {
       seasonId: state.league.seasonId,
       allStars: { WEST: [player.id], EAST: [] },
-      winners: { ROY: player.id },
+      winners: { ROY: player.id, MVP: player.id, DPOY: player.id, MIP: player.id, SIXTH_MAN: player.id },
     });
     expect(state.achievements.HOMEGROWN_ALL_STAR.unlocked).toBe(true);
     expect(state.achievements.ROOKIE_OF_YEAR.unlocked).toBe(true);
+    for (const id of ["MVP_WINNER", "DPOY_WINNER", "MOST_IMPROVED_WINNER", "SIXTH_MAN_WINNER"] as const) {
+      expect(state.achievements[id].unlocked).toBe(true);
+    }
 
     state.history.champions = [
       { seasonId: "2026-27", teamId: state.userTeamId },
@@ -76,9 +85,28 @@ describe("career achievements", () => {
       playoffWins: 16,
       playoffLosses: 7,
     });
-    for (const id of ["FIRST_PLAY_IN", "FIRST_PLAYOFFS", "FIRST_SERIES_WIN", "CONFERENCE_FINALS", "FINALS_APPEARANCE", "FIRST_CHAMPIONSHIP", "DYNASTY_TWO_OF_THREE"] as const) {
+    for (const id of ["FIRST_PLAY_IN", "FIRST_PLAYOFFS", "FIRST_SERIES_WIN", "TWO_SERIES_WINS", "THREE_SERIES_WINS", "CONFERENCE_FINALS", "FINALS_APPEARANCE", "FIRST_CHAMPIONSHIP", "SECOND_CHAMPIONSHIP", "DYNASTY_TWO_OF_THREE"] as const) {
       expect(state.achievements[id].unlocked).toBe(true);
     }
+  });
+
+  it("restores provable new milestones from an old save only once", () => {
+    const state = createCareer("achievement-backfill");
+    state.history.seasons = [
+      archive(state, "2026-27", 55, { seriesWins: 2, champion: true }),
+      archive(state, "2027-28", 51, { seriesWins: 3, champion: true }),
+      archive(state, "2028-29", 45, { champion: true }),
+    ];
+    const originalScore = state.gmCareer.dynastyScore;
+    backfillNewAchievements(state);
+    expect(state.achievements.HUNDRED_WINS).toMatchObject({ unlocked: true, seasonId: "2027-28", unlockedAt: null });
+    expect(state.achievements.THIRD_CHAMPIONSHIP).toMatchObject({ unlocked: true, seasonId: "2028-29" });
+    expect(state.achievements.THREE_SERIES_WINS).toMatchObject({ unlocked: true, seasonId: "2027-28" });
+    expect(state.achievements.MVP_WINNER.unlocked).toBe(false);
+    expect(state.gmCareer.dynastyScore).toBeGreaterThan(originalScore);
+    const score = state.gmCareer.dynastyScore;
+    backfillNewAchievements(state);
+    expect(state.gmCareer.dynastyScore).toBe(score);
   });
 
   it("rebuilds GM totals and dynasty score from canonical season history", () => {

@@ -81,7 +81,9 @@ describe("Stage 4 rookie draft", () => {
     state = enterFreeAgency(state);
     const market = getFreeAgents(state);
     expect(market.length).toBeGreaterThanOrEqual(20);
-    expect(market.every((player) => player.profileSource !== "PROCEDURAL_DRAFT")).toBe(true);
+    const draftedIds = new Set(state.rookieDraft?.pickOrder.map((pick) => pick.playerId).filter(Boolean));
+    expect(market.filter((player) => player.profileSource === "PROCEDURAL_DRAFT")
+      .every((player) => draftedIds.has(player.id))).toBe(true);
     expect(market.some((player) => player.id === "nba:1628467")).toBe(true);
     expect(Object.values(state.players).some((player) => player.profileSource === "PROCEDURAL_DRAFT" && player.teamId === "UNDRAFTED")).toBe(true);
   });

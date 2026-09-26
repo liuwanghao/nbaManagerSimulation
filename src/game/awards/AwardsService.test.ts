@@ -41,7 +41,8 @@ describe("AwardsService", () => {
     const state = createCareer("awards-finals");
     const game = state.schedule[0];
     const result = simulateGame(game, state.teams[game.homeTeamId], state.teams[game.awayTeamId], state.players, state.seeds.seasonSeed, true);
-    const forcedMvp = result.homeBoxScore?.playerStats[0];
+    const winningBox = result.winnerTeamId === result.homeTeamId ? result.homeBoxScore : result.awayBoxScore;
+    const forcedMvp = winningBox?.playerStats[0];
     if (!forcedMvp) throw new Error("detailed box score missing");
     forcedMvp.pts = 999;
     expect(getGameMvpStat(result)?.playerId).toBe(forcedMvp.playerId);
@@ -51,6 +52,32 @@ describe("AwardsService", () => {
     expect(state.teams[result.winnerTeamId].playerIds).toContain(finalsMvp);
     expect(state.players[finalsMvp].career?.honors?.finalsMvp).toBe(1);
     expect(state.teams[result.winnerTeamId].playerIds.every((id) => state.players[id].career?.honors?.championships === 1)).toBe(true);
+  });
+
+  it("selects the postgame MVP from the winner even when a losing player scores more", () => {
+    const state = createCareer("awards-postgame-winner");
+    const scheduled = state.schedule[0];
+    const result = simulateGame(scheduled, state.teams[scheduled.homeTeamId], state.teams[scheduled.awayTeamId], state.players, state.seeds.seasonSeed, true);
+    const winnerBox = result.winnerTeamId === result.homeTeamId ? result.homeBoxScore : result.awayBoxScore;
+    const loserBox = result.winnerTeamId === result.homeTeamId ? result.awayBoxScore : result.homeBoxScore;
+    const winningPlayer = winnerBox?.playerStats[0];
+    const losingPlayer = loserBox?.playerStats[0];
+    if (!winningPlayer || !losingPlayer) throw new Error("detailed box scores missing");
+    winningPlayer.pts = 999;
+    losingPlayer.pts = 2000;
+
+    const mirroredResult = {
+      ...result,
+      homeTeamId: result.awayTeamId,
+      awayTeamId: result.homeTeamId,
+      homeScore: result.awayScore,
+      awayScore: result.homeScore,
+      homeBoxScore: result.awayBoxScore,
+      awayBoxScore: result.homeBoxScore,
+    };
+    expect(getGameMvpStat(result)?.playerId).toBe(winningPlayer.playerId);
+    expect(getGameMvpStat(mirroredResult)?.playerId).toBe(winningPlayer.playerId);
+    expect(getGameMvpStat({ ...result, [result.winnerTeamId === result.homeTeamId ? "homeBoxScore" : "awayBoxScore"]: undefined })).toBeUndefined();
   });
 
   it("calculates qualified per-game league leaders in the engine", () => {

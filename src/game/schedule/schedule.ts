@@ -310,37 +310,144 @@ function optimizeRoundOrder(rounds: DraftGame[][], teamIds: string[], seed: stri
   return best;
 }
 
-function b2bGapIndexes(rounds: DraftGame[][]): Set<number> {
-  const indexes = new Set<number>();
-  const targetBackToBacks = BALANCE_CONFIG.scheduleQuality.targetBackToBacks;
-  const targetPositions = Array.from({ length: targetBackToBacks }, (_, index) => Math.round(((index + 0.5) * 81) / targetBackToBacks) - 1);
-  for (const target of targetPositions) {
-    const candidates = Array.from({ length: 81 }, (_, index) => index)
-      .filter((index) => !indexes.has(index) && !indexes.has(index - 1) && !indexes.has(index + 1))
-      .filter((index) => {
-        const previousPairs = new Set(rounds[index].map((game) => pairKey(game.homeTeamId, game.awayTeamId)));
-        return rounds[index + 1].every((game) => !previousPairs.has(pairKey(game.homeTeamId, game.awayTeamId)));
-      })
-      .sort((a, b) => Math.abs(a - target) - Math.abs(b - target) || a - b);
-    if (candidates.length === 0) throw new Error("Unable to place 14 back-to-back gaps");
-    indexes.add(candidates[0]);
-  }
-  return indexes;
+const REGULAR_SEASON_DAYS = 174;
+
+function dateIndex(openingDate: string, date: Date): number {
+  return Math.round((date.getTime() - Date.parse(`${openingDate}T00:00:00.000Z`)) / 86_400_000);
 }
 
-function dateIndexesForRounds(rounds: DraftGame[][]): number[] {
-  const b2b = b2bGapIndexes(rounds);
-  const gaps = Array.from({ length: 81 }, (_, index) => (b2b.has(index) ? 1 : 2));
-  let extraDays = 173 - gaps.reduce((sum, gap) => sum + gap, 0);
-  for (let index = 0; index < gaps.length && extraDays > 0; index += 1) {
-    if (gaps[index] === 2) {
-      gaps[index] += 1;
-      extraDays -= 1;
+function nthWeekday(year: number, month: number, weekday: number, occurrence: number): Date {
+  const first = new Date(Date.UTC(year, month, 1));
+  return new Date(Date.UTC(year, month, 1 + (weekday - first.getUTCDay() + 7) % 7 + (occurrence - 1) * 7));
+}
+
+function leagueRestDays(openingDate: string): Set<number> {
+  const year = Number(openingDate.slice(0, 4));
+  const allStarStart = nthWeekday(year + 1, 1, 5, 3);
+  const allStarIndex = dateIndex(openingDate, allStarStart);
+  return new Set([
+    dateIndex(openingDate, nthWeekday(year, 10, 2, 1)), // Election Day
+    dateIndex(openingDate, nthWeekday(year, 10, 4, 4)), // Thanksgiving
+    dateIndex(openingDate, new Date(Date.UTC(year, 11, 24))), // Christmas Eve
+    ...Array.from({ length: 6 }, (_, offset) => allStarIndex + offset),
+    REGULAR_SEASON_DAYS - 2, // Rest before every team plays on the final day
+  ]);
+}
+
+function dailyAssignmentScore(rounds: DraftGame[][], datesByRound: number[][]): { hard: number; total: number } {
+  const previousDate = new Map<string, number>();
+  const previousOpponent = new Map<string, string>();
+  const backToBacks = new Map<string, number>();
+  let repeatedOpponent = 0;
+  rounds.forEach((round, roundIndex) => round.forEach((game, gameIndex) => {
+    const date = datesByRound[roundIndex][gameIndex];
+    for (const [teamId, opponentId] of [[game.homeTeamId, game.awayTeamId], [game.awayTeamId, game.homeTeamId]]) {
+      const gap = date - (previousDate.get(teamId) ?? -100);
+      if (gap === 1) backToBacks.set(teamId, (backToBacks.get(teamId) ?? 0) + 1);
+      if (gap < 2 && previousOpponent.get(teamId) === opponentId) repeatedOpponent += 1;
+      previousDate.set(teamId, date);
+      previousOpponent.set(teamId, opponentId);
     }
+  }));
+  let hard = repeatedOpponent * 10_000;
+  let soft = 0;
+  for (const teamId of rounds[0].flatMap((game) => [game.homeTeamId, game.awayTeamId])) {
+    const count = backToBacks.get(teamId) ?? 0;
+    hard += 100 * (Math.max(0, BALANCE_CONFIG.scheduleQuality.minimumBackToBacks - count) ** 2
+      + Math.max(0, count - BALANCE_CONFIG.scheduleQuality.maximumBackToBacks) ** 2);
+    soft += (count - BALANCE_CONFIG.scheduleQuality.targetBackToBacks) ** 2;
   }
-  const dates = [0];
-  for (const gap of gaps) dates.push(dates[dates.length - 1] + gap);
-  return dates;
+  return { hard, total: hard + soft };
+}
+
+function repairDailyAssignments(rounds: DraftGame[][], datesByRound: number[][]): void {
+  let current = dailyAssignmentScore(rounds, datesByRound);
+  for (let pass = 0; pass < 20 && current.hard > 0; pass += 1) {
+    let best = current;
+    let swap: [number, number, number] | undefined;
+    for (let roundIndex = 0; roundIndex < rounds.length - 1; roundIndex += 1) {
+      const dates = datesByRound[roundIndex];
+      for (let left = 0; left < dates.length; left += 1) {
+        for (let right = left + 1; right < dates.length; right += 1) {
+          if (dates[left] === dates[right]) continue;
+          [dates[left], dates[right]] = [dates[right], dates[left]];
+          const candidate = dailyAssignmentScore(rounds, datesByRound);
+          [dates[left], dates[right]] = [dates[right], dates[left]];
+          if (candidate.total < best.total) {
+            best = candidate;
+            swap = [roundIndex, left, right];
+          }
+        }
+      }
+    }
+    if (!swap) break;
+    const [roundIndex, left, right] = swap;
+    const dates = datesByRound[roundIndex];
+    [dates[left], dates[right]] = [dates[right], dates[left]];
+    current = best;
+  }
+  if (current.hard > 0) throw new Error("Unable to balance daily game assignments");
+}
+
+function roundGameDates(rounds: DraftGame[][], openingDate: string, scheduleSeed: string): number[][] {
+  const restDays = leagueRestDays(openingDate);
+  const playableDays = Array.from({ length: REGULAR_SEASON_DAYS }, (_, index) => index).filter((index) => !restDays.has(index));
+  if (restDays.size !== 10 || playableDays.length !== 164) throw new Error("Invalid regular-season calendar");
+  const rng = createRng(stableHash(scheduleSeed, "daily_game_slots"));
+  const datesByRound: number[][] = [];
+  const previousDate = new Map<string, number>();
+  const previousOpponent = new Map<string, string>();
+  const backToBacks = new Map<string, number>();
+  let nextDay = 0;
+
+  rounds.forEach((round, roundIndex) => {
+    const days = roundIndex === 0 ? playableDays.slice(nextDay, nextDay + 3)
+      : roundIndex === rounds.length - 1 ? playableDays.slice(nextDay, nextDay + 1)
+        : playableDays.slice(nextDay, nextDay + 2);
+    nextDay += days.length;
+    const firstDate = isoDate(openingDate, days[0]);
+    const secondDate = days[1] === undefined ? "" : isoDate(openingDate, days[1]);
+    const christmas = `${Number(openingDate.slice(0, 4))}-12-25`;
+    const weekdayWeights = [7, 9, 6, 11, 5, 11, 7];
+    const firstWeight = weekdayWeights[new Date(`${firstDate}T00:00:00Z`).getUTCDay()];
+    const secondWeight = secondDate ? weekdayWeights[new Date(`${secondDate}T00:00:00Z`).getUTCDay()] : 0;
+    let firstDayCount = roundIndex === 0 ? 3 : days.length === 1 ? 16
+      : firstDate === christmas ? 5 : secondDate === christmas ? 11
+        : Math.max(4, Math.min(12, Math.round(16 * firstWeight / (firstWeight + secondWeight)) + rng.int(-2, 2)));
+    if (roundIndex > 0 && days.length > 1) {
+      const repeatRisks = round.filter((game) => previousDate.get(game.homeTeamId) === days[0] - 1
+        && previousOpponent.get(game.homeTeamId) === game.awayTeamId).length;
+      firstDayCount = Math.min(firstDayCount, 16 - repeatRisks);
+    }
+    const shuffled = rng.shuffle(round.map((_, index) => index));
+    const scored = roundIndex === 0 || days.length === 1 ? shuffled : shuffled.sort((left, right) => {
+      const score = (gameIndex: number): number => {
+        const game = round[gameIndex];
+        return [[game.homeTeamId, game.awayTeamId], [game.awayTeamId, game.homeTeamId]].reduce((total, [teamId, opponentId]) => {
+          if (previousDate.get(teamId) !== days[0] - 1) return total;
+          if (previousOpponent.get(teamId) === opponentId) return total + 1_000;
+          return total + (backToBacks.get(teamId) ?? 0) - BALANCE_CONFIG.scheduleQuality.targetBackToBacks * roundIndex / (rounds.length - 1);
+        }, 0);
+      };
+      return score(left) - score(right);
+    });
+    const early = new Set(scored.slice(0, firstDayCount));
+    const remaining = scored.filter((index) => !early.has(index));
+    const middle = new Set(roundIndex === 0 ? remaining.slice(0, 6) : []);
+    const gameDates = round.map((game, index) => {
+      const assignedDate = early.has(index) ? days[0] : roundIndex === 0 && middle.has(index) ? days[1] : days[days.length - 1];
+      for (const [teamId, opponentId] of [[game.homeTeamId, game.awayTeamId], [game.awayTeamId, game.homeTeamId]]) {
+        if (previousDate.get(teamId) === assignedDate - 1) backToBacks.set(teamId, (backToBacks.get(teamId) ?? 0) + 1);
+        previousDate.set(teamId, assignedDate);
+        previousOpponent.set(teamId, opponentId);
+      }
+      return assignedDate;
+    });
+    datesByRound.push(gameDates);
+  });
+  if (nextDay !== playableDays.length) throw new Error("Regular-season dates were not fully assigned");
+  repairDailyAssignments(rounds, datesByRound);
+  return datesByRound;
 }
 
 function isoDate(openingDate: string, dateIndex: number): string {
@@ -359,20 +466,20 @@ export function generateSchedule(
   const teamIds = Object.keys(teams).sort();
   const drafts = buildGameDrafts(teams, cycleYear, scheduleSeed);
   const rounds = optimizeRoundOrder(decomposeIntoRounds(teams, teamIds, drafts, scheduleSeed), teamIds, scheduleSeed);
-  const roundDates = dateIndexesForRounds(rounds);
+  const gameDates = roundGameDates(rounds, openingDate, scheduleSeed);
   const ordinals = new Map<string, number>();
   const games: ScheduleGame[] = [];
 
   rounds.forEach((round, roundIndex) => {
-    for (const draft of round) {
+    for (const [gameIndex, draft] of round.entries()) {
       const homeAwayKey = `${draft.homeTeamId}::${draft.awayTeamId}`;
       const matchupOrdinal = (ordinals.get(homeAwayKey) ?? 0) + 1;
       ordinals.set(homeAwayKey, matchupOrdinal);
       games.push({
         id: stableHash(seasonId, draft.homeTeamId, draft.awayTeamId, matchupOrdinal),
         seasonId,
-        dateIndex: roundDates[roundIndex],
-        date: isoDate(openingDate, roundDates[roundIndex]),
+        dateIndex: gameDates[roundIndex][gameIndex],
+        date: isoDate(openingDate, gameDates[roundIndex][gameIndex]),
         homeTeamId: draft.homeTeamId,
         awayTeamId: draft.awayTeamId,
         matchupOrdinal,
@@ -402,7 +509,21 @@ export function validateSchedule(games: ScheduleGame[], teams: Record<string, Te
   const maxAwayStreakByTeam: Record<string, number> = {};
   if (games.length !== 1312) errors.push(`Expected 1312 games, received ${games.length}`);
   const finalDateIndex = Math.max(...games.map((game) => game.dateIndex));
+  if (finalDateIndex !== REGULAR_SEASON_DAYS - 1) errors.push(`Final day must be day ${REGULAR_SEASON_DAYS - 1}`);
   if (games.filter((game) => game.dateIndex === finalDateIndex).length !== 16) errors.push("Final day must contain 16 games");
+  const openingDate = games.find((game) => game.dateIndex === 0)?.date;
+  if (openingDate) {
+    const restDays = leagueRestDays(openingDate);
+    const dailyCounts = new Map<number, number>();
+    for (const game of games) dailyCounts.set(game.dateIndex, (dailyCounts.get(game.dateIndex) ?? 0) + 1);
+    for (let day = 0; day < REGULAR_SEASON_DAYS; day += 1) {
+      const count = dailyCounts.get(day) ?? 0;
+      if (restDays.has(day) ? count !== 0 : count < 1 || count > 16) errors.push(`Day ${day} has ${count} games`);
+    }
+    const christmas = dateIndex(openingDate, new Date(Date.UTC(Number(openingDate.slice(0, 4)), 11, 25)));
+    if (dailyCounts.get(0) !== 3) errors.push("Opening day must contain 3 games");
+    if (dailyCounts.get(christmas) !== 5) errors.push("Christmas Day must contain 5 games");
+  } else errors.push("Opening day has no games");
 
   for (const teamId of ids) {
     const teamGames = games

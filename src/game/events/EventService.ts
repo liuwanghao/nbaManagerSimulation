@@ -1,7 +1,9 @@
 import { EVENT_DEFINITION_BY_ID } from "../../data/events";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
+import { addTeamNotification } from "../notifications/TeamNotificationService";
+import { applyRotationPlanToPlayers, planPlayerRotationResponse } from "../roster/RotationPlanService";
 import { stableHash } from "../random/hash";
-import type { EventDefinition, EventEffectDefinition, EventInstance, GameResult, GameState } from "../state/types";
+import type { EventDefinition, EventEffectDefinition, EventInstance, GameResult, GameState, Player } from "../state/types";
 
 export type EventCommand = {
   commandId: string;
@@ -22,11 +24,12 @@ function interpolate(template: string, context: Record<string, string>): string 
 }
 
 function snapshotEffect(effect: EventEffectDefinition, context: Record<string, string>): EventEffectDefinition {
-  return {
+  const snapshot: EventEffectDefinition = {
     ...effect,
-    target: effect.target ? interpolate(effect.target, context) : undefined,
     value: typeof effect.value === "string" ? interpolate(effect.value, context) : effect.value,
   };
+  if (effect.target) snapshot.target = interpolate(effect.target, context);
+  return snapshot;
 }
 
 const clampStatus = (
@@ -46,6 +49,15 @@ function applyEffects(state: GameState, event: EventInstance, effects: EventEffe
       if (team && typeof effect.value === "number") {
         if (effect.type === "TEAM_FAN_SUPPORT") team.fanSupport = clampStatus(team.fanSupport + effect.value);
         else team.franchiseReputation = clampStatus(team.franchiseReputation + effect.value);
+      }
+    } else if (effect.type === "PLAYER_ROTATION") {
+      const team = state.teams[state.userTeamId];
+      const players = team.playerIds.map((id) => state.players[id]).filter(Boolean);
+      const plan = effect.target ? planPlayerRotationResponse(players, team.rotationPlan, effect.target,
+        event.definitionId === "role_starter_claim_001") : null;
+      if (plan) {
+        team.rotationPlan = plan;
+        applyRotationPlanToPlayers(players, plan);
       }
     } else {
       const player = effect.target ? state.players[effect.target] : undefined;
@@ -73,6 +85,61 @@ function sortQueue(state: GameState): void {
     || left.eventInstanceId.localeCompare(right.eventInstanceId));
 }
 
+function isInformationalEvent(event: EventInstance): boolean {
+  return event.definitionId !== "franchise_season_opening_001"
+    && event.choices.length === 1
+    && event.choices[0].id === "acknowledge"
+    && choicesForEvent(event).length === 1;
+}
+
+function informationalImpact(effects: EventEffectDefinition[]): string {
+  return effects.map((effect) => {
+    if (typeof effect.value !== "number") return "";
+    const change = `${effect.value > 0 ? "+" : ""}${effect.value}`;
+    if (effect.type === "TEAM_FAN_SUPPORT") return `球迷支持 ${change}`;
+    if (effect.type === "TEAM_REPUTATION") return `球队声望 ${change}`;
+    if (effect.type === "PLAYER_MORALE") return `球员士气 ${change}`;
+    if (effect.type === "PLAYER_FORM") return `竞技状态 ${change}`;
+    return "";
+  }).filter(Boolean).join(" · ");
+}
+
+function settleInformationalEvent(state: GameState, event: EventInstance): void {
+  event.status = "RESOLVED";
+  event.effectivePause = false;
+  event.selectedChoiceId = event.choices[0].id;
+  applyEffects(state, event, event.choices[0].effects.filter((effect) => effect.type !== "LEAGUE_LOG"));
+  for (const effect of event.choices[0].effects) {
+    if (effect.type !== "LEAGUE_LOG") continue;
+    const executionId = `${event.eventInstanceId}:${effect.effectId}`;
+    if (!state.eventState.executedEffectIds.includes(executionId)) state.eventState.executedEffectIds.push(executionId);
+  }
+  if (!state.eventState.resolvedInstanceIds.includes(event.eventInstanceId)) state.eventState.resolvedInstanceIds.push(event.eventInstanceId);
+  const definition = EVENT_DEFINITION_BY_ID[event.definitionId];
+  if (definition?.scope === "PLAYER_TEAM" || definition?.visibility === "PLAYER_VISIBLE") {
+    const impact = informationalImpact(event.choices[0].effects);
+    addTeamNotification(state, {
+      id: `event-${event.eventInstanceId}`,
+      category: event.category === "STREAK" ? "TEAM" : event.category === "FREE_AGENCY" || event.category === "RFA" ? "FREE_AGENCY" : "SEASON",
+      seasonId: event.seasonId,
+      title: event.title,
+      message: impact ? `${event.description} ${impact}` : event.description,
+    });
+  } else {
+    state.eventState.leagueLog.unshift(event.description && event.description !== event.title
+      ? `${event.title}：${event.description}` : event.title);
+    state.eventState.leagueLog = state.eventState.leagueLog.slice(0, BALANCE_CONFIG.randomEvents.leagueLogLimit);
+  }
+}
+
+/** Removes acknowledgement-only notices from older saves after their gameplay effects have already happened. */
+export function settleInformationalEvents(state: GameState): void {
+  for (const event of state.eventState.queue) {
+    if (event.status === "PENDING" && isInformationalEvent(event)) settleInformationalEvent(state, event);
+  }
+  state.eventState.queue = state.eventState.queue.filter((event) => event.status === "PENDING");
+}
+
 export function enqueueEvent(
   state: GameState,
   definitionId: string,
@@ -85,8 +152,13 @@ export function enqueueEvent(
     state.eventState.leagueLog = state.eventState.leagueLog.slice(0, BALANCE_CONFIG.randomEvents.leagueLogLimit);
     return undefined;
   }
-  if (!canOccur(state, definition)) return undefined;
-  const eventInstanceId = stableHash(state.seeds.seasonSeed, definition.id, scheduledAt, careerGameCount(state));
+  const repeatableInjuryNotice = definition.category === "INJURY" && !definition.pauseSimulation
+    && definition.choices.length === 1
+    && definition.choices[0].effects.every((effect) => effect.type === "LEAGUE_LOG");
+  if (!repeatableInjuryNotice && !canOccur(state, definition)) return undefined;
+  const eventInstanceId = repeatableInjuryNotice
+    ? stableHash(state.seeds.seasonSeed, definition.id, scheduledAt, careerGameCount(state), context.player_id)
+    : stableHash(state.seeds.seasonSeed, definition.id, scheduledAt, careerGameCount(state));
   if (state.eventState.queue.some((event) => event.eventInstanceId === eventInstanceId)
     || state.eventState.resolvedInstanceIds.includes(eventInstanceId)) return undefined;
   const effectivePause = definition.visibility === "PLAYER_VISIBLE"
@@ -110,12 +182,17 @@ export function enqueueEvent(
   };
   state.eventState.lastOccurrenceByDefinition[definition.id] = { seasonId: state.league.seasonId, careerGame: careerGameCount(state) };
   applyEffects(state, instance, instance.autoEffects);
+  if (isInformationalEvent(instance)) {
+    settleInformationalEvent(state, instance);
+    return instance;
+  }
   if (definition.scope === "AI_TEAM" || definition.visibility === "BACKGROUND") {
     instance.status = "RESOLVED";
     instance.selectedChoiceId = definition.choices[0]?.id;
     applyEffects(state, instance, instance.choices[0]?.effects ?? []);
     state.eventState.resolvedInstanceIds.push(eventInstanceId);
     state.eventState.leagueLog.unshift(instance.title);
+    state.eventState.leagueLog = state.eventState.leagueLog.slice(0, BALANCE_CONFIG.randomEvents.leagueLogLimit);
     return instance;
   }
   state.eventState.queue.push(instance);
@@ -134,12 +211,12 @@ export function blockingEvent(state: GameState): EventInstance | undefined {
 /** Keeps saves made before V1.43 actionable instead of trapping them on a notification-only morale event. */
 export function choicesForEvent(event: EventInstance): EventInstance["choices"] {
   const legacyAcknowledgement = event.choices.length === 1 && event.choices[0]?.id === "acknowledge";
-  if (!legacyAcknowledgement || !["MORALE", "ROLE"].includes(event.category)) return event.choices;
-  const target = event.choices[0]?.effects.find((effect) => effect.type === "PLAYER_MORALE")?.target;
-  return [
+  if (!["MORALE", "ROLE"].includes(event.category)) return event.choices;
+  const target = event.choices.flatMap((choice) => choice.effects).find((effect) => effect.type === "PLAYER_MORALE")?.target;
+  const choices = legacyAcknowledgement ? [
     {
       id: "increase_role",
-      label: "回应诉求 · 提升角色",
+      label: event.definitionId === "role_starter_claim_001" ? "安排首发并调整轮换" : "增加出场时间",
       effects: [{ effectId: "morale_role_up", type: "PLAYER_MORALE", target, value: 12, executionPhase: "ON_CHOICE" }],
     },
     {
@@ -147,7 +224,10 @@ export function choicesForEvent(event: EventInstance): EventInstance["choices"] 
       label: "维持当前轮换",
       effects: [{ effectId: "morale_role_down", type: "PLAYER_MORALE", target, value: -8, executionPhase: "ON_CHOICE" }],
     },
-  ];
+  ] as EventInstance["choices"] : event.choices;
+  return choices.map((choice) => choice.id === "increase_role" && !choice.effects.some((effect) => effect.type === "PLAYER_ROTATION")
+    ? { ...choice, effects: [...choice.effects, { effectId: "rotation_response", type: "PLAYER_ROTATION", target, value: 6, executionPhase: "ON_CHOICE" }] }
+    : choice);
 }
 
 export function resolveEvent(input: GameState, eventInstanceId: string, choiceId: string): GameState {
@@ -191,6 +271,22 @@ function consecutiveUserResults(state: GameState): GameResult[] {
   return streak;
 }
 
+function chooseConversationPlayer(state: GameState, definition: EventDefinition, featured: Player, rollHash: string): Player | undefined {
+  if (definition.category !== "MORALE" && definition.category !== "ROLE") return featured;
+  const plan = state.teams[state.userTeamId].rotationPlan;
+  const available = state.teams[state.userTeamId].playerIds.map((id) => state.players[id])
+    .filter((player) => player?.available && !player.injury && (plan?.targetMinutes[player.id] ?? 0) < BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes);
+  const eligible = available.filter((player) => {
+    if (definition.id === "role_starter_claim_001") return player.rotationRole !== "STARTER";
+    if (definition.id === "role_sixth_man_001") return player.rotationRole === "SIXTH_MAN";
+    if (definition.id === "role_rookie_growth_001") return player.serviceYears <= 2;
+    if (definition.id === "role_veteran_reduced_001" || definition.id === "morale_veteran_voice_001") return player.age >= 32;
+    if (definition.id === "morale_minutes_001") return (plan?.targetMinutes[player.id] ?? 0) < 25;
+    return true;
+  }).sort((left, right) => left.id.localeCompare(right.id));
+  return eligible.length ? eligible[Number.parseInt(rollHash.slice(0, 8), 16) % eligible.length] : undefined;
+}
+
 export function enqueueAfterUserGameEvents(state: GameState): void {
   const streak = consecutiveUserResults(state);
   if (!streak.length) return;
@@ -225,7 +321,10 @@ export function enqueueAfterUserGameEvents(state: GameState): void {
         const total = weighted.reduce((sum, entry) => sum + entry.weight, 0);
         let target = (Number.parseInt(rollHash.slice(8, 16), 16) / 0xffffffff) * total;
         const selected = weighted.find((entry) => { target -= entry.weight; return target <= 0; }) ?? weighted.at(-1);
-        if (selected) enqueueEvent(state, selected.definition.id, { player_id: player.id, player_name: player.name });
+        if (selected) {
+          const subject = chooseConversationPlayer(state, selected.definition, player, rollHash);
+          if (subject) enqueueEvent(state, selected.definition.id, { player_id: subject.id, player_name: subject.name });
+        }
       }
     }
   }
