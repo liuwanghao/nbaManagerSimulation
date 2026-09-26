@@ -119,7 +119,7 @@ const CONFERENCE_LABELS: Record<Conference, string> = { WEST: "西部", EAST: "�
 const DIVISION_LABELS: Record<Division, string> = {
   PACIFIC_NORTHWEST: "太平洋西北赛区",
   PACIFIC_SOUTH: "太平洋南部赛区",
-  MOUNTAIN: "山地赛区",
+  MOUNTAIN: "中西赛区",
   SOUTHWEST: "西南赛区",
   NORTHEAST: "东北赛区",
   MID_ATLANTIC: "大西洋中部赛区",

@@ -6,7 +6,7 @@ import { findNbaProjectionForHupu, NBA_PLAYER_DATASET, type NbaPlayerProjection 
 import { salaryContractFor } from "./nbaSalaryContracts";
 import { NBA_SUPPLEMENTAL_PLAYER_PROJECTIONS } from "./nbaSupplementalPlayers";
 import { NBA_FREE_AGENT_PROJECTIONS } from "./nbaFreeAgentProjections";
-import { NBA_2026_FREE_AGENTS } from "./nbaFreeAgents";
+import { NBA_2026_FREE_AGENTS, NBA_TEAM_ID_TO_GAME_TEAM_ID } from "./nbaFreeAgents";
 import { REAL_2026_CLASS_ROSTER_EXCLUSIONS, REAL_2026_DRAFT } from "./real2026Draft";
 import { stableHash } from "../game/random/hash";
 import { createExpansionCareer } from "../game/season/career";
@@ -218,7 +218,7 @@ function isReal2026ClassPlayer(player: NbaPlayerProjection): boolean {
     || REAL_2026_DRAFT_NAMES.has(rosterIdentity(player.fullName));
 }
 
-function bundledContract(player: NbaPlayerProjection, teamId: string, rank: number): Player["contract"] {
+function bundledContract(player: NbaPlayerProjection, teamId: string): Player["contract"] {
   const imported = salaryContractFor(player.canonicalPlayerId);
   if (imported) {
     const salaryByYear = [...imported.salaryByYear];
@@ -231,7 +231,9 @@ function bundledContract(player: NbaPlayerProjection, teamId: string, rank: numb
       status: "STANDARD",
       optionType: "NONE",
       optionDecision: "NOT_APPLICABLE",
-      contractId: `hupu-salary-2026-${imported.sourcePlayerId}`,
+      contractId: imported.sourceProvider
+        ? `${imported.sourceProvider.toLowerCase()}-salary-2026-${imported.nbaPlayerId}`
+        : `hupu-salary-2026-${imported.sourcePlayerId}`,
       contractType: "STANDARD",
       startSeason: 2026,
       endSeason: 2025 + salaryByYear.length,
@@ -240,26 +242,18 @@ function bundledContract(player: NbaPlayerProjection, teamId: string, rank: numb
       guaranteedByYear,
       optionByYear,
       signedTeamId: teamId,
-      signedPhase: "DATASET_SALARY_SNAPSHOT",
+      signedPhase: imported.sourceContractKind === "TWO_WAY" ? "DATASET_TWO_WAY_SALARY_SNAPSHOT" : "DATASET_SALARY_SNAPSHOT",
     };
   }
-  const overall = player.projection.overall;
-  const baseSalary = overall >= 90 ? 42_000_000
-    : overall >= 85 ? 32_000_000
-      : overall >= 80 ? 22_000_000
-        : overall >= 75 ? 13_000_000
-          : overall >= 70 ? 7_000_000
-            : rank < 12 ? 3_500_000 : 2_000_000;
   const contractSeed = Number.parseInt(stableHash(player.canonicalPlayerId, "bundled_contract").slice(-4), 16);
-  const salary = baseSalary;
+  const salary = 1_000_000;
   const yearsRemaining = 1 + contractSeed % 4;
   return {
     salary,
     yearsRemaining,
     guaranteedAmount: salary * yearsRemaining,
     status: "STANDARD",
-    // Unmatched players keep the previous safe fallback until their source ID
-    // can be reconciled; never invent an option that releases a signed player.
+    // Keep unknown contract options unset until the source can be reconciled.
     optionType: "NONE",
     optionDecision: "NOT_APPLICABLE",
   };
@@ -318,7 +312,7 @@ export function createBundledPlayer(careerSeed: string, teamId: string, projecti
     truePotential: projection.projection.potential,
     scoutedPotentialGrade: potentialGrade(projection.projection.potential),
     scoutingConfidence: 100,
-    contract: bundledContract(projection, teamId, rank),
+    contract: bundledContract(projection, teamId),
     seasonStats: emptyPlayerSeasonStats(),
     postseasonStats: emptyPlayerSeasonStats(),
   };
@@ -372,7 +366,7 @@ export function createExpansionCareerFromBundledDataset(careerSeed: string): Gam
     });
   }
 
-  const freeAgentStatusById = new Map(NBA_2026_FREE_AGENTS.players.map((player) => [player.nbaPlayerId, player.status] as const));
+  const freeAgentSnapshotById = new Map(NBA_2026_FREE_AGENTS.players.map((player) => [player.nbaPlayerId, player] as const));
   for (const projection of NBA_FREE_AGENT_PROJECTIONS) {
     const player = createBundledPlayer(careerSeed, "FREE_AGENT", projection, 21, ordinal);
     ordinal += 1;
@@ -380,14 +374,19 @@ export function createExpansionCareerFromBundledDataset(careerSeed: string): Gam
     player.teamRole = "BENCH";
     player.contract = {
       salary: 0, yearsRemaining: 0, guaranteedAmount: 0,
-      status: freeAgentStatusById.get(projection.nbaPlayerId) ?? "UFA",
+      status: freeAgentSnapshotById.get(projection.nbaPlayerId)?.status ?? "UFA",
       optionType: "NONE", optionDecision: "NOT_APPLICABLE",
     };
+    if (player.contract.status === "RFA") {
+      const previousNbaTeamId = freeAgentSnapshotById.get(projection.nbaPlayerId)?.previousNbaTeamId;
+      player.birdTeamId = previousNbaTeamId ? NBA_TEAM_ID_TO_GAME_TEAM_ID[previousNbaTeamId] ?? null : null;
+      player.contract.qualifyingOfferDecision = "PENDING";
+    }
     if (state.players[player.id]) throw new Error(`Duplicate initial free agent ${player.id}`);
     state.players[player.id] = player;
   }
 
-  state.meta.dataVersion = `bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}+fa.${NBA_2026_FREE_AGENTS.retrievedAt.slice(0, 10)}+salary.2026-27.0923+retired.2026-09-24+service.2026.v2`;
+  state.meta.dataVersion = `bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}+fa.${NBA_2026_FREE_AGENTS.retrievedAt.slice(0, 10)}+salary.2026-27.0926.v3+retired.2026-09-24+service.2026.v2`;
   state.meta.gameVersion = "0.5.0";
   return state;
 }

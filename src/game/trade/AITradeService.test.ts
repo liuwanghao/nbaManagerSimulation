@@ -24,6 +24,7 @@ describe("AITradeService", () => {
       if (isAiTradeEvaluationDay(date)) state = runAiTradeEvaluation(state, date);
     }
     expect(state.aiTradeState.transactionLog.length).toBeGreaterThan(0);
+    expect(state.aiTradeState.transactionLog[0]).toContain(state.league.seasonId);
     expect(state.teams[state.userTeamId].playerIds).toEqual(originalUserRoster);
     expect(Object.values(state.aiTradeState.completedByTeamSeason).every((count) => count <= 3)).toBe(true);
     expect(new Set(Object.values(state.teams).flatMap((team) => team.playerIds)).size)

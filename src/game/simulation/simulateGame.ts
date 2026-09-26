@@ -7,6 +7,7 @@ import { addOvertimeSeconds, solveRotationSeconds } from "./minutes";
 import { clamp, teamTalents } from "./ratings";
 import { generateGameInjuries } from "./injuries";
 import { calculateTeamFitForPlayers } from "../team/TeamFitService";
+import { effectiveStarterAssignments } from "../roster/RotationPlanService";
 
 const playersForTeam = (team: Team, players: Record<string, Player>): Player[] =>
   team.playerIds.map((id) => players[id]).filter(Boolean);
@@ -31,12 +32,14 @@ function applyGarbageTimeMinutes(
   teamPlayers: Player[],
   scoreMargin: number,
   overtimePeriods: number,
+  starterIds?: Set<string>,
 ): Record<string, number> {
   const config = SIMULATION_CONFIG.garbageTime;
   if (overtimePeriods > 0 || scoreMargin < config.scoreMarginThreshold || config.starterMinutesReduction <= 0) return seconds;
   const adjusted = { ...seconds };
-  const starters = teamPlayers.filter((player) => player.rotationRole === "STARTER" && (adjusted[player.id] ?? 0) > 0);
-  const reserves = teamPlayers.filter((player) => player.rotationRole !== "STARTER" && (adjusted[player.id] ?? 0) > 0);
+  const isStarter = (player: Player) => starterIds ? starterIds.has(player.id) : player.rotationRole === "STARTER";
+  const starters = teamPlayers.filter((player) => isStarter(player) && (adjusted[player.id] ?? 0) > 0);
+  const reserves = teamPlayers.filter((player) => !isStarter(player) && (adjusted[player.id] ?? 0) > 0);
   if (!starters.length || !reserves.length) return seconds;
   let redistributed = 0;
   for (const player of starters) {
@@ -73,10 +76,12 @@ export function simulateGame(
   const gameSeed = stableHash(seasonSeed, "game", game.id);
   const homePlayers = playersForTeam(homeTeam, players);
   const awayPlayers = playersForTeam(awayTeam, players);
-  const regulationHomeSeconds = solveRotationSeconds(homePlayers, postseason);
-  const regulationAwaySeconds = solveRotationSeconds(awayPlayers, postseason);
-  const homeTalent = teamTalents(homePlayers, regulationHomeSeconds);
-  const awayTalent = teamTalents(awayPlayers, regulationAwaySeconds);
+  const homeStarters = effectiveStarterAssignments(homePlayers, homeTeam.rotationPlan);
+  const awayStarters = effectiveStarterAssignments(awayPlayers, awayTeam.rotationPlan);
+  const regulationHomeSeconds = solveRotationSeconds(homePlayers, postseason, homeTeam.rotationPlan);
+  const regulationAwaySeconds = solveRotationSeconds(awayPlayers, postseason, awayTeam.rotationPlan);
+  const homeTalent = teamTalents(homePlayers, regulationHomeSeconds, homeStarters);
+  const awayTalent = teamTalents(awayPlayers, regulationAwaySeconds, awayStarters);
   const homeFit = calculateTeamFitForPlayers(homePlayers);
   const awayFit = calculateTeamFitForPlayers(awayPlayers);
   const paceRng = createRng(stableHash(gameSeed, "pace"));
@@ -129,8 +134,8 @@ export function simulateGame(
     awayScore += Math.max(SIMULATION_CONFIG.scoring.overtimePointsMinimum, Math.round(SIMULATION_CONFIG.scoring.overtimePointsBase + overtimeRng.normalLike(SIMULATION_CONFIG.scoring.overtimePointsNoise)));
   }
   const scoreMargin = Math.abs(homeScore - awayScore);
-  const homeSeconds = addOvertimeSeconds(applyGarbageTimeMinutes(regulationHomeSeconds, homePlayers, scoreMargin, overtimePeriods), homePlayers, overtimePeriods);
-  const awaySeconds = addOvertimeSeconds(applyGarbageTimeMinutes(regulationAwaySeconds, awayPlayers, scoreMargin, overtimePeriods), awayPlayers, overtimePeriods);
+  const homeSeconds = addOvertimeSeconds(applyGarbageTimeMinutes(regulationHomeSeconds, homePlayers, scoreMargin, overtimePeriods, new Set(Object.values(homeStarters))), homePlayers, overtimePeriods);
+  const awaySeconds = addOvertimeSeconds(applyGarbageTimeMinutes(regulationAwaySeconds, awayPlayers, scoreMargin, overtimePeriods, new Set(Object.values(awayStarters))), awayPlayers, overtimePeriods);
   const homeBoxScore = buildTeamBoxScore(homeTeam.id, homePlayers, homeSeconds, homeScore, pace, stableHash(gameSeed, "home_boxscore"));
   const awayBoxScore = buildTeamBoxScore(awayTeam.id, awayPlayers, awaySeconds, awayScore, pace, stableHash(gameSeed, "away_boxscore"));
   const injuryEvents = generateGameInjuries(game, homeBoxScore, awayBoxScore, players, seasonSeed);

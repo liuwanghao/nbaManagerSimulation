@@ -6,6 +6,7 @@ import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { stableHash } from "../random/hash";
 import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
 import { runAiTradeEvaluation } from "../trade/AITradeService";
+import { advanceFreeAgencyDay } from "../freeAgency/FreeAgencyService";
 import { finalizeOptionPhase, resolveTeamOption, rolloverLeagueYear, shouldPickUpTeamOption } from "../contracts/ContractLifecycleService";
 import { lockOpeningRoster, waivePlayer } from "../roster/RosterService";
 import { advanceRookieDraftAiPick, draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../draft/DraftService";
@@ -26,11 +27,13 @@ import {
   evaluateRegularSeasonAchievements,
   rebuildGmCareerFromHistory,
 } from "../career/AchievementService";
+import { createFranchiseStatsState, recordFranchiseRegularGame } from "../career/FranchiseStats";
 import { blockingEvent, createEventState, enqueueAfterUserGameEvents, enqueueCareerMilestoneEvents, enqueueEvent, nextPendingEvent, resolveAllEvents } from "../events/EventService";
 import { applyFanSupportAfterGame, applySeasonTeamCoreUpdate, type PostseasonTeamMilestone } from "../team/TeamSystemService";
 import { applyPlayerStatusAfterGame, recoverFatigueBeforeGameDay, recoverFatigueForRestDays } from "../simulation/PlayerStatusService";
 import { createAiTeamProfiles } from "../ai/AIManagementService";
 import { applyResultToStandings, resolveConferenceStandings } from "../standings/standings";
+import { applyRotationPlanToPlayers, buildDefaultRotationPlan } from "../roster/RotationPlanService";
 import {
   emptyPlayerSeasonStats,
   emptyStanding,
@@ -53,11 +56,11 @@ export function createCareer(careerSeed: string, userTeamId = "SEA"): GameState 
   const schedule = generateSchedule(fixture.teams, seasonId, openingDateForYear(seasonYear), 0, stableHash(seasonSeed, "schedule"));
   const report = validateSchedule(schedule, fixture.teams);
   if (!report.valid) throw new Error(`Generated invalid schedule: ${report.errors.join("; ")}`);
-  return {
+  const state: GameState = {
     meta: {
-      schemaVersion: 17,
+      schemaVersion: 18,
       gameVersion: "0.1.0",
-      dataVersion: "fixture.2026.offseason.manager-core.v17",
+      dataVersion: "fixture.2026.offseason.manager-core.v18",
       generatorVersion: 1,
       configVersion: GAME_CONFIG.version,
       prngAlgorithm: "xoshiro128ss-v1",
@@ -74,6 +77,7 @@ export function createCareer(careerSeed: string, userTeamId = "SEA"): GameState 
     standings: Object.fromEntries(Object.keys(fixture.teams).map((teamId) => [teamId, emptyStanding(teamId)])),
     lightweightResults: [],
     userGameDetails: {},
+    franchiseStats: createFranchiseStatsState(),
     history: { champions: [], retiredPlayerIds: [], rebornHistoricalSourceIds: [], seasonAwards: [], seasons: [] },
     achievements: createAchievementState(),
     gmCareer: createGmCareerState(),
@@ -89,13 +93,20 @@ export function createCareer(careerSeed: string, userTeamId = "SEA"): GameState 
     injuryState: { recentEvents: [] },
     commandReceipts: {},
   };
+  for (const team of Object.values(state.teams)) {
+    const players = team.playerIds.map((id) => state.players[id]).filter(Boolean);
+    if (players.length < BALANCE_CONFIG.rotationPlan.minimumActivePlayers) continue;
+    team.rotationPlan = buildDefaultRotationPlan(players);
+    applyRotationPlanToPlayers(players, team.rotationPlan);
+  }
+  return state;
 }
 
 export function createExpansionCareer(careerSeed: string): GameState {
   const state = createCareer(careerSeed, "SEA");
-  state.meta.schemaVersion = 17;
+  state.meta.schemaVersion = 18;
   state.meta.gameVersion = "0.5.0";
-  state.meta.dataVersion = "fixture.2026.expansion-manager-core.v17";
+  state.meta.dataVersion = "fixture.2026.expansion-manager-core.v18";
   state.league.currentPhase = "TEAM_CREATION";
   state.schedule = [];
   state.lightweightResults = [];
@@ -104,6 +115,7 @@ export function createExpansionCareer(careerSeed: string): GameState {
   for (const expansionTeamId of ["SEA", "LVG"] as const) {
     for (const playerId of state.teams[expansionTeamId].playerIds) delete state.players[playerId];
     state.teams[expansionTeamId].playerIds = [];
+    delete state.teams[expansionTeamId].rotationPlan;
   }
   return state;
 }
@@ -138,6 +150,7 @@ function commitGameResult(state: GameState, game: ScheduleGame, result: GameResu
   } = result;
   state.lightweightResults.push(lightweightResult);
   if (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId) {
+    recordFranchiseRegularGame(state, result);
     state.userGameDetails[game.id] = result;
     enqueueAfterUserGameEvents(state);
   }
@@ -206,7 +219,7 @@ export function simulateLeagueDay(
   }
   if (dateIndex >= BALANCE_CONFIG.ai.tradeDeadlineDateIndex) next.league.currentPhase = "REGULAR_POST_DEADLINE";
   else if (next.league.currentPhase === "REGULAR_SEASON") next.league.currentPhase = "REGULAR_PRE_DEADLINE";
-  return next;
+  return advanceFreeAgencyDay(next, { mutate: true });
 }
 
 export function simulateNextGameDay(input: GameState): GameState {
@@ -219,12 +232,9 @@ export function simulateNextGameDay(input: GameState): GameState {
   if (!Number.isFinite(nextUserDate)) return input;
   if (blockingEvent(input) || input.injuryState.pendingUserMajorInjury || input.injuryState.pendingEmergencyRoster) return input;
   let state = cloneForLeagueDay(input);
-  const leagueDates = [...new Set(input.schedule
-    .filter((game) => game.status === "SCHEDULED" && game.dateIndex >= input.calendar.currentDateIndex && game.dateIndex <= nextUserDate)
-    .map((game) => game.dateIndex))].sort((left, right) => left - right);
-  for (const dateIndex of leagueDates) {
+  for (let dateIndex = input.calendar.currentDateIndex; dateIndex <= nextUserDate; dateIndex += 1) {
     const next = simulateLeagueDay(state, dateIndex, { mutate: true });
-    if (next === state || blockingEvent(next) || next.injuryState.pendingUserMajorInjury || next.injuryState.pendingEmergencyRoster) return next;
+    if (blockingEvent(next) || next.injuryState.pendingUserMajorInjury || next.injuryState.pendingEmergencyRoster) return next;
     state = next;
   }
   return state;
@@ -424,7 +434,8 @@ export function simulateRegularSeason(
 ): GameState {
   assertPhaseAllowed(input, "Simulate regular season", ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"]);
   let state = cloneForLeagueDay(input);
-  for (const dateIndex of [...new Set(state.schedule.filter((game) => game.status === "SCHEDULED").map((game) => game.dateIndex))].sort((a, b) => a - b)) {
+  const lastScheduledDate = Math.max(...state.schedule.filter((game) => game.status === "SCHEDULED").map((game) => game.dateIndex));
+  for (let dateIndex = state.calendar.currentDateIndex; dateIndex <= lastScheduledDate; dateIndex += 1) {
     if (blockingEvent(state)) {
       if (!options.autoResolveEvents) break;
       state = resolveAllEvents(state);
@@ -443,7 +454,7 @@ export function simulateRegularSeason(
     }
     if (blockingEvent(state) && options.autoResolveEvents) {
       state = resolveAllEvents(state);
-      if (state.schedule.some((game) => game.dateIndex === dateIndex && game.status === "SCHEDULED")) {
+      if (state.calendar.currentDateIndex <= dateIndex || state.schedule.some((game) => game.dateIndex === dateIndex && game.status === "SCHEDULED")) {
         state = simulateLeagueDay(state, dateIndex, { mutate: true });
         if (state.injuryState.pendingEmergencyRoster && options.autoResolveEmergencyRosters) {
           fillEmergencyRoster(state, state.userTeamId);

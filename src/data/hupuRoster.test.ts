@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TEAM_DEFINITIONS } from "./league";
 import { createExpansionCareerFromBundledDataset, createExpansionCareerFromHupu, salaryFromHupu, type HupuTeamSnapshot } from "./hupuRoster";
 import { NBA_PLAYER_DATASET } from "./nbaPlayerDataset";
-import { NBA_2026_27_SALARY_CONTRACTS, salaryContractFor } from "./nbaSalaryContracts";
+import { NBA_2026_27_SALARY_CONTRACTS, NBA_2026_27_SALARY_SUPPLEMENT, salaryContractFor } from "./nbaSalaryContracts";
 import { NBA_SUPPLEMENTAL_PLAYER_PROJECTIONS } from "./nbaSupplementalPlayers";
 import { NBA_2026_FREE_AGENTS } from "./nbaFreeAgents";
 import { NBA_FREE_AGENT_PROJECTIONS } from "./nbaFreeAgentProjections";
@@ -67,7 +67,7 @@ describe("Hupu live roster mapping", () => {
       .toBe(LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum);
     expect(bundledPlayers.length).toBeGreaterThanOrEqual(430);
     expect(bundledPlayers.every((player) => player.profileSource === "CURATED_DATASET")).toBe(true);
-    expect(first.meta.dataVersion).toBe(`bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}+fa.${NBA_2026_FREE_AGENTS.retrievedAt.slice(0, 10)}+salary.2026-27.0923+retired.2026-09-24+service.2026.v2`);
+    expect(first.meta.dataVersion).toBe(`bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}+fa.${NBA_2026_FREE_AGENTS.retrievedAt.slice(0, 10)}+salary.2026-27.0926.v3+retired.2026-09-24+service.2026.v2`);
     expect(first.teams.LAL.playerIds).toEqual(replay.teams.LAL.playerIds);
     expect(first.players[first.teams.LAL.playerIds[0]].name).toBe(replay.players[replay.teams.LAL.playerIds[0]].name);
     expect([...REAL_2026_CLASS_ROSTER_EXCLUSIONS].every((playerId) => !first.players[playerId])).toBe(true);
@@ -81,6 +81,13 @@ describe("Hupu live roster mapping", () => {
     expect(state.players["nba:201566"]).toBeUndefined();
     expect(state.players["nba:201587"]).toBeUndefined();
     expect(players.every((player) => ["UFA", "RFA"].includes(player.contract.status))).toBe(true);
+    expect(players.filter((player) => player.contract.status === "RFA")
+      .every((player) => player.birdTeamId && state.teams[player.birdTeamId]
+        && player.contract.qualifyingOfferDecision === "PENDING")).toBe(true);
+    expect(state.players["nba:1631105"]).toMatchObject({
+      name: "Jalen Duren", teamId: "FREE_AGENT", birdTeamId: "DET",
+      contract: { status: "RFA", qualifyingOfferDecision: "PENDING" },
+    });
     expect(players.every((player) => !CURRENT_NBA_ROSTER_BY_ID.has(player.id.replace(/^nba:/u, "")))).toBe(true);
     expect(NBA_FREE_AGENT_PROJECTIONS.every((player) => player.projection.qualityFlags.includes("BIRTHDATE_VERIFIED"))).toBe(true);
     expect(state.players["nba:1642926"]).toMatchObject({ name: "Tamar Bates", teamId: "UTA" });
@@ -159,6 +166,44 @@ describe("Hupu live roster mapping", () => {
     expect(NBA_2026_27_SALARY_CONTRACTS.unmatchedSourcePlayers).toEqual([
       expect.objectContaining({ sourcePlayerName: "琼斯", reason: "duplicate_target" }),
     ]);
+  });
+
+  it("uses verified supplemental salary figures while retaining their source and option years", () => {
+    expect(NBA_2026_27_SALARY_SUPPLEMENT.contracts).toHaveLength(59);
+    expect(salaryContractFor("nba:1642352")).toMatchObject({
+      sourceContractKind: "TWO_WAY",
+      salaryByYear: [678_882],
+      guaranteedByYear: [0],
+      sourcePath: expect.stringContaining("miami-heat"),
+    });
+    expect(salaryContractFor("nba:1631128")?.salaryByYear).toEqual([
+      21_551_726, 23_275_863, 25_000_000, 26_724_137,
+    ]);
+    expect(salaryContractFor("nba:1628436")?.optionByYear).toEqual(["NONE", "NONE", "TEAM_OPTION"]);
+    expect(salaryContractFor("nba:201949")).toBeUndefined();
+    expect(salaryContractFor("nba:1630264")).toMatchObject({
+      sourceProvider: "SALARYSWISH",
+      salaryByYear: [3_066_143],
+      guaranteedByYear: [3_066_143],
+    });
+    expect(salaryContractFor("nba:1642914")).toMatchObject({
+      sourceContractKind: "TWO_WAY",
+      salaryByYear: [680_985],
+      guaranteedByYear: [83_500],
+    });
+
+    const state = createExpansionCareerFromBundledDataset("supplemental-salary-test");
+    expect(state.players["nba:1642352"].contract).toMatchObject({
+      salary: 678_882,
+      yearsRemaining: 1,
+      contractId: "hoopshype-salary-2026-1642352",
+    });
+    expect(Object.values(state.players).filter((player) => player.contract.contractId?.startsWith("hoopshype-salary-2026-"))).toHaveLength(55);
+    expect(Object.values(state.players).filter((player) => player.contract.contractId?.startsWith("salaryswish-salary-2026-"))).toHaveLength(4);
+    const unmatchedRosterPlayers = Object.values(state.players).filter((player) => player.teamId !== "FREE_AGENT"
+      && player.profileSource === "CURATED_DATASET" && !salaryContractFor(player.id));
+    expect(unmatchedRosterPlayers).toHaveLength(26);
+    expect(unmatchedRosterPlayers.every((player) => player.contract.salary === 1_000_000)).toBe(true);
   });
 
   it("keeps the user-corrected Morez Johnson identity in Dallas with his imported contract", () => {

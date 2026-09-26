@@ -3,7 +3,7 @@ import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
 import type { GameState, InjuryEvent, InjurySeverity, Player, PlayerBoxScore, ScheduleGame, TeamBoxScore } from "../state/types";
 import { enqueueEvent } from "../events/EventService";
-import { calculatePlayerOverall } from "../player/PlayerRatingService";
+import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan } from "../roster/RotationPlanService";
 
 const SEVERITIES: InjurySeverity[] = ["MINOR", "SHORT", "MEDIUM", "LONG", "SEASON_ENDING"];
 
@@ -77,18 +77,17 @@ export function isMajorInjury(severity: InjurySeverity): boolean {
 }
 
 function normalizeRotation(state: GameState, teamId: string): void {
-  const rotation = BALANCE_CONFIG.rosterRotation;
-  const healthy = state.teams[teamId].playerIds.map((id) => state.players[id])
-    .filter((player) => player && player.available && !player.injury)
-    .sort((left, right) => {
-      const leftOverall = calculatePlayerOverall(left);
-      const rightOverall = calculatePlayerOverall(right);
-      return rightOverall - leftOverall || left.id.localeCompare(right.id);
-    });
-  healthy.forEach((player, index) => {
-    player.rotationRole = index < rotation.starters ? "STARTER" : index === rotation.sixthManIndex ? "SIXTH_MAN" : index < rotation.rotationEndIndex ? "ROTATION" : "BENCH";
-  });
-  for (const playerId of state.teams[teamId].playerIds) if (state.players[playerId].injury) state.players[playerId].rotationRole = "OUT";
+  const team = state.teams[teamId];
+  const players = team.playerIds.map((id) => state.players[id]).filter(Boolean);
+  if (players.filter((player) => player.available && !player.injury).length
+    * BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes < BALANCE_CONFIG.rotationPlan.regulationMinutes) {
+    for (const player of players) if (player.injury) player.rotationRole = "OUT";
+    return;
+  }
+  // Preserve the manager's nominal starters through injuries. The normalized plan supplies
+  // deterministic temporary replacements and redistributes unavailable players' minutes.
+  const normalized = team.rotationPlan ? normalizeRotationPlan(players, team.rotationPlan) : buildDefaultRotationPlan(players);
+  applyRotationPlanToPlayers(players, normalized);
 }
 
 export function applyInjuryEvents(state: GameState, events: InjuryEvent[]): void {
@@ -107,13 +106,9 @@ export function applyInjuryEvents(state: GameState, events: InjuryEvent[]): void
     player.health = Math.min(player.health ?? 100, BALANCE_CONFIG.injuries.healthAfterInjury[event.severity]);
     player.rotationRole = "OUT";
     if (event.teamId === state.userTeamId) {
-      enqueueEvent(state, isMajorInjury(event.severity) ? "injury_core_major_001" : "injury_depth_test_001", { player_id: player.id, player_name: player.name });
-    }
-    if (!state.injuryState.pendingUserMajorInjury
-      && event.teamId === state.userTeamId
-      && player.teamRole === "FRANCHISE_CORE"
-      && isMajorInjury(event.severity)) {
-      state.injuryState.pendingUserMajorInjury = event;
+      enqueueEvent(state, isMajorInjury(event.severity) ? "injury_core_major_001" : "injury_depth_test_001", {
+        player_id: player.id, player_name: player.name, games_out: String(event.gamesOut),
+      });
     }
   }
   state.injuryState.recentEvents = [...state.injuryState.recentEvents, ...events]

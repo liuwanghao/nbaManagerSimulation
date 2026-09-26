@@ -7,6 +7,7 @@ import type { GameState, Player, Team } from "../state/types";
 import { validateSalaryMatch } from "./SalaryMatchValidator";
 import { refreshAiDirection } from "../ai/AIManagementService";
 import type { TeamDirection } from "../state/types";
+import { reconcileRotationAfterRosterChange } from "../roster/RotationPlanService";
 
 const legalPhases = ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE"] as const;
 
@@ -52,12 +53,15 @@ function commitOneForOne(state: GameState, leftTeam: Team, rightTeam: Team, left
   leftPlayer.birdTeamId = rightTeam.id;
   rightPlayer.teamId = leftTeam.id;
   rightPlayer.birdTeamId = leftTeam.id;
+  const leftPlayers = leftTeam.playerIds.map((id) => state.players[id]).filter(Boolean);
+  const rightPlayers = rightTeam.playerIds.map((id) => state.players[id]).filter(Boolean);
+  leftTeam.rotationPlan = reconcileRotationAfterRosterChange(leftPlayers, leftTeam.rotationPlan, { [leftPlayer.id]: rightPlayer.id });
+  rightTeam.rotationPlan = reconcileRotationAfterRosterChange(rightPlayers, rightTeam.rotationPlan, { [rightPlayer.id]: leftPlayer.id });
   const leftKey = seasonTeamKey(state, leftTeam.id);
   const rightKey = seasonTeamKey(state, rightTeam.id);
   state.aiTradeState.completedByTeamSeason[leftKey] = completedTrades(state, leftTeam.id) + 1;
   state.aiTradeState.completedByTeamSeason[rightKey] = completedTrades(state, rightTeam.id) + 1;
-  state.aiTradeState.transactionLog.unshift(`${leftTeam.name} / ${rightTeam.name}：${leftPlayer.name} ↔ ${rightPlayer.name}`);
-  state.aiTradeState.transactionLog = state.aiTradeState.transactionLog.slice(0, BALANCE_CONFIG.ai.transactionLogLimit);
+  state.aiTradeState.transactionLog.unshift(`${state.league.seasonId} · ${leftTeam.name} / ${rightTeam.name}：${leftPlayer.name} ↔ ${rightPlayer.name}`);
 }
 
 export function isAiTradeEvaluationDay(dateIndex: number): boolean {

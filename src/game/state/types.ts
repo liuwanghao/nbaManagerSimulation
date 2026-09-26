@@ -20,16 +20,30 @@ export type AchievementId =
   | "EXPANSION_COMPLETE"
   | "FIRST_WIN"
   | "TEN_WINS"
+  | "TWENTY_FIVE_WINS"
+  | "FIFTY_CAREER_WINS"
+  | "HUNDRED_WINS"
+  | "TWO_HUNDRED_WINS"
   | "FIRST_PLAY_IN"
   | "FIRST_PLAYOFFS"
   | "FIRST_SERIES_WIN"
+  | "TWO_SERIES_WINS"
+  | "THREE_SERIES_WINS"
   | "CONFERENCE_FINALS"
   | "FINALS_APPEARANCE"
   | "FIRST_CHAMPIONSHIP"
+  | "SECOND_CHAMPIONSHIP"
+  | "THIRD_CHAMPIONSHIP"
+  | "THIRTY_WIN_SEASON"
+  | "FORTY_WIN_SEASON"
   | "FIFTY_WIN_SEASON"
   | "SIXTY_WIN_SEASON"
   | "HOMEGROWN_ALL_STAR"
   | "ROOKIE_OF_YEAR"
+  | "MVP_WINNER"
+  | "DPOY_WINNER"
+  | "MOST_IMPROVED_WINNER"
+  | "SIXTH_MAN_WINNER"
   | "DYNASTY_TWO_OF_THREE";
 export type PlayerPersonality = "COMPETITIVE" | "MONEY_FOCUSED" | "LOYAL" | "ROLE_FOCUSED" | "MARKET_FOCUSED" | "BALANCED";
 export type PlayerTrait = "PRIMARY_CREATOR" | "SECONDARY_CREATOR" | "SPACER" | "SLASHER" | "RIM_RUNNER" | "WING_STOPPER" | "RIM_PROTECTOR" | "REBOUNDER" | "TWO_WAY" | "SIXTH_MAN";
@@ -364,7 +378,7 @@ export interface FreeAgentOffer {
   utility: number;
   status: FreeAgentOfferStatus;
   resolutionReason?: FreeAgentOfferResolutionReason;
-  kind: "UFA_OFFER" | "RFA_OFFER_PROPOSAL";
+  kind: "UFA_OFFER" | "RFA_OWN_TEAM_OFFER" | "RFA_OFFER_PROPOSAL";
 }
 
 export interface PlayerMarketWindow {
@@ -391,6 +405,7 @@ export interface TeamNotification {
   id: string;
   category: "FREE_AGENCY" | "SEASON" | "TEAM";
   seasonId: string;
+  date?: string;
   title: string;
   message: string;
   playerId?: string;
@@ -496,7 +511,7 @@ export type EventCheckPoint = "DAY_START" | "AFTER_GAME" | "OFFSEASON";
 
 export interface EventEffectDefinition {
   effectId: string;
-  type: "LEAGUE_LOG" | "PLAYER_MORALE" | "PLAYER_FORM" | "TEAM_FAN_SUPPORT" | "TEAM_REPUTATION";
+  type: "LEAGUE_LOG" | "PLAYER_MORALE" | "PLAYER_FORM" | "PLAYER_ROTATION" | "TEAM_FAN_SUPPORT" | "TEAM_REPUTATION";
   target?: string;
   value: string | number;
   executionPhase: "ON_CREATE" | "ON_CHOICE";
@@ -562,6 +577,17 @@ export interface TrainingPlan {
   assignments: Partial<Record<string, TrainingFocus>>;
 }
 
+export interface TeamRotationPlan {
+  /** Five fixed basketball slots. A player may be used out of position, but each player can occupy only one slot. */
+  starters: Record<Position, string>;
+  /** Regulation target minutes. The complete roster must add up to exactly 240. */
+  targetMinutes: Record<string, number>;
+  /** Reserves in manager-selected depth order; positive-minute players receive ranks 6–12. */
+  benchOrder?: string[];
+  /** Automatic lineups can be recomputed after roster changes; manual slot choices remain fixed. */
+  selectionMode?: "AUTO" | "MANUAL";
+}
+
 export interface Team {
   id: string;
   sourceTeamId?: string;
@@ -583,6 +609,7 @@ export interface Team {
   fanSupport: number;
   currentStreak: number;
   playerIds: string[];
+  rotationPlan?: TeamRotationPlan;
 }
 
 export type GameStatus = "SCHEDULED" | "FINAL";
@@ -645,6 +672,25 @@ export interface GameResult {
   injuryEvents?: InjuryEvent[];
 }
 
+/** Regular-season box scores earned while playing for the manager's franchise. */
+export interface FranchisePlayerTotals {
+  playerId: string;
+  playerName: string;
+  games: number;
+  points: number;
+  rebounds: number;
+  assists: number;
+}
+
+export interface FranchiseStatsState {
+  players: Record<string, FranchisePlayerTotals>;
+  coverage: {
+    status: "COMPLETE" | "PARTIAL";
+    countedGames: number;
+    expectedGames: number;
+  };
+}
+
 export interface InjuryState {
   recentEvents: InjuryEvent[];
   pendingUserMajorInjury?: InjuryEvent;
@@ -704,6 +750,7 @@ export interface GameState {
   standings: Record<string, StandingRecord>;
   lightweightResults: GameResult[];
   userGameDetails: Record<string, GameResult>;
+  franchiseStats: FranchiseStatsState;
   history: {
     champions: Array<{ seasonId: string; teamId: string }>;
     retiredPlayerIds: string[];

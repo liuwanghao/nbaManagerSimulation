@@ -1,5 +1,5 @@
 import { stableHash } from "../random/hash";
-import type { GameResult, StandingRecord, Team } from "../state/types";
+import type { Division, GameResult, StandingRecord, Team } from "../state/types";
 
 const ratio = (wins: number, losses: number): number => wins + losses === 0 ? 0 : wins / (wins + losses);
 
@@ -96,15 +96,9 @@ function resolveTieGroup(
   return resolved;
 }
 
-export function resolveConferenceStandings(
-  conference: "WEST" | "EAST",
-  standings: Record<string, StandingRecord>,
-  teams: Record<string, Team>,
-  seasonSeed: string,
-): StandingRecord[] {
-  const conferenceRecords = Object.values(standings).filter((record) => teams[record.teamId].conference === conference);
+function resolveStandings(records: StandingRecord[], teams: Record<string, Team>, seasonSeed: string): StandingRecord[] {
   const byWins = new Map<number, StandingRecord[]>();
-  for (const record of conferenceRecords) {
+  for (const record of records) {
     const group = byWins.get(record.wins) ?? [];
     group.push(record);
     byWins.set(record.wins, group);
@@ -112,4 +106,22 @@ export function resolveConferenceStandings(
   return [...byWins.entries()]
     .sort(([left], [right]) => right - left)
     .flatMap(([, group]) => group.length === 1 ? group : resolveTieGroup(group, teams, seasonSeed));
+}
+
+export function resolveConferenceStandings(
+  conference: "WEST" | "EAST",
+  standings: Record<string, StandingRecord>,
+  teams: Record<string, Team>,
+  seasonSeed: string,
+): StandingRecord[] {
+  return resolveStandings(Object.values(standings).filter((record) => teams[record.teamId].conference === conference), teams, seasonSeed);
+}
+
+export function resolveDivisionStandings(
+  division: Division,
+  standings: Record<string, StandingRecord>,
+  teams: Record<string, Team>,
+  seasonSeed: string,
+): StandingRecord[] {
+  return resolveStandings(Object.values(standings).filter((record) => teams[record.teamId].division === division), teams, seasonSeed);
 }

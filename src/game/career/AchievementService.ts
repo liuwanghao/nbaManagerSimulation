@@ -3,10 +3,17 @@ import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
 
 export const ACHIEVEMENT_IDS: AchievementId[] = [
-  "EXPANSION_COMPLETE", "FIRST_WIN", "TEN_WINS", "FIRST_PLAY_IN", "FIRST_PLAYOFFS", "FIRST_SERIES_WIN",
-  "CONFERENCE_FINALS", "FINALS_APPEARANCE", "FIRST_CHAMPIONSHIP", "FIFTY_WIN_SEASON", "SIXTY_WIN_SEASON",
-  "HOMEGROWN_ALL_STAR", "ROOKIE_OF_YEAR", "DYNASTY_TWO_OF_THREE",
+  "EXPANSION_COMPLETE", "FIRST_WIN", "TEN_WINS", "TWENTY_FIVE_WINS", "FIFTY_CAREER_WINS", "HUNDRED_WINS", "TWO_HUNDRED_WINS",
+  "THIRTY_WIN_SEASON", "FORTY_WIN_SEASON", "FIFTY_WIN_SEASON", "SIXTY_WIN_SEASON",
+  "FIRST_PLAY_IN", "FIRST_PLAYOFFS", "FIRST_SERIES_WIN", "TWO_SERIES_WINS", "THREE_SERIES_WINS",
+  "CONFERENCE_FINALS", "FINALS_APPEARANCE", "FIRST_CHAMPIONSHIP", "SECOND_CHAMPIONSHIP", "THIRD_CHAMPIONSHIP",
+  "HOMEGROWN_ALL_STAR", "ROOKIE_OF_YEAR", "MVP_WINNER", "DPOY_WINNER", "MOST_IMPROVED_WINNER", "SIXTH_MAN_WINNER", "DYNASTY_TWO_OF_THREE",
 ];
+
+const NEW_CAREER_WIN_IDS = ["TWENTY_FIVE_WINS", "FIFTY_CAREER_WINS", "HUNDRED_WINS", "TWO_HUNDRED_WINS"] as const;
+const NEW_SEASON_WIN_IDS = ["THIRTY_WIN_SEASON", "FORTY_WIN_SEASON"] as const;
+const NEW_SERIES_IDS = ["TWO_SERIES_WINS", "THREE_SERIES_WINS"] as const;
+const NEW_TITLE_IDS = ["SECOND_CHAMPIONSHIP", "THIRD_CHAMPIONSHIP"] as const;
 
 export const ACHIEVEMENT_LABELS: Record<AchievementId, string> = Object.fromEntries(
   ACHIEVEMENT_IDS.map((id) => [id, BALANCE_CONFIG.achievements[id].label]),
@@ -55,6 +62,8 @@ export function evaluateRegularSeasonAchievements(state: GameState): void {
   const careerWins = historicalWins + current.wins;
   if (careerWins >= BALANCE_CONFIG.achievements.FIRST_WIN.trigger.value) unlockAchievement(state, "FIRST_WIN");
   if (careerWins >= BALANCE_CONFIG.achievements.TEN_WINS.trigger.value) unlockAchievement(state, "TEN_WINS");
+  for (const id of NEW_CAREER_WIN_IDS) if (careerWins >= BALANCE_CONFIG.achievements[id].trigger.value) unlockAchievement(state, id);
+  for (const id of NEW_SEASON_WIN_IDS) if (current.wins >= BALANCE_CONFIG.achievements[id].trigger.value) unlockAchievement(state, id);
   if (current.wins >= BALANCE_CONFIG.achievements.FIFTY_WIN_SEASON.trigger.value) unlockAchievement(state, "FIFTY_WIN_SEASON");
   if (current.wins >= BALANCE_CONFIG.achievements.SIXTY_WIN_SEASON.trigger.value) unlockAchievement(state, "SIXTY_WIN_SEASON");
 }
@@ -66,23 +75,56 @@ export function evaluateAwardAchievements(state: GameState, awards: SeasonAwards
   if (homegrownAllStar) unlockAchievement(state, "HOMEGROWN_ALL_STAR");
   const roy = awards.winners.ROY ? state.players[awards.winners.ROY] : undefined;
   if (roy?.teamId === state.userTeamId) unlockAchievement(state, "ROOKIE_OF_YEAR");
+  for (const [award, id] of [
+    ["MVP", "MVP_WINNER"], ["DPOY", "DPOY_WINNER"], ["MIP", "MOST_IMPROVED_WINNER"], ["SIXTH_MAN", "SIXTH_MAN_WINNER"],
+  ] as const) {
+    const winner = awards.winners[award];
+    if (winner && state.players[winner]?.teamId === state.userTeamId) unlockAchievement(state, id);
+  }
 }
 
 export function evaluatePostseasonAchievements(state: GameState, postseason: SeasonHistoryArchive["userPostseason"]): void {
   if (postseason.enteredPlayIn) unlockAchievement(state, "FIRST_PLAY_IN");
   if (postseason.enteredPlayoffs) unlockAchievement(state, "FIRST_PLAYOFFS");
   if (postseason.seriesWins > 0) unlockAchievement(state, "FIRST_SERIES_WIN");
+  for (const id of NEW_SERIES_IDS) if (postseason.seriesWins >= BALANCE_CONFIG.achievements[id].trigger.value) unlockAchievement(state, id);
   if (postseason.conferenceFinals) unlockAchievement(state, "CONFERENCE_FINALS");
   if (postseason.finalsAppearance) unlockAchievement(state, "FINALS_APPEARANCE");
   if (postseason.champion) unlockAchievement(state, "FIRST_CHAMPIONSHIP");
   const championships = state.history.champions
     .filter((entry) => entry.teamId === state.userTeamId)
     .map((entry) => entry.seasonId);
+  for (const id of NEW_TITLE_IDS) if (championships.length >= BALANCE_CONFIG.achievements[id].trigger.value) unlockAchievement(state, id);
   const seasonYears = championships.map((seasonId) => Number(seasonId.slice(0, 4))).sort((a, b) => a - b);
   const dynasty = BALANCE_CONFIG.achievements.DYNASTY_TWO_OF_THREE.trigger;
   if (seasonYears.some((year, index) => seasonYears.slice(index, index + dynasty.value).length === dynasty.value
     && seasonYears[index + dynasty.value - 1] - year < dynasty.window)) {
     unlockAchievement(state, "DYNASTY_TWO_OF_THREE");
+  }
+}
+
+/** Restore newly introduced milestones from facts retained in older saves. */
+export function backfillNewAchievements(state: GameState): void {
+  const mark = (id: AchievementId, seasonId: string) => {
+    if (state.achievements[id].unlocked) return;
+    state.achievements[id] = { unlocked: true, seasonId, unlockedAt: null };
+    state.gmCareer.dynastyScore += BALANCE_CONFIG.achievements[id].reward.dynastyScore;
+  };
+  let careerWins = 0;
+  let titles = 0;
+  for (const season of [...state.history.seasons].sort((a, b) => a.seasonId.localeCompare(b.seasonId))) {
+    const wins = season.standings[state.userTeamId]?.wins ?? 0;
+    careerWins += wins;
+    for (const id of NEW_CAREER_WIN_IDS) if (careerWins >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, season.seasonId);
+    for (const id of NEW_SEASON_WIN_IDS) if (wins >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, season.seasonId);
+    for (const id of NEW_SERIES_IDS) if (season.userPostseason.seriesWins >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, season.seasonId);
+    if (season.userPostseason.champion) titles += 1;
+    for (const id of NEW_TITLE_IDS) if (titles >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, season.seasonId);
+  }
+  if (!state.history.seasons.some((season) => season.seasonId === state.league.seasonId)) {
+    const currentWins = state.standings[state.userTeamId]?.wins ?? 0;
+    for (const id of NEW_CAREER_WIN_IDS) if (careerWins + currentWins >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, state.league.seasonId);
+    for (const id of NEW_SEASON_WIN_IDS) if (currentWins >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, state.league.seasonId);
   }
 }
 

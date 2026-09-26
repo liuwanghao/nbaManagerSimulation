@@ -43,7 +43,7 @@ export const SIMULATION_CONFIG = {
   regulationTeamSeconds: 5 * 48 * 60,
   overtimeTeamSeconds: 5 * 5 * 60,
   rotation: {
-    maximumPlayers: 10,
+    maximumPlayers: 12,
     minimumPlayers: 5,
     overtimePlayers: 5,
     franchiseCoreMinuteBonus: 2,

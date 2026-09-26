@@ -3,15 +3,21 @@ import { createFutureDraftPicks } from "../data/draftPicks";
 import { TEAM_DEFINITIONS } from "../data/league";
 import retiredPlayers from "../data/nba-retired-players.json";
 import { createFictionalPlayerProfile } from "../data/playerProfiles";
+import { NBA_PLAYER_DATASET } from "../data/nbaPlayerDataset";
 import { firstPassOpeningNbaServiceYears, openingNbaServiceYears } from "../data/nbaServiceYears";
 import { GAME_CONFIG } from "../config/gameConfig";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
+import { calculateAttributeOverall, calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { emptyPlayerSeasonStats, type GameState } from "../game/state/types";
-import { createAchievementState, createGmCareerState } from "../game/career/AchievementService";
-import { createEventState } from "../game/events/EventService";
+import { backfillNewAchievements, createAchievementState, createGmCareerState } from "../game/career/AchievementService";
+import { backfillFranchiseStats } from "../game/career/FranchiseStats";
+import { createEventState, settleInformationalEvents } from "../game/events/EventService";
+import { addTeamNotification, ensureExpansionWelcomeNotification } from "../game/notifications/TeamNotificationService";
 import { EVENT_DEFINITION_BY_ID } from "../data/events";
 import { createAiTeamProfiles } from "../game/ai/AIManagementService";
 import { encodeStoredString, type StorageAdapter } from "../platform/storage/StorageAdapter";
+import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, upgradeLegacyAutomaticRotationPlan } from "../game/roster/RotationPlanService";
+import { BALANCE_CONFIG } from "../config/balanceConfig";
 
 export interface SaveEnvelope {
   saveId: string;
@@ -131,6 +137,7 @@ function migrateLoadedState(input: GameState): GameState {
   state.gmCareer ??= createGmCareerState();
   state.gmCareer.draftHistory ??= [];
   state.gmCareer.tradeHistory ??= [];
+  backfillNewAchievements(state);
   state.eventState ??= createEventState();
   state.eventState.queue ??= [];
   state.eventState.resolvedInstanceIds ??= [];
@@ -145,10 +152,32 @@ function migrateLoadedState(input: GameState): GameState {
       effects: choice.effects ?? definition?.choices.find((candidate) => candidate.id === choice.id)?.effects ?? [],
     }));
   }
+  const hadQueuedMajorInjury = state.eventState.queue.some((event) => event.definitionId === "injury_core_major_001");
+  settleInformationalEvents(state);
   state.trainingPlan ??= { seasonId: state.league.seasonId, assignments: {} };
   state.injuryState ??= { recentEvents: [] };
+  const pendingMajorInjury = state.injuryState.pendingUserMajorInjury;
+  if (pendingMajorInjury && !hadQueuedMajorInjury) {
+    addTeamNotification(state, {
+      id: `injury-${pendingMajorInjury.injuryId}`,
+      category: "SEASON",
+      seasonId: pendingMajorInjury.seasonId,
+      title: "核心球员受伤",
+      message: `${state.players[pendingMajorInjury.playerId]?.name ?? "球员"}受伤，预计缺阵 ${pendingMajorInjury.gamesOut} 场；首发与轮换已自动调整。`,
+    });
+  }
+  state.injuryState.pendingUserMajorInjury = undefined;
   const players = Object.values(state.players).sort((left, right) => left.id.localeCompare(right.id));
   players.forEach((player, ordinal) => {
+    if (player.id === "nba:201143" && (player.profileSource === "CURATED_DATASET" || player.profileSource === "HUPU_LIVE_ROSTER")) {
+      const horford = NBA_PLAYER_DATASET.players.find((entry) => entry.canonicalPlayerId === player.id);
+      if (horford && (player.position !== horford.position || player.secondaryPosition !== horford.secondaryPosition)) {
+        const currentOverall = calculatePlayerOverall(player);
+        player.position = horford.position;
+        player.secondaryPosition = horford.secondaryPosition ?? horford.position;
+        player.overallAdjustment = currentOverall - calculateAttributeOverall(player.attributes, player.position);
+      }
+    }
     const profile = createFictionalPlayerProfile(state.seeds.careerSeed, ordinal, player.id, player.position, player.age);
     if (/^[A-Z]{2,3} Player \d+$/u.test(player.name)) player.name = profile.name;
     player.heightCm ??= profile.heightCm;
@@ -199,6 +228,7 @@ function migrateLoadedState(input: GameState): GameState {
       player.rotationRole = "OUT";
     }
   });
+  state.franchiseStats ??= backfillFranchiseStats(state);
   if (legacyRealPlayerServiceYears) state.meta.dataVersion += "+service.2026.v2";
   for (const definition of TEAM_DEFINITIONS) {
     const team = state.teams[definition.id];
@@ -215,7 +245,16 @@ function migrateLoadedState(input: GameState): GameState {
     team.fanSupport ??= definition.fanSupport;
     team.currentStreak ??= 0;
   }
-  state.meta.schemaVersion = Math.max(17, state.meta.schemaVersion);
+  for (const team of Object.values(state.teams)) {
+    const roster = team.playerIds.map((id) => state.players[id]).filter(Boolean);
+    if (roster.filter((player) => player.available && !player.injury).length < BALANCE_CONFIG.rotationPlan.minimumActivePlayers) continue;
+    team.rotationPlan = team.rotationPlan
+      ? normalizeRotationPlan(roster, upgradeLegacyAutomaticRotationPlan(roster, team.rotationPlan))
+      : buildDefaultRotationPlan(roster);
+    applyRotationPlanToPlayers(roster, team.rotationPlan);
+  }
+  state.meta.schemaVersion = Math.max(18, state.meta.schemaVersion);
+  ensureExpansionWelcomeNotification(state);
   return state;
 }
 

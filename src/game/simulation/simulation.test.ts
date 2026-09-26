@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createFixtureDataset } from "../../data/fixture";
+import { buildDefaultRotationPlan } from "../roster/RotationPlanService";
 import type { PlayerBoxScore, TeamBoxScore } from "../state/types";
+import { solveRotationSeconds } from "./minutes";
 import { moraleEfficiencyModifier, simulateGame } from "./simulateGame";
 
 const sum = (players: PlayerBoxScore[], key: keyof Omit<PlayerBoxScore, "playerId">): number =>
@@ -22,6 +24,18 @@ function expectLegalBoxScore(box: TeamBoxScore, overtimePeriods: number): void {
 }
 
 describe("simulation contract", () => {
+  it("adds an available reserve when only five planned players remain under the minute cap", () => {
+    const fixture = createFixtureDataset("rotation-minute-cap-fallback");
+    const players = fixture.teams.SEA.playerIds.map((id) => fixture.players[id]);
+    const plan = buildDefaultRotationPlan(players);
+    const starterIds = new Set(Object.values(plan.starters));
+    for (const player of players) if (!starterIds.has(player.id)) plan.targetMinutes[player.id] = 0;
+    const seconds = solveRotationSeconds(players, false, plan);
+    expect(Object.keys(seconds).length).toBeGreaterThanOrEqual(6);
+    expect(Object.values(seconds).reduce((total, value) => total + value, 0)).toBe(14_400);
+    expect(Math.max(...Object.values(seconds))).toBeLessThanOrEqual(2_400);
+  });
+
   it("applies the frozen morale penalty curve without rewarding high morale", () => {
     const fixture = createFixtureDataset("morale-curve-test");
     const players = fixture.teams.SEA.playerIds.slice(0, 5).map((id) => fixture.players[id]);

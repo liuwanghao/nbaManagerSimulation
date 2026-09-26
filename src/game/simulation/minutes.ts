@@ -1,4 +1,4 @@
-import type { Player } from "../state/types";
+import type { Player, TeamRotationPlan } from "../state/types";
 import { SIMULATION_CONFIG } from "./config";
 
 export function allocateInteger(total: number, weights: number[], caps?: number[]): number[] {
@@ -40,18 +40,26 @@ export function allocateInteger(total: number, weights: number[], caps?: number[
   return result;
 }
 
-export function solveRotationSeconds(players: Player[], postseason: boolean): Record<string, number> {
+export function solveRotationSeconds(players: Player[], postseason: boolean, plan?: TeamRotationPlan): Record<string, number> {
   const config = SIMULATION_CONFIG.rotation;
-  const active = players.filter((player) => player.available && player.rotationRole !== "OUT").slice(0, config.maximumPlayers);
-  if (active.length < config.minimumPlayers) throw new Error(`A team needs at least ${config.minimumPlayers} available players`);
+  const maxSeconds = (postseason ? config.postseasonMaximumMinutes : config.regularSeasonMaximumMinutes) * 60;
+  const minimumForMinuteCapacity = Math.ceil(SIMULATION_CONFIG.regulationTeamSeconds / maxSeconds);
+  const available = players.filter((player) => player.available && player.rotationRole !== "OUT");
+  const planned = plan ? available.filter((player) => (plan.targetMinutes[player.id] ?? 0) > 0)
+    .sort((left, right) => (plan.targetMinutes[right.id] ?? 0) - (plan.targetMinutes[left.id] ?? 0) || left.id.localeCompare(right.id)) : [];
+  const emergencyFallbacks = plan ? available.filter((player) => !planned.some((plannedPlayer) => plannedPlayer.id === player.id)) : [];
+  const active = plan
+    ? [...planned, ...emergencyFallbacks].slice(0, Math.max(config.minimumPlayers, minimumForMinuteCapacity, Math.min(config.maximumPlayers, planned.length)))
+    : available.slice(0, config.maximumPlayers);
+  if (active.length < Math.max(config.minimumPlayers, minimumForMinuteCapacity)) throw new Error(`A team needs at least ${Math.max(config.minimumPlayers, minimumForMinuteCapacity)} available players under the minute cap`);
   const roleBonus = (player: Player): number => player.teamRole === "FRANCHISE_CORE"
     ? config.franchiseCoreMinuteBonus
     : player.teamRole === "KEY_PLAYER" ? config.keyPlayerMinuteBonus : 0;
   const weights = active.map((player) => {
-    const target = SIMULATION_CONFIG.roleMinutes[player.rotationRole] + roleBonus(player);
+    const plannedTarget = plan?.targetMinutes[player.id];
+    const target = plannedTarget !== undefined ? plannedTarget : SIMULATION_CONFIG.roleMinutes[player.rotationRole] + roleBonus(player);
     return Math.max(1, target * (1 - Math.max(0, player.fatigue - config.fatigueAdjustmentThreshold) / config.fatigueAdjustmentDivisor));
   });
-  const maxSeconds = (postseason ? config.postseasonMaximumMinutes : config.regularSeasonMaximumMinutes) * 60;
   const seconds = allocateInteger(SIMULATION_CONFIG.regulationTeamSeconds, weights, active.map(() => maxSeconds));
   return Object.fromEntries(active.map((player, index) => [player.id, seconds[index]]));
 }

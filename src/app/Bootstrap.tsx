@@ -17,6 +17,7 @@ import App from "./App";
 import { ExpansionCinematic } from "./ExpansionCinematic";
 import { createBrowserPlatform } from "../platform/PlatformAdapter";
 import { SaveService, type SaveSlotSummary } from "../storage/SaveService";
+import { phaseLabel } from "./uiText";
 
 const CAREER_SEED = "expansion-era-demo";
 const launcherSaveService = typeof window === "undefined" ? null : new SaveService(createBrowserPlatform().storage);
@@ -129,6 +130,13 @@ function createFixturePreview(): GameState {
   if (import.meta.env.DEV && fixtureMode() === "event") {
     const event = createCareer(CAREER_SEED);
     enqueueEvent(event, "playoffs_champion_001");
+    return event;
+  }
+  if (import.meta.env.DEV && fixtureMode() === "event-choices") {
+    const event = createCareer(CAREER_SEED);
+    const player = event.players[event.teams[event.userTeamId].playerIds[0]];
+    enqueueEvent(event, "role_veteran_reduced_001", { player_id: player.id, player_name: player.name });
+    enqueueEvent(event, "streak_winning_003");
     return event;
   }
   if (import.meta.env.DEV && fixtureMode() === "opening") {
@@ -268,7 +276,7 @@ export default function Bootstrap() {
               const summary = homeSaveSlots.find((slot) => slot.slotId === slotId);
               return <article key={slotId} className={summary ? "has-save" : "empty-save"}>
                 <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
-                <small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${summary.phase}` : "尚未保存任何生涯"}</small>
+                <small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存任何生涯"}</small>
                 <button disabled={!summary} onClick={() => void loadFromHome(slotId)}>{summary ? "读取并继续" : "暂无存档"}</button>
               </article>;
             })}
@@ -284,7 +292,7 @@ export default function Bootstrap() {
               const needsConfirm = Boolean(summary) && pendingOverwriteSlot === slotId;
               return <article key={slotId} className={`${summary ? "has-save" : "empty-save"}${needsConfirm ? " pending-overwrite" : ""}`}>
                 <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
-                <small className={needsConfirm ? "home-load-warning" : undefined}>{needsConfirm ? `将覆盖「${summary?.teamName}」的现有进度，确认后无法恢复。` : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${summary.phase}` : "在此位置创建新的扩军生涯"}</small>
+                <small className={needsConfirm ? "home-load-warning" : undefined}>{needsConfirm ? `将覆盖「${summary?.teamName}」的现有进度，确认后无法恢复。` : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "在此位置创建新的扩军生涯"}</small>
                 {needsConfirm ? <div className="home-load-confirm-actions"><button className="home-load-cancel" onClick={() => setPendingOverwriteSlot(null)}>取消</button><button onClick={() => startNewGame(slotId)}>确认覆盖</button></div> : <button onClick={() => summary ? setPendingOverwriteSlot(slotId) : startNewGame(slotId)}>{summary ? "覆盖并开始" : "使用此槽位"}</button>}
               </article>;
             })}

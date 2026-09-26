@@ -47,14 +47,7 @@ function mvpScore(state: GameState, player: Player): number {
 }
 
 export function getAwardRace(state: GameState, type: AwardType = "MVP", limit = 5): Player[] {
-  const candidates = awardCandidates(state);
-  if (type !== "MVP") {
-    const winner = awardWinner(state, type, candidates);
-    return winner ? [winner] : [];
-  }
-  return [...candidates]
-    .sort((left, right) => mvpScore(state, right) - mvpScore(state, left) || left.id.localeCompare(right.id))
-    .slice(0, limit);
+  return rankedAwardCandidates(state, type, awardCandidates(state, 1)).slice(0, limit);
 }
 
 export function getLeagueLeaders(state: GameState): { points?: Player; rebounds?: Player; assists?: Player } {
@@ -71,12 +64,14 @@ export function getGameMvpStat(game: GameResult): PlayerBoxScore | undefined {
   const weights = BALANCE_CONFIG.awards.productionWeights;
   const impact = (stat: PlayerBoxScore) => stat.pts * weights.points + stat.reb * weights.rebounds
     + stat.ast * weights.assists + stat.stl * weights.steals + stat.blk * weights.blocks + stat.tov * weights.turnovers;
-  return [game.awayBoxScore, game.homeBoxScore].flatMap((box) => box?.playerStats ?? [])
+  const winningBox = game.winnerTeamId === game.homeTeamId ? game.homeBoxScore
+    : game.winnerTeamId === game.awayTeamId ? game.awayBoxScore : undefined;
+  return [...(winningBox?.playerStats ?? [])]
     .sort((left, right) => impact(right) - impact(left) || left.playerId.localeCompare(right.playerId))[0];
 }
 
-function awardCandidates(state: GameState): Player[] {
-  return Object.values(state.players).filter((player) => state.teams[player.teamId] && player.seasonStats.games >= BALANCE_CONFIG.awards.minimumCandidateGames);
+function awardCandidates(state: GameState, minimumGames: number = BALANCE_CONFIG.awards.minimumCandidateGames): Player[] {
+  return Object.values(state.players).filter((player) => state.teams[player.teamId] && player.seasonStats.games >= minimumGames);
 }
 
 function pick(candidates: Player[], score: (player: Player) => number): Player | undefined {
@@ -120,31 +115,38 @@ function previousProduction(player: Player): number {
     + perGame(previous, "stl") * weights.steals + perGame(previous, "blk") * weights.blocks + perGame(previous, "tov") * weights.turnovers;
 }
 
-function awardWinner(state: GameState, type: AwardType, candidates: Player[]): Player | undefined {
-  if (type === "MVP") return pick(candidates, (player) => mvpScore(state, player));
-  if (type === "DPOY") return pick(candidates, (player) => (
-    perGame(player.seasonStats, "stl") * BALANCE_CONFIG.awards.dpoyWeights.steals + perGame(player.seasonStats, "blk") * BALANCE_CONFIG.awards.dpoyWeights.blocks
-    + perGame(player.seasonStats, "reb") * BALANCE_CONFIG.awards.dpoyWeights.rebounds
-    + player.attributes.perimeterDefense * BALANCE_CONFIG.awards.dpoyWeights.perimeterDefense
-    + player.attributes.interiorDefense * BALANCE_CONFIG.awards.dpoyWeights.interiorDefense
-    + teamWinScore(state, player) * BALANCE_CONFIG.awards.dpoyWeights.teamWins
-  ) * availability(player));
+function rankedAwardCandidates(state: GameState, type: AwardType, candidates: Player[]): Player[] {
+  if (type === "FINALS_MVP") return [];
+  let eligible = candidates;
   if (type === "ROY") {
     const rookie = BALANCE_CONFIG.awards.rookie;
     const rookies = candidates.filter((player) => player.serviceYears <= rookie.maximumServiceYears && player.age <= rookie.maximumAge);
-    return pick(rookies.length ? rookies : candidates.filter((player) => player.age <= rookie.maximumAge), (player) => productionScore(player) * availability(player));
+    eligible = rookies.length ? rookies : candidates.filter((player) => player.age <= rookie.maximumAge);
   }
   if (type === "MIP") {
     const improvedConfig = BALANCE_CONFIG.awards.mostImproved;
     const improved = candidates.filter((player) => player.seasonStats.games >= improvedConfig.minimumGames && previousProduction(player) > 0);
-    return pick(improved.length ? improved : candidates.filter((player) => player.age <= improvedConfig.fallbackMaximumAge),
-      (player) => productionScore(player) - previousProduction(player) + player.seasonStats.games / improvedConfig.seasonGamesDivisor);
+    eligible = improved.length ? improved : candidates.filter((player) => player.age <= improvedConfig.fallbackMaximumAge);
   }
-  if (type === "SIXTH_MAN") {
-    const bench = candidates.filter((player) => player.rotationRole === "SIXTH_MAN");
-    return pick(bench, (player) => productionScore(player) * availability(player));
-  }
-  return undefined;
+  if (type === "SIXTH_MAN") eligible = candidates.filter((player) => player.rotationRole === "SIXTH_MAN");
+  const score = (player: Player): number => {
+    if (type === "MVP") return mvpScore(state, player);
+    if (type === "DPOY") return (
+      perGame(player.seasonStats, "stl") * BALANCE_CONFIG.awards.dpoyWeights.steals + perGame(player.seasonStats, "blk") * BALANCE_CONFIG.awards.dpoyWeights.blocks
+      + perGame(player.seasonStats, "reb") * BALANCE_CONFIG.awards.dpoyWeights.rebounds
+      + player.attributes.perimeterDefense * BALANCE_CONFIG.awards.dpoyWeights.perimeterDefense
+      + player.attributes.interiorDefense * BALANCE_CONFIG.awards.dpoyWeights.interiorDefense
+      + teamWinScore(state, player) * BALANCE_CONFIG.awards.dpoyWeights.teamWins
+    ) * availability(player);
+    if (type === "MIP") return productionScore(player) - previousProduction(player)
+      + player.seasonStats.games / BALANCE_CONFIG.awards.mostImproved.seasonGamesDivisor;
+    return productionScore(player) * availability(player);
+  };
+  return [...eligible].sort((left, right) => score(right) - score(left) || left.id.localeCompare(right.id));
+}
+
+function awardWinner(state: GameState, type: AwardType, candidates: Player[]): Player | undefined {
+  return rankedAwardCandidates(state, type, candidates)[0];
 }
 
 const HONOR_BY_AWARD: Partial<Record<AwardType, HonorKey>> = {

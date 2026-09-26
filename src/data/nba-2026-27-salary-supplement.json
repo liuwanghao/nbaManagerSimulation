@@ -1,0 +1,1319 @@
+{
+  "schemaVersion": 1,
+  "season": "2026-27",
+  "source": {
+    "provider": "Manually reviewed 2026-27 HoopsHype and SalarySwish salary pages",
+    "fileName": "2026-27 public salary pages reviewed 2026-09-26",
+    "sheet": "team and player salary tables",
+    "currency": "USD",
+    "unit": "yuan"
+  },
+  "contracts": [
+    {
+      "canonicalPlayerId": "nba:1626145",
+      "nbaPlayerId": "1626145",
+      "sourcePlayerId": "nba:1626145",
+      "sourcePlayerName": "Tyus Jones",
+      "sourceTeamId": "DEN",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/denver-nuggets/7/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        3876529
+      ],
+      "guaranteedByYear": [
+        3876529
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1626192",
+      "nbaPlayerId": "1626192",
+      "sourcePlayerId": "nba:1626192",
+      "sourcePlayerName": "Pat Connaughton",
+      "sourceTeamId": "CHA",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/charlotte-hornets/5312/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        3815861
+      ],
+      "guaranteedByYear": [
+        3815861
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1628436",
+      "nbaPlayerId": "1628436",
+      "sourcePlayerId": "nba:1628436",
+      "sourcePlayerName": "Luke Kornet",
+      "sourceTeamId": "SAS",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/san-antonio-spurs/24/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        10450000,
+        9900000,
+        9350000
+      ],
+      "guaranteedByYear": [
+        10450000,
+        9900000,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE",
+        "TEAM_OPTION"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1628963",
+      "nbaPlayerId": "1628963",
+      "sourcePlayerId": "nba:1628963",
+      "sourcePlayerName": "M. Bagley",
+      "sourceTeamId": "DEN",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/denver-nuggets/7/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        3506659
+      ],
+      "guaranteedByYear": [
+        3506659
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1629022",
+      "nbaPlayerId": "1629022",
+      "sourcePlayerId": "nba:1629022",
+      "sourcePlayerName": "Lonnie Walker",
+      "sourceTeamId": "DEN",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/denver-nuggets/7/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        3286399
+      ],
+      "guaranteedByYear": [
+        3286399
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1629312",
+      "nbaPlayerId": "1629312",
+      "sourcePlayerId": "nba:1629312",
+      "sourcePlayerName": "H. Highsmith",
+      "sourceTeamId": "PHX",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/phoenix-suns/21/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        3066143
+      ],
+      "guaranteedByYear": [
+        3066143
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1629605",
+      "nbaPlayerId": "1629605",
+      "sourcePlayerId": "nba:1629605",
+      "sourcePlayerName": "Tacko Fall",
+      "sourceTeamId": "PHI",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/philadelphia-76ers/20/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2537526
+      ],
+      "guaranteedByYear": [
+        2537526
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1630264",
+      "nbaPlayerId": "1630264",
+      "sourcePlayerId": "nba:1630264",
+      "sourcePlayerName": "Anthony Gill",
+      "sourceTeamId": "WAS",
+      "matchType": "manual",
+      "sourceProvider": "SALARYSWISH",
+      "sourcePath": "/players/anthony-gill",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        3066143
+      ],
+      "guaranteedByYear": [
+        3066143
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": "UFA"
+    },
+    {
+      "canonicalPlayerId": "nba:1630311",
+      "nbaPlayerId": "1630311",
+      "sourcePlayerId": "nba:1630311",
+      "sourcePlayerName": "Pat Spencer",
+      "sourceTeamId": "PHX",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/phoenix-suns/21/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1630538",
+      "nbaPlayerId": "1630538",
+      "sourcePlayerId": "nba:1630538",
+      "sourcePlayerName": "Bones Hyland",
+      "sourceTeamId": "MIN",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/minnesota-timberwolves/16/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2846555
+      ],
+      "guaranteedByYear": [
+        2846555
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1630544",
+      "nbaPlayerId": "1630544",
+      "sourcePlayerId": "nba:1630544",
+      "sourcePlayerName": "Tre Mann",
+      "sourceTeamId": "WAS",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/washington-wizards/27/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        8000000,
+        8000000
+      ],
+      "guaranteedByYear": [
+        8000000,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "TEAM_OPTION"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1630611",
+      "nbaPlayerId": "1630611",
+      "sourcePlayerId": "nba:1630611",
+      "sourcePlayerName": "Gui Santos",
+      "sourceTeamId": "GSW",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/golden-state-warriors/9/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        4629630,
+        5000000,
+        5370370
+      ],
+      "guaranteedByYear": [
+        4629630,
+        5000000,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE",
+        "PLAYER_OPTION"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631099",
+      "nbaPlayerId": "1631099",
+      "sourcePlayerId": "nba:1631099",
+      "sourcePlayerName": "Keegan Murray",
+      "sourceTeamId": "SAC",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/sacramento-kings/23/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        24137936,
+        26068965,
+        27999999,
+        29931033
+      ],
+      "guaranteedByYear": [
+        24137936,
+        26068965,
+        27999999,
+        29931033
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE",
+        "NONE",
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631103",
+      "nbaPlayerId": "1631103",
+      "sourcePlayerId": "nba:1631103",
+      "sourcePlayerName": "Malaki Branham",
+      "sourceTeamId": "ORL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/orlando-magic/19/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2625627
+      ],
+      "guaranteedByYear": [
+        2625627
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631121",
+      "nbaPlayerId": "1631121",
+      "sourcePlayerId": "nba:1631121",
+      "sourcePlayerName": "Bryce McGowens",
+      "sourceTeamId": "NOP",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/new-orleans-pelicans/3/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2584539,
+        2934742
+      ],
+      "guaranteedByYear": [
+        2584539,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "TEAM_OPTION"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631123",
+      "nbaPlayerId": "1631123",
+      "sourcePlayerId": "nba:1631123",
+      "sourcePlayerName": "Jamaree Bouyea",
+      "sourceTeamId": "PHX",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/phoenix-suns/21/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2584539
+      ],
+      "guaranteedByYear": [
+        2584539
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631128",
+      "nbaPlayerId": "1631128",
+      "sourcePlayerId": "nba:1631128",
+      "sourcePlayerName": "Christian Braun",
+      "sourceTeamId": "DEN",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/denver-nuggets/7/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        21551726,
+        23275863,
+        25000000,
+        26724137
+      ],
+      "guaranteedByYear": [
+        21551726,
+        23275863,
+        25000000,
+        26724137
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE",
+        "NONE",
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631131",
+      "nbaPlayerId": "1631131",
+      "sourcePlayerId": "nba:1631131",
+      "sourcePlayerName": "Oscar Tshiebwe",
+      "sourceTeamId": "HOU",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/houston-rockets/10/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2537526
+      ],
+      "guaranteedByYear": [
+        2537526
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631132",
+      "nbaPlayerId": "1631132",
+      "sourcePlayerId": "nba:1631132",
+      "sourcePlayerName": "Christian Koloko",
+      "sourceTeamId": "NOP",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/new-orleans-pelicans/3/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2625627
+      ],
+      "guaranteedByYear": [
+        2625627
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631216",
+      "nbaPlayerId": "1631216",
+      "sourcePlayerId": "nba:1631216",
+      "sourcePlayerName": "Caleb Houstan",
+      "sourceTeamId": "NOP",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/new-orleans-pelicans/3/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2625627
+      ],
+      "guaranteedByYear": [
+        2625627
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631219",
+      "nbaPlayerId": "1631219",
+      "sourcePlayerId": "nba:1631219",
+      "sourcePlayerName": "John Butler",
+      "sourceTeamId": "MIL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/milwaukee-bucks/15/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2449421
+      ],
+      "guaranteedByYear": [
+        2449421
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1631457",
+      "nbaPlayerId": "1631457",
+      "sourcePlayerId": "nba:1631457",
+      "sourcePlayerName": "Alex Morales",
+      "sourceTeamId": "ORL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/orlando-magic/19/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1641745",
+      "nbaPlayerId": "1641745",
+      "sourcePlayerId": "nba:1641745",
+      "sourcePlayerName": "Adam Flagler",
+      "sourceTeamId": "SAC",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/sacramento-kings/23/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882,
+        716081
+      ],
+      "guaranteedByYear": [
+        0,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1641751",
+      "nbaPlayerId": "1641751",
+      "sourcePlayerId": "nba:1641751",
+      "sourcePlayerName": "Arthur Kaluma",
+      "sourceTeamId": "LAL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/los-angeles-lakers/13/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1641761",
+      "nbaPlayerId": "1641761",
+      "sourcePlayerId": "nba:1641761",
+      "sourcePlayerName": "Grant Nelson",
+      "sourceTeamId": "BKN",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/brooklyn-nets/17/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1641790",
+      "nbaPlayerId": "1641790",
+      "sourcePlayerId": "nba:1641790",
+      "sourcePlayerName": "PJ Hall",
+      "sourceTeamId": "CHA",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/charlotte-hornets/5312/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1641800",
+      "nbaPlayerId": "1641800",
+      "sourcePlayerId": "nba:1641800",
+      "sourcePlayerName": "Meechie Johnson",
+      "sourceTeamId": "LAL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/los-angeles-lakers/13/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1641869",
+      "nbaPlayerId": "1641869",
+      "sourcePlayerId": "nba:1641869",
+      "sourcePlayerName": "Malachi Smith",
+      "sourceTeamId": "TOR",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/toronto-raptors/28/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2185116
+      ],
+      "guaranteedByYear": [
+        2185116
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642352",
+      "nbaPlayerId": "1642352",
+      "sourcePlayerId": "nba:1642352",
+      "sourcePlayerName": "Keshad Johnson",
+      "sourceTeamId": "MIA",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/miami-heat/14/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642481",
+      "nbaPlayerId": "1642481",
+      "sourcePlayerId": "nba:1642481",
+      "sourcePlayerName": "Jamarion Sharp",
+      "sourceTeamId": "LAC",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/los-angeles-clippers/12/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642484",
+      "nbaPlayerId": "1642484",
+      "sourcePlayerId": "nba:1642484",
+      "sourcePlayerName": "RayJ Dennis",
+      "sourceTeamId": "ATL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/atlanta-hawks/1/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642502",
+      "nbaPlayerId": "1642502",
+      "sourcePlayerId": "nba:1642502",
+      "sourcePlayerName": "Malevy Leons",
+      "sourceTeamId": "GSW",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/golden-state-warriors/9/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642530",
+      "nbaPlayerId": "1642530",
+      "sourcePlayerId": "nba:1642530",
+      "sourcePlayerName": "Yuki Kawamura",
+      "sourceTeamId": "LAC",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/los-angeles-clippers/12/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2449421
+      ],
+      "guaranteedByYear": [
+        2449421
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642870",
+      "nbaPlayerId": "1642870",
+      "sourcePlayerId": "nba:1642870",
+      "sourcePlayerName": "Milos Uzan",
+      "sourceTeamId": "BOS",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/boston-celtics/2/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642884",
+      "nbaPlayerId": "1642884",
+      "sourcePlayerId": "nba:1642884",
+      "sourcePlayerName": "Vladislav Goldin",
+      "sourceTeamId": "MIA",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/miami-heat/14/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642885",
+      "nbaPlayerId": "1642885",
+      "sourcePlayerId": "nba:1642885",
+      "sourcePlayerName": "Mohamed Diawara",
+      "sourceTeamId": "NYK",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/new-york-knicks/18/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2622139,
+        2753246,
+        2884353,
+        3019474
+      ],
+      "guaranteedByYear": [
+        2622139,
+        2753246,
+        2884353,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE",
+        "NONE",
+        "TEAM_OPTION"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642886",
+      "nbaPlayerId": "1642886",
+      "sourcePlayerId": "nba:1642886",
+      "sourcePlayerName": "Koby Brea",
+      "sourceTeamId": "PHX",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/phoenix-suns/21/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642893",
+      "nbaPlayerId": "1642893",
+      "sourcePlayerId": "nba:1642893",
+      "sourcePlayerName": "Alex Toohey",
+      "sourceTeamId": "GSW",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/golden-state-warriors/9/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2185116
+      ],
+      "guaranteedByYear": [
+        2185116
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642914",
+      "nbaPlayerId": "1642914",
+      "sourcePlayerId": "nba:1642914",
+      "sourcePlayerName": "Javon Small",
+      "sourceTeamId": "MEM",
+      "matchType": "manual",
+      "sourceProvider": "SALARYSWISH",
+      "sourcePath": "/players/javon-small",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        680985
+      ],
+      "guaranteedByYear": [
+        83500
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": "RFA"
+    },
+    {
+      "canonicalPlayerId": "nba:1642927",
+      "nbaPlayerId": "1642927",
+      "sourcePlayerId": "nba:1642927",
+      "sourcePlayerName": "Nate Bittle",
+      "sourceTeamId": "TOR",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/toronto-raptors/28/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642933",
+      "nbaPlayerId": "1642933",
+      "sourcePlayerId": "nba:1642933",
+      "sourcePlayerName": "Keshon Gilbert",
+      "sourceTeamId": "ATL",
+      "matchType": "manual",
+      "sourceProvider": "SALARYSWISH",
+      "sourcePath": "/players/keshon-gilbert",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        680985
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": "RFA"
+    },
+    {
+      "canonicalPlayerId": "nba:1642935",
+      "nbaPlayerId": "1642935",
+      "sourcePlayerId": "nba:1642935",
+      "sourcePlayerName": "Chucky Hepburn",
+      "sourceTeamId": "TOR",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/toronto-raptors/28/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642942",
+      "nbaPlayerId": "1642942",
+      "sourcePlayerId": "nba:1642942",
+      "sourcePlayerName": "Jahmai Mashack",
+      "sourceTeamId": "MEM",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/memphis-grizzlies/29/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        679042
+      ],
+      "guaranteedByYear": [
+        679042
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642951",
+      "nbaPlayerId": "1642951",
+      "sourcePlayerId": "nba:1642951",
+      "sourcePlayerName": "Sean Pedulla",
+      "sourceTeamId": "HOU",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/houston-rockets/10/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882,
+        716081
+      ],
+      "guaranteedByYear": [
+        0,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642954",
+      "nbaPlayerId": "1642954",
+      "sourcePlayerId": "nba:1642954",
+      "sourcePlayerName": "Will Richard",
+      "sourceTeamId": "GSW",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/golden-state-warriors/9/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2150917,
+        2525901,
+        2735698
+      ],
+      "guaranteedByYear": [
+        2150917,
+        2525901,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE",
+        "TEAM_OPTION"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1642967",
+      "nbaPlayerId": "1642967",
+      "sourcePlayerId": "nba:1642967",
+      "sourcePlayerName": "John Poulakidas",
+      "sourceTeamId": "DAL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/dallas-mavericks/6/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643007",
+      "nbaPlayerId": "1643007",
+      "sourcePlayerId": "nba:1643007",
+      "sourcePlayerName": "Taelon Peter",
+      "sourceTeamId": "SAS",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/san-antonio-spurs/24/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2185116
+      ],
+      "guaranteedByYear": [
+        2185116
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643016",
+      "nbaPlayerId": "1643016",
+      "sourcePlayerId": "nba:1643016",
+      "sourcePlayerName": "Bez Mbeng",
+      "sourceTeamId": "CHA",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/charlotte-hornets/5312/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        2185116
+      ],
+      "guaranteedByYear": [
+        2185116
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643018",
+      "nbaPlayerId": "1643018",
+      "sourcePlayerId": "nba:1643018",
+      "sourcePlayerName": "L.J. Cryer",
+      "sourceTeamId": "GSW",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/golden-state-warriors/9/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643148",
+      "nbaPlayerId": "1643148",
+      "sourcePlayerId": "nba:1643148",
+      "sourcePlayerName": "Saint Thomas",
+      "sourceTeamId": "PHI",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/philadelphia-76ers/20/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643575",
+      "nbaPlayerId": "1643575",
+      "sourcePlayerId": "nba:1643575",
+      "sourcePlayerName": "Duke Miles",
+      "sourceTeamId": "PHI",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/philadelphia-76ers/20/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643620",
+      "nbaPlayerId": "1643620",
+      "sourcePlayerId": "nba:1643620",
+      "sourcePlayerName": "Tucker DeVries",
+      "sourceTeamId": "BOS",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/boston-celtics/2/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643633",
+      "nbaPlayerId": "1643633",
+      "sourcePlayerId": "nba:1643633",
+      "sourcePlayerName": "Graham Ike",
+      "sourceTeamId": "GSW",
+      "matchType": "manual",
+      "sourceProvider": "SALARYSWISH",
+      "sourcePath": "/players/graham-ike",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882,
+        749083
+      ],
+      "guaranteedByYear": [
+        0,
+        0
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": "RFA"
+    },
+    {
+      "canonicalPlayerId": "nba:1643727",
+      "nbaPlayerId": "1643727",
+      "sourcePlayerId": "nba:1643727",
+      "sourcePlayerName": "J'Vonne Hadley",
+      "sourceTeamId": "MIA",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/miami-heat/14/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643738",
+      "nbaPlayerId": "1643738",
+      "sourcePlayerId": "nba:1643738",
+      "sourcePlayerName": "Malik Dia",
+      "sourceTeamId": "NOP",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/new-orleans-pelicans/3/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643758",
+      "nbaPlayerId": "1643758",
+      "sourcePlayerId": "nba:1643758",
+      "sourcePlayerName": "AK Okereke",
+      "sourceTeamId": "LAL",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/los-angeles-lakers/13/",
+      "sourceContractKind": "TWO_WAY",
+      "salaryByYear": [
+        678882
+      ],
+      "guaranteedByYear": [
+        0
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:1643813",
+      "nbaPlayerId": "1643813",
+      "sourcePlayerId": "nba:1643813",
+      "sourcePlayerName": "Alpha Diallo",
+      "sourceTeamId": "DEN",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/denver-nuggets/7/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        1357763
+      ],
+      "guaranteedByYear": [
+        1357763
+      ],
+      "optionByYear": [
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:203500",
+      "nbaPlayerId": "203500",
+      "sourcePlayerId": "nba:203500",
+      "sourcePlayerName": "Steven Adams",
+      "sourceTeamId": "HOU",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/houston-rockets/10/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        13000000,
+        11869566
+      ],
+      "guaranteedByYear": [
+        13000000,
+        11869566
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    },
+    {
+      "canonicalPlayerId": "nba:203991",
+      "nbaPlayerId": "203991",
+      "sourcePlayerId": "nba:203991",
+      "sourcePlayerName": "Clint Capela",
+      "sourceTeamId": "HOU",
+      "matchType": "manual",
+      "sourceProvider": "HOOPSHYPE",
+      "sourcePath": "/salaries/teams/houston-rockets/10/",
+      "sourceContractKind": "STANDARD",
+      "salaryByYear": [
+        7035000,
+        7370000
+      ],
+      "guaranteedByYear": [
+        7035000,
+        7370000
+      ],
+      "optionByYear": [
+        "NONE",
+        "NONE"
+      ],
+      "futureFreeAgencyStatus": null
+    }
+  ],
+  "unmatchedSourcePlayers": []
+}
