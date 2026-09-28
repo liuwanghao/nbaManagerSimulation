@@ -1,4 +1,5 @@
 import { createRng } from "../random/xoshiro";
+import { stableHash } from "../random/hash";
 import type { Player, PlayerBoxScore, TeamBoxScore } from "../state/types";
 import { SIMULATION_CONFIG } from "./config";
 import { allocateInteger } from "./minutes";
@@ -86,22 +87,36 @@ export function buildTeamBoxScore(
   const blocks = Math.max(config.blocks.minimum, Math.round(config.blocks.base + rng.normalLike(config.blocks.noise)));
 
   const minuteWeights = active.map((player) => seconds[player.id]);
-  const usageWeights = active.map((player) => {
+  const variation = active.map((player) => {
+    const playerRng = createRng(stableHash(seed, "player-game-variation", player.id));
+    const bounded = (sd: number) => clamp(1 + playerRng.normalLike(sd), config.playerGameVariation.minimumMultiplier, config.playerGameVariation.maximumMultiplier);
+    return {
+      usage: bounded(config.playerGameVariation.usageSd),
+      shooting: bounded(config.playerGameVariation.shootingSd),
+      rebounds: bounded(config.playerGameVariation.reboundSd),
+      assists: bounded(config.playerGameVariation.assistSd),
+    };
+  });
+  const usageWeights = active.map((player, index) => {
     const ratingRange = SIMULATION_CONFIG.ratings.maximum - SIMULATION_CONFIG.ratings.minimum;
     const usage = config.usage.tendencyWeight * clamp((player.usageTendency - SIMULATION_CONFIG.ratings.minimum) / ratingRange, 0, 1)
       + config.usage.offenseImpactWeight * clamp((playerOffenseImpact(player) - SIMULATION_CONFIG.ratings.minimum) / ratingRange, 0, 1);
-    return seconds[player.id] * SIMULATION_CONFIG.usageRoleMultiplier[player.teamRole] * usage;
+    return seconds[player.id] * SIMULATION_CONFIG.usageRoleMultiplier[player.teamRole] * usage * variation[index].usage;
   });
   const fgaByPlayer = allocateInteger(shooting.fga, usageWeights);
   const threeAttemptWeights = active.map((player, index) => minuteWeights[index] * player.threeRate * player.attributes.shooting);
   const threePaByPlayer = allocateWithCaps(shooting.threePa, threeAttemptWeights, fgaByPlayer);
-  const threePmByPlayer = allocateWithCaps(shooting.threePm, active.map((player, index) => threePaByPlayer[index] * player.attributes.shooting), threePaByPlayer);
+  const threePmByPlayer = allocateWithCaps(shooting.threePm, active.map((player, index) => threePaByPlayer[index] * player.attributes.shooting * variation[index].shooting), threePaByPlayer);
   const twoCaps = fgaByPlayer.map((attempts, index) => attempts - threePaByPlayer[index]);
-  const twoPmByPlayer = allocateWithCaps(shooting.twoPm, active.map((player, index) => twoCaps[index] * player.attributes.finishing), twoCaps);
+  const twoPmByPlayer = allocateWithCaps(shooting.twoPm, active.map((player, index) => twoCaps[index] * player.attributes.finishing * variation[index].shooting), twoCaps);
   const ftaByPlayer = allocateInteger(shooting.fta, active.map((player, index) => usageWeights[index] * player.attributes.finishing));
-  const ftmByPlayer = allocateWithCaps(shooting.ftm, active.map((player, index) => ftaByPlayer[index] * (player.attributes.shooting + player.attributes.basketballIq)), ftaByPlayer);
-  const rebByPlayer = allocateInteger(rebounds, active.map((player, index) => minuteWeights[index] * player.attributes.rebounding));
-  const astByPlayer = allocateInteger(assists, active.map((player, index) => minuteWeights[index] * (player.attributes.playmaking + player.attributes.basketballIq)));
+  const ftmByPlayer = allocateWithCaps(shooting.ftm, active.map((player, index) => ftaByPlayer[index] * (player.attributes.shooting + player.attributes.basketballIq) * variation[index].shooting), ftaByPlayer);
+  const rebByPlayer = allocateInteger(rebounds, active.map((player, index) => minuteWeights[index]
+    * player.attributes.rebounding * config.rebounds.positionWeight[player.position] * variation[index].rebounds));
+  const astByPlayer = allocateInteger(assists, active.map((player, index) => minuteWeights[index]
+    * Math.pow(Math.max(0, player.attributes.playmaking - config.assists.playmakingFloor), 2)
+    * (player.attributes.basketballIq / config.assists.iqBaseline)
+    * config.assists.positionWeight[player.position] * variation[index].assists));
   const stlByPlayer = allocateInteger(steals, active.map((player, index) => minuteWeights[index] * player.attributes.perimeterDefense));
   const blkByPlayer = allocateInteger(blocks, active.map((player, index) => minuteWeights[index] * (player.attributes.interiorDefense + player.attributes.athleticism)));
   const tovByPlayer = allocateInteger(tov, usageWeights);

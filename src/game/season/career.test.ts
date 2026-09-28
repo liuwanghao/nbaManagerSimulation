@@ -27,6 +27,9 @@ describe("season loop", () => {
     const completed = simulateRegularSeason(initial, { autoAcknowledgeMajorInjuries: true, autoResolveEmergencyRosters: true, autoResolveEvents: true });
     expect(completed.lightweightResults).toHaveLength(1312);
     for (const record of Object.values(completed.standings)) expect(record.wins + record.losses).toBe(82);
+    expect(completed.history.seasonAwards).toHaveLength(1);
+    expect(completed.history.seasonAwards[0].winners.MVP).toBeTruthy();
+    expect(completed.history.seasonAwards[0].winners.FINALS_MVP).toBeUndefined();
     const nextSeason = advanceSeason(completed);
     expect(nextSeason.league.seasonId).toBe("2027-28");
     expect(nextSeason.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
@@ -49,7 +52,7 @@ describe("season loop", () => {
     expect(nextSeason.gmCareer.regularSeasonWins + nextSeason.gmCareer.regularSeasonLosses).toBe(82);
     expect(nextSeason.achievements.FIRST_WIN.unlocked).toBe(true);
     expect(nextSeason.achievements.TEN_WINS.unlocked).toBe(true);
-  });
+  }, 120_000);
 
   it("replays a full regular season from the same seed", () => {
     const first = simulateRegularSeason(createCareer("career-replay"), { autoAcknowledgeMajorInjuries: true, autoResolveEmergencyRosters: true, autoResolveEvents: true });

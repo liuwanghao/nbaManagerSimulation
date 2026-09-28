@@ -14,10 +14,10 @@
 | `simulation.ratings / rotation / boxScore / playerStatus` | 八维攻防权重、轮换分钟、球权与技术统计骨架、投篮守恒修正、逐场状态变化 |
 | `balance.playerLifecycle.*` | 年龄曲线、Potential、Development Rate、训练、伤病影响、衰退、退役、名人堂 |
 | `balance.ai.*` | 球队方向、交易阈值、Draft 偏好、FA 行为 |
-| `balance.trade.*` | 球员 Trade Value、刷新惩罚、报价数、未来选秀权估值 |
+| `balance.trade.*` | 球员 Trade Value、核心球员拆换溢价、刷新惩罚、报价数、未来选秀权估值 |
 | `balance.freeAgency.*` | Utility 权重、报价窗口、接受阈值、市场工资和角色评价 |
 | `finance.*` | Salary Cap、Tax、Apron、最低工资、顶薪比例、合同年限及涨幅 |
-| `balance.draft.*` | 每届人数、潜力/类型分布、侦察误差、乐透抽签 |
+| `balance.draft.*` | 每届人数、潜力/类型分布、侦察误差、乐透抽签、历史球星原型轮换与潜力下限 |
 | `balance.injuries.*` | 基础伤病率、严重度权重、恢复时间、耐伤与年龄/疲劳影响 |
 | `balance.randomEvents.*` | 触发概率、冷却、类别权重、连败恢复事件加权 |
 | `balance.leagueBalance.*` | 年度新秀供给、退役人口与 OVR 分布目标（用于长期模拟验收） |
@@ -40,4 +40,4 @@
 
 `validateGameConfig()` 会在测试中校验上述结构性约束。所有随机行为继续使用职业生涯/赛季固定 Seed，因此同一配置版本与同一 Seed 可复现。
 
-当前统一版本为 `game-config.v2`。本轮仍未把 82 场、41/41 主客场、季后赛赛制、交易状态机等冻结结构做成可调参数；这些属于 V1.5 的产品合同，不应通过数值配置绕过。
+当前统一版本为 `game-config.v14`。交易使用 `finance.v4` 的 2026-27 赛季 NBA 工资帽、税线和两条土豪线。未来选秀班每届从经筛选的历史球星模板轮换 3 名球星新秀，直接使用球星本人姓名；同一模板优先间隔尽可能多的届数复用。普通新秀的前 8 顺位能力准备度基准为 78；历史球星模板的八维初始能力统一下调 3 点，保留其成长潜力，避免把成熟赛季能力当成新秀能力。旧存档继续保留创建时的配置版本标记，读取时会把已有历史球星新秀的虚构姓名恢复为本人姓名。

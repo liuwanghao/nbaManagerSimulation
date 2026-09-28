@@ -219,7 +219,12 @@ export function simulateLeagueDay(
   }
   if (dateIndex >= BALANCE_CONFIG.ai.tradeDeadlineDateIndex) next.league.currentPhase = "REGULAR_POST_DEADLINE";
   else if (next.league.currentPhase === "REGULAR_SEASON") next.league.currentPhase = "REGULAR_PRE_DEADLINE";
-  return advanceFreeAgencyDay(next, { mutate: true });
+  const advanced = advanceFreeAgencyDay(next, { mutate: true });
+  // The final regular-season day fixes the awards before the player enters the
+  // postseason. finalizeRegularSeasonAwards is idempotent for a settled season.
+  return advanced.schedule.every((game) => game.status === "FINAL")
+    ? finalizeRegularSeasonAwards(advanced)
+    : advanced;
 }
 
 export function simulateNextGameDay(input: GameState): GameState {
@@ -349,6 +354,7 @@ function archiveCompletedSeason(
   championTeamId: string,
   postseasonGames: GameResult[],
   userPostseason: GameState["history"]["seasons"][number]["userPostseason"],
+  sevenEightLoserTeamIds: string[],
 ): void {
   const archive = {
     seasonId: state.league.seasonId,
@@ -357,6 +363,7 @@ function archiveCompletedSeason(
     regularSeasonResults: structuredClone(state.lightweightResults),
     userRegularGameDetails: structuredClone(state.userGameDetails),
     postseasonGameDetails: Object.fromEntries(postseasonGames.map((game) => [game.gameId, structuredClone(game)])),
+    lotteryContext: { sevenEightLoserTeamIds },
     userPostseason,
   };
   const existingIndex = state.history.seasons.findIndex((season) => season.seasonId === state.league.seasonId);
@@ -422,7 +429,9 @@ export function simulatePostseason(input: GameState): GameState {
   applySeasonTeamCoreUpdate(state, postseasonMilestones, state.history.seasonAwards.find((entry) => entry.seasonId === state.league.seasonId));
   evaluatePostseasonAchievements(state, userPostseason);
   enqueueCareerMilestoneEvents(state);
-  archiveCompletedSeason(state, finals.winner, postseasonGames, userPostseason);
+  const sevenEightLoserTeamIds = [westPlayIn.games[0], eastPlayIn.games[0]]
+    .map((game) => game.winnerTeamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId);
+  archiveCompletedSeason(state, finals.winner, postseasonGames, userPostseason, sevenEightLoserTeamIds);
   rebuildGmCareerFromHistory(state);
   state.league.currentPhase = "OFFSEASON";
   return state;

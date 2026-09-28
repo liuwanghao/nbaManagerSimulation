@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { getCapSheet } from "../cap/CapSheetService";
 import { createCareer } from "../season/career";
 import { availablePlayerCount, standardAvailablePlayerCount } from "../simulation/injuries";
+import { enqueueEvent, executeEventCommand } from "../events/EventService";
+import { validateRotationPlan } from "../roster/RotationPlanService";
 import {
   chargeEmergencySalariesAtRosterLock,
   executeEmergencyRosterCommand,
@@ -23,6 +25,27 @@ function reduceAvailableRoster(state: ReturnType<typeof createCareer>, teamId: s
 }
 
 describe("emergency active roster", () => {
+  it("completes an automatic injury rotation after emergency players are added", () => {
+    const state = createCareer("emergency-auto-rotation");
+    reduceAvailableRoster(state, state.userTeamId, 5);
+    const event = enqueueEvent(state, "injury_core_major_001", {
+      player_id: state.teams[state.userTeamId].playerIds[0], player_name: "测试球员", games_out: "4",
+    })!;
+    const chosen = executeEventCommand(state, {
+      commandId: "injury-auto-before-emergency", type: "RESOLVE_EVENT",
+      payload: { eventInstanceId: event.eventInstanceId, choiceId: "auto_adjust" },
+    });
+    expect(chosen.injuryState.pendingAutoRotationAfterEmergency).toBe(true);
+    prepareEmergencyRostersForDay(chosen, [chosen.userTeamId]);
+    const filled = executeEmergencyRosterCommand(chosen, {
+      commandId: "fill-after-injury", type: "FILL_EMERGENCY_ROSTER", payload: { teamId: chosen.userTeamId },
+    });
+    expect(filled.injuryState.pendingAutoRotationAfterEmergency).toBeUndefined();
+    expect(filled.teams[filled.userTeamId].rotationPlan?.selectionMode).toBe("AUTO");
+    const roster = filled.teams[filled.userTeamId].playerIds.map((id) => filled.players[id]);
+    expect(() => validateRotationPlan(roster, filled.teams[filled.userTeamId].rotationPlan!)).not.toThrow();
+  });
+
   it("pauses the user below eight, fills to eight, and charges only active roster-lock days", () => {
     const state = createCareer("emergency-user");
     const disabled = reduceAvailableRoster(state, state.userTeamId, 7);

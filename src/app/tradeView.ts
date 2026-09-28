@@ -14,8 +14,10 @@ export function tradeAssetPositionCounts(roster: Player[]): Record<TradeAssetPos
   };
 }
 
-export function tradeInquiryCommandId(state: GameState, playerId: string): string {
-  return `trade-query-${state.league.seasonId}-${playerId}-${Object.keys(state.commandReceipts).length}`;
+export function tradeInquiryCommandId(state: GameState, playerIdOrIds: string | string[], pickIds: string[] = []): string {
+  const playerIds = typeof playerIdOrIds === "string" ? [playerIdOrIds] : playerIdOrIds;
+  const assetKey = [...playerIds.map((id) => `p:${id}`), ...pickIds.map((id) => `d:${id}`)].sort().join("-");
+  return `trade-query-${state.league.seasonId}-${assetKey}-${Object.keys(state.commandReceipts).length}`;
 }
 
 export function tradePickLabel(state: GameState, pickId: string): string {

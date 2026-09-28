@@ -9,7 +9,7 @@ import { GAME_CONFIG } from "../config/gameConfig";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import { calculateAttributeOverall, calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { emptyPlayerSeasonStats, type GameState } from "../game/state/types";
-import { backfillNewAchievements, createAchievementState, createGmCareerState } from "../game/career/AchievementService";
+import { backfillNewAchievements, createAchievementState, createGmCareerState, repairInvalidWinAchievements } from "../game/career/AchievementService";
 import { backfillFranchiseStats } from "../game/career/FranchiseStats";
 import { createEventState, settleInformationalEvents } from "../game/events/EventService";
 import { addTeamNotification, ensureExpansionWelcomeNotification } from "../game/notifications/TeamNotificationService";
@@ -54,6 +54,7 @@ const checkpointKey = (slotId: number, checkpointId: string): string => `${slotK
 const checkpointIndexKey = (slotId: number): string => `${slotKey(slotId)}:checkpoint-index`;
 const previousKey = (slotId: number): string => `${slotKey(slotId)}:previous-valid`;
 const conflictBackupKey = (slotId: number): string => `${slotKey(slotId)}:conflict-backup`;
+const historicalNameBySourceId = new Map(NBA_PLAYER_DATASET.historicalTemplates.map((template) => [template.sourcePlayerId, template.sourceName]));
 
 interface CheckpointEnvelope {
   checkpointId: string;
@@ -77,6 +78,10 @@ interface ConflictBackup {
 
 function migrateLoadedState(input: GameState): GameState {
   const state = structuredClone(input);
+  for (const player of Object.values(state.players)) {
+    if (player.profileSource !== "HISTORICAL_ARCHETYPE" || !player.historicalSourcePlayerId) continue;
+    player.name = historicalNameBySourceId.get(player.historicalSourcePlayerId) ?? player.name;
+  }
   const hasFirstServiceYearsMigration = state.meta.dataVersion.includes("+service.2026.v1");
   const legacyRealPlayerServiceYears = !state.meta.dataVersion.includes("+service.2026.v2")
     && (state.meta.dataVersion.startsWith("bundled.") || state.meta.dataVersion.startsWith("hupu.nba.live-roster"));
@@ -137,6 +142,7 @@ function migrateLoadedState(input: GameState): GameState {
   state.gmCareer ??= createGmCareerState();
   state.gmCareer.draftHistory ??= [];
   state.gmCareer.tradeHistory ??= [];
+  repairInvalidWinAchievements(state);
   backfillNewAchievements(state);
   state.eventState ??= createEventState();
   state.eventState.queue ??= [];

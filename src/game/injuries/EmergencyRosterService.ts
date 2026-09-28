@@ -6,6 +6,7 @@ import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
 import { emptyPlayerSeasonStats, type GameState, type Player, type PlayerAttributes, type Position } from "../state/types";
 import { availablePlayerCount, standardAvailablePlayerCount } from "../simulation/injuries";
+import { applyRotationPlanToPlayers, buildDefaultRotationPlan } from "../roster/RotationPlanService";
 
 export type EmergencyRosterCommand = {
   commandId: string;
@@ -148,6 +149,12 @@ export function resolveEmergencyTerminations(state: GameState, teamId: string): 
 export function fillEmergencyRoster(state: GameState, teamId: string): void {
   if (!state.teams[teamId]) throw new Error("EMERGENCY_TEAM_NOT_FOUND");
   while (availablePlayerCount(state, teamId) < LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget) signEmergencyPlayer(state, teamId);
+  if (teamId === state.userTeamId && state.injuryState.pendingAutoRotationAfterEmergency) {
+    const players = state.teams[teamId].playerIds.map((id) => state.players[id]).filter(Boolean);
+    state.teams[teamId].rotationPlan = buildDefaultRotationPlan(players.filter((player) => player.contract.status === "STANDARD"));
+    applyRotationPlanToPlayers(players, state.teams[teamId].rotationPlan);
+    state.injuryState.pendingAutoRotationAfterEmergency = undefined;
+  }
   if (state.injuryState.pendingEmergencyRoster?.teamId === teamId) state.injuryState.pendingEmergencyRoster = undefined;
 }
 

@@ -1,6 +1,6 @@
 import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
-import { createFictionalPlayerProfile } from "../../data/playerProfiles";
+import { createFictionalPlayerProfile, fictionalNameAt } from "../../data/playerProfiles";
 import { calculateMarketPreference } from "../player/MarketPreferenceService";
 import { createBundledPlayer } from "../../data/hupuRoster";
 import { eligibleHistoricalTemplates, NBA_PLAYER_DATASET, type HistoricalPlayerTemplate } from "../../data/nbaPlayerDataset";
@@ -15,6 +15,7 @@ import { emptyPlayerSeasonStats, type ExpansionCityId, type GameState, type Play
 
 export type DraftCommand =
   | { commandId: string; type: "PREPARE_ROOKIE_DRAFT"; payload: Record<string, never> }
+  | { commandId: string; type: "ACKNOWLEDGE_DRAFT_LOTTERY"; payload: Record<string, never> }
   | { commandId: string; type: "REVEAL_DRAFT_PROSPECT"; payload: { playerId: string } }
   | { commandId: string; type: "ADVANCE_ROOKIE_DRAFT_AI_PICK"; payload: { expectedPickNumber: number } }
   | { commandId: string; type: "FAST_FORWARD_ROOKIE_DRAFT"; payload: { expectedPickNumber: number } }
@@ -23,12 +24,17 @@ export type DraftCommand =
 export type DraftProspectView = Pick<Player,
   "id" | "name" | "age" | "position" | "secondaryPosition" | "heightCm" | "weightKg"
   | "attributes" | "scoutedPotentialGrade" | "scoutingConfidence" | "traits"
->;
+> & { historicalArchetypeName?: string };
 
 const POSITIONS: Position[] = ["PG", "SG", "SF", "PF", "C"];
 const TRAITS: PlayerTrait[] = ["PRIMARY_CREATOR", "SECONDARY_CREATOR", "SPACER", "SLASHER", "RIM_RUNNER", "WING_STOPPER", "RIM_PROTECTOR", "REBOUNDER", "TWO_WAY", "SIXTH_MAN"];
-const FIRST_NAMES = ["Aiden", "Malik", "Jonah", "Darius", "Eli", "Kellan", "Micah", "Noah", "Andre", "Julian", "Isaiah", "Marcus", "Tyrese", "Caleb", "Devin", "Jalen"];
-const LAST_NAMES = ["Carter", "Brooks", "Hayes", "Mitchell", "Reed", "Foster", "Bennett", "Coleman", "Price", "Warren", "Grant", "Pierce", "Sutton", "Morris", "Lawson", "Banks"];
+const LEGEND_SOURCE_NAMES = new Set([
+  "Ben Wallace", "Tim Duncan", "Dirk Nowitzki", "Paul Pierce", "Elton Brand", "Shawn Marion",
+  "Andrei Kirilenko", "Manu Ginobili", "Paul Millsap", "Joakim Noah", "Marc Gasol",
+  "Blake Griffin", "DeMarcus Cousins", "Kyrie Irving", "Pau Gasol", "Chris Bosh",
+  "Dwyane Wade", "Dwight Howard", "Andre Iguodala", "Jason Kidd", "Kevin Garnett", "Kobe Bryant",
+]);
+const HISTORICAL_TEMPLATE_BY_ID = new Map(NBA_PLAYER_DATASET.historicalTemplates.map((template) => [template.sourcePlayerId, template]));
 const clamp = (
   value: number,
   min: number = BALANCE_CONFIG.playerLifecycle.attributeMinimum,
@@ -69,6 +75,11 @@ function prospectAttributes(seed: string, rank: number, position: Position): Pla
   };
 }
 
+function draftFictionalName(state: GameState, rank: number): string {
+  const seasonIndex = state.league.seasonYear - BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear;
+  return fictionalNameAt(state.seeds.careerSeed, seasonIndex * BALANCE_CONFIG.draft.classSize + rank);
+}
+
 function generateProspect(state: GameState, rank: number, draftSeed: string): Player {
   const id = `DRAFT-${state.league.seasonYear}-${String(rank + 1).padStart(3, "0")}`;
   const seed = stableHash(draftSeed, id, "prospect");
@@ -95,12 +106,12 @@ function generateProspect(state: GameState, rank: number, draftSeed: string): Pl
     ?? 0;
   const scoutingRng = createRng(stableHash(draftSeed, id, "scouting"));
   const scoutedValue = clamp(truePotential + scoutingRng.int(-errorRange, errorRange), BALANCE_CONFIG.draft.scoutingPotentialMinimum, BALANCE_CONFIG.playerLifecycle.attributeMaximum);
-  const nameRng = createRng(stableHash(seed, "name"));
   return {
     id,
     teamId: "FREE_AGENT",
     ...profile,
-    name: `${FIRST_NAMES[nameRng.int(0, FIRST_NAMES.length - 1)]} ${LAST_NAMES[nameRng.int(0, LAST_NAMES.length - 1)]}`,
+    name: draftFictionalName(state, rank),
+    birthDate: `${state.league.seasonYear - age}${profile.birthDate.slice(4)}`,
     age,
     position,
     profileSource: "PROCEDURAL_DRAFT",
@@ -215,14 +226,15 @@ function historicalProspect(
   const ageConfig = BALANCE_CONFIG.draft.age;
   const age = ageConfig.base + rng.int(0, ageConfig.remainingRange);
   const profile = createFictionalPlayerProfile(draftSeed, rank, id, template.position, age);
-  const jitter = BALANCE_CONFIG.draft.historicalRebirth.rookieAttributeJitter;
+  const rebirth = BALANCE_CONFIG.draft.historicalRebirth;
+  const jitter = rebirth.rookieAttributeJitter;
   const attributes = Object.fromEntries(Object.entries(template.rookieAttributes).map(([key, value]) => [
     key,
-    clamp(value + rng.int(-jitter, jitter)),
+    clamp(value + rebirth.rookieAttributeOffset + rng.int(-jitter, jitter)),
   ])) as unknown as PlayerAttributes;
   const readiness = calculateAttributeOverall(attributes, template.position);
   const truePotential = clamp(
-    Math.max(readiness + BALANCE_CONFIG.draft.potentialDistribution.readinessGapMinimum, template.peakOverall + rng.int(
+    Math.max(readiness + BALANCE_CONFIG.draft.potentialDistribution.readinessGapMinimum, BALANCE_CONFIG.draft.historicalRebirth.potentialFloor, template.peakOverall + rng.int(
       -BALANCE_CONFIG.draft.historicalRebirth.potentialJitter,
       BALANCE_CONFIG.draft.historicalRebirth.potentialJitter,
     )),
@@ -243,7 +255,8 @@ function historicalProspect(
     id,
     teamId: "FREE_AGENT",
     ...profile,
-    name: profile.name,
+    name: template.sourceName,
+    birthDate: `${state.league.seasonYear - age}${profile.birthDate.slice(4)}`,
     age,
     ageAtSnapshot: age,
     ageSource: "GENERATED_BIRTH_DATE",
@@ -293,10 +306,11 @@ function historicalProspect(
 function historicalTemplatesForClass(state: GameState, draftSeed: string): Map<number, HistoricalPlayerTemplate> {
   const config = BALANCE_CONFIG.draft.historicalRebirth;
   if (!config.enabled || config.mode !== "LEGEND_ARCHETYPE" || state.league.seasonYear < config.firstEligibleSeasonYear) return new Map();
-  const used = new Set(state.history.rebornHistoricalSourceIds ?? []);
+  const history = state.history.rebornHistoricalSourceIds ?? [];
   const eligible = eligibleHistoricalTemplates()
-    .filter((template) => !used.has(template.sourcePlayerId))
-    .sort((left, right) => stableHash(draftSeed, left.sourcePlayerId).localeCompare(stableHash(draftSeed, right.sourcePlayerId)));
+    .filter((template) => LEGEND_SOURCE_NAMES.has(template.sourceName))
+    .sort((left, right) => history.lastIndexOf(left.sourcePlayerId) - history.lastIndexOf(right.sourcePlayerId)
+      || stableHash(draftSeed, left.sourcePlayerId).localeCompare(stableHash(draftSeed, right.sourcePlayerId)));
   const count = Math.min(config.maximumPerClass, Math.round(BALANCE_CONFIG.draft.classSize * config.classShare), eligible.length);
   const selected = eligible.slice(0, count).sort((left, right) => right.peakOverall - left.peakOverall || left.sourcePlayerId.localeCompare(right.sourcePlayerId));
   const rankSlots = createRng(stableHash(draftSeed, "historical-rank-slots"))
@@ -354,22 +368,70 @@ function recordOrder(state: GameState, teamIds: string[], draftSeed: string): st
   });
 }
 
-function drawLottery(state: GameState, eligible: string[], draftSeed: string): string[] {
-  const remaining = recordOrder(state, eligible, draftSeed).map((teamId, index) => ({ teamId, weight: BALANCE_CONFIG.draft.lotteryWeights[index] ?? 0 }));
+export interface DraftLotteryPreviewEntry {
+  teamId: string;
+  wins: number;
+  losses: number;
+  lotteryBalls: number;
+  firstPickWeight: number;
+  draftRelegated: boolean;
+}
+
+function lotteryPickRestricted(state: GameState, teamId: string, pickNumber: number): boolean {
+  const recent = state.history.draftFirstRoundResults ?? [];
+  const year = state.league.seasonYear;
+  if (pickNumber === 1 && recent.some((pick) => pick.year === year - 1 && pick.pickNumber === 1 && pick.originalTeamId === teamId)) return true;
+  return pickNumber <= 5 && [year - 1, year - 2].every((priorYear) =>
+    recent.some((pick) => pick.year === priorYear && pick.pickNumber <= 5 && pick.originalTeamId === teamId));
+}
+
+export function getDraftLotteryPreview(state: GameState): DraftLotteryPreviewEntry[] {
+  const draftSeed = stableHash(state.seeds.seasonSeed, "rookie_draft", state.league.seasonYear);
+  const conferences = (["WEST", "EAST"] as const).map((conference) =>
+    resolveConferenceStandings(conference, state.standings, state.teams, state.seeds.seasonSeed));
+  const directOut = conferences.flatMap((standings) => standings.slice(10).map((record) => record.teamId));
+  const nineTen = conferences.flatMap((standings) => standings.slice(8, 10).map((record) => record.teamId));
+  const archivedLosers = state.history.seasons.at(-1)?.lotteryContext?.sevenEightLoserTeamIds;
+  const sevenEightLosers = archivedLosers?.length === 2
+    ? archivedLosers : conferences.map((standings) => standings[7].teamId);
+  const relegated = new Set(recordOrder(state, directOut, draftSeed).slice(0, 3));
+  const directOutSet = new Set(directOut);
+  const nineTenSet = new Set(nineTen);
+  const entrants = recordOrder(state, [...new Set([...directOut, ...nineTen, ...sevenEightLosers])], draftSeed);
+  const balls = (teamId: string) => relegated.has(teamId) || nineTenSet.has(teamId) ? 2 : directOutSet.has(teamId) ? 3 : 1;
+  const firstPickPool = entrants.filter((teamId) => !lotteryPickRestricted(state, teamId, 1));
+  const firstPickTotal = firstPickPool.reduce((sum, teamId) => sum + balls(teamId), 0);
+  return entrants.map((teamId) => ({
+      teamId,
+      wins: state.standings[teamId].wins,
+      losses: state.standings[teamId].losses,
+      lotteryBalls: balls(teamId),
+      firstPickWeight: firstPickPool.includes(teamId) ? 100 * balls(teamId) / firstPickTotal : 0,
+      draftRelegated: relegated.has(teamId),
+    }));
+}
+
+function drawLottery(state: GameState, preview: DraftLotteryPreviewEntry[], draftSeed: string): string[] {
+  const remaining = preview.map((entry) => ({ ...entry }));
   const rng = createRng(stableHash(draftSeed, "lottery"));
   const winners: string[] = [];
-  for (let pick = 0; pick < BALANCE_CONFIG.draft.lotteryDrawCount; pick += 1) {
-    const total = remaining.reduce((sum, entry) => sum + entry.weight, 0);
+  for (let pick = 1; pick <= preview.length; pick += 1) {
+    const relegatedRemaining = remaining.filter((entry) => entry.draftRelegated);
+    const mustDrawRelegated = relegatedRemaining.length > 0 && relegatedRemaining.length >= 13 - pick;
+    const pool = mustDrawRelegated ? relegatedRemaining : remaining.filter((entry) => !lotteryPickRestricted(state, entry.teamId, pick));
+    if (!pool.length) throw new Error("No legal lottery draw remains");
+    const total = pool.reduce((sum, entry) => sum + entry.lotteryBalls, 0);
     let target = rng.nextFloat() * total;
     let selectedIndex = 0;
-    for (let index = 0; index < remaining.length; index += 1) {
-      target -= remaining[index].weight;
+    for (let index = 0; index < pool.length; index += 1) {
+      target -= pool[index].lotteryBalls;
       if (target <= 0) { selectedIndex = index; break; }
     }
-    winners.push(remaining[selectedIndex].teamId);
-    remaining.splice(selectedIndex, 1);
+    const winner = pool[selectedIndex].teamId;
+    winners.push(winner);
+    remaining.splice(remaining.findIndex((entry) => entry.teamId === winner), 1);
   }
-  return [...winners, ...recordOrder(state, remaining.map((entry) => entry.teamId), draftSeed)];
+  return winners;
 }
 
 function pickOwner(state: GameState, year: number, round: 1 | 2, originalTeamId: string): string {
@@ -377,12 +439,10 @@ function pickOwner(state: GameState, year: number, round: 1 | 2, originalTeamId:
 }
 
 function buildFuturePickOrder(state: GameState, draftSeed: string): RookieDraftPick[] {
-  const westPlayoffs = resolveConferenceStandings("WEST", state.standings, state.teams, state.seeds.seasonSeed).slice(0, 8).map((record) => record.teamId);
-  const eastPlayoffs = resolveConferenceStandings("EAST", state.standings, state.teams, state.seeds.seasonSeed).slice(0, 8).map((record) => record.teamId);
-  const playoffSet = new Set([...westPlayoffs, ...eastPlayoffs]);
-  const lotteryTeams = Object.keys(state.teams).filter((teamId) => !playoffSet.has(teamId));
-  const playoffTeams = Object.keys(state.teams).filter((teamId) => playoffSet.has(teamId));
-  const firstRound = [...drawLottery(state, lotteryTeams, draftSeed), ...recordOrder(state, playoffTeams, draftSeed)];
+  const lotteryPreview = getDraftLotteryPreview(state);
+  const lotteryTeamIds = new Set(lotteryPreview.map((entry) => entry.teamId));
+  const otherTeams = Object.keys(state.teams).filter((teamId) => !lotteryTeamIds.has(teamId));
+  const firstRound = [...drawLottery(state, lotteryPreview, draftSeed), ...recordOrder(state, otherTeams, draftSeed)];
   const secondRound = recordOrder(state, Object.keys(state.teams), stableHash(draftSeed, "round-2"));
   return [
     ...firstRound.map((teamId, index) => ({ pickNumber: index + 1, round: 1 as const, originalTeamId: teamId, ownerTeamId: pickOwner(state, state.league.seasonYear, 1, teamId) })),
@@ -497,6 +557,11 @@ function completeDraft(state: GameState): void {
   const draft = state.rookieDraft as RookieDraftState;
   if (draft.currentPickIndex !== draft.pickOrder.length) throw new Error(`Rookie Draft cannot finalize before ${draft.pickOrder.length} picks`);
   draft.completed = true;
+  const year = state.league.seasonYear;
+  state.history.draftFirstRoundResults = [
+    ...(state.history.draftFirstRoundResults ?? []).filter((pick) => pick.year >= year - 2 && pick.year !== year),
+    ...draft.pickOrder.filter((pick) => pick.round === 1).map((pick) => ({ year, pickNumber: pick.pickNumber, originalTeamId: pick.originalTeamId })),
+  ];
   for (const prospect of availableProspects(state)) prospect.contract.status = "UFA";
   if (state.league.seasonYear === 2026 && state.meta.dataVersion.startsWith("bundled.")) {
     for (const player of Object.values(state.players)) {
@@ -593,6 +658,7 @@ export function prepareRookieDraft(input: GameState): GameState {
     draftSeed,
     classPlayerIds,
     revealedProspectIds: [],
+    lotteryPresented: isCurated2026,
     pickOrder: buildPickOrder(state, draftSeed),
     currentPickIndex: 0,
     completed: false,
@@ -601,6 +667,16 @@ export function prepareRookieDraft(input: GameState): GameState {
       : historicalByRank.size > 0 ? "MIXED_FUTURE" : "PROCEDURAL_FUTURE",
   };
   state.league.currentPhase = "DRAFT";
+  validateRookieDraftState(state);
+  return state;
+}
+
+function acknowledgeDraftLottery(input: GameState): GameState {
+  assertPhaseAllowed(input, "Acknowledge draft lottery", ["DRAFT"]);
+  if (!input.rookieDraft || input.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear) throw new Error("本届没有待确认的乐透抽签");
+  if (input.rookieDraft.currentPickIndex !== 0 || input.rookieDraft.completed || input.rookieDraft.lotteryPresented) throw new Error("乐透抽签已公布或选秀已经开始");
+  const state = structuredClone(input);
+  state.rookieDraft!.lotteryPresented = true;
   validateRookieDraftState(state);
   return state;
 }
@@ -691,6 +767,9 @@ function publicProspect(player: Player): DraftProspectView {
     scoutedPotentialGrade: player.scoutedPotentialGrade,
     scoutingConfidence: player.scoutingConfidence,
     traits: player.traits,
+    ...(player.historicalSourcePlayerId && HISTORICAL_TEMPLATE_BY_ID.has(player.historicalSourcePlayerId)
+      ? { historicalArchetypeName: HISTORICAL_TEMPLATE_BY_ID.get(player.historicalSourcePlayerId)?.sourceName }
+      : {}),
   };
 }
 
@@ -723,6 +802,8 @@ export function executeDraftCommand(state: GameState, command: DraftCommand): Ga
   }
   const next = command.type === "PREPARE_ROOKIE_DRAFT"
     ? prepareRookieDraft(state)
+    : command.type === "ACKNOWLEDGE_DRAFT_LOTTERY"
+      ? acknowledgeDraftLottery(state)
     : command.type === "REVEAL_DRAFT_PROSPECT"
       ? revealDraftProspect(state, command.payload.playerId)
     : command.type === "ADVANCE_ROOKIE_DRAFT_AI_PICK"

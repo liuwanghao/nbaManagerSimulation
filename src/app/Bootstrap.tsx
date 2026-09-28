@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { EXPANSION_BRAND_PRESETS } from "../data/expansionBrands";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
@@ -14,6 +14,7 @@ import { unlockAchievement } from "../game/career/AchievementService";
 import { enqueueEvent, resolveAllEvents } from "../game/events/EventService";
 import { lockOpeningRoster } from "../game/roster/RosterService";
 import App from "./App";
+import { BasketballSeamLoader } from "./BasketballSeamLoader";
 import { ExpansionCinematic } from "./ExpansionCinematic";
 import { createBrowserPlatform } from "../platform/PlatformAdapter";
 import { SaveService, type SaveSlotSummary } from "../storage/SaveService";
@@ -21,6 +22,7 @@ import { phaseLabel } from "./uiText";
 
 const CAREER_SEED = "expansion-era-demo";
 const launcherSaveService = typeof window === "undefined" ? null : new SaveService(createBrowserPlatform().storage);
+type LauncherLoading = "latest" | "slots" | `slot-${1 | 2 | 3}`;
 
 const fixtureMode = (): string | null => new URLSearchParams(window.location.search).get("fixture");
 
@@ -198,8 +200,27 @@ export default function Bootstrap() {
   const [newGameMenuOpen, setNewGameMenuOpen] = useState(false);
   const [pendingOverwriteSlot, setPendingOverwriteSlot] = useState<1 | 2 | 3 | null>(null);
   const [homeSaveSlots, setHomeSaveSlots] = useState<SaveSlotSummary[]>([]);
+  const [launcherLoading, setLauncherLoading] = useState<LauncherLoading | null>(null);
+  const launcherLoadInFlight = useRef(false);
 
-  const launchLatest = async () => {
+  const runLauncherLoad = async (kind: LauncherLoading, action: () => Promise<void>) => {
+    if (launcherLoadInFlight.current) return;
+    launcherLoadInFlight.current = true;
+    setLauncherLoading(kind);
+    setLauncherNotice(null);
+    try {
+      // Let the loading state paint before parsing and migrating a large save.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 32));
+      await action();
+    } catch (error) {
+      setLauncherNotice(error instanceof Error ? `读取失败：${error.message}` : "读取失败，请重试。");
+    } finally {
+      launcherLoadInFlight.current = false;
+      setLauncherLoading(null);
+    }
+  };
+
+  const launchLatest = () => runLauncherLoad("latest", async () => {
     const latest = await launcherSaveService?.loadMostRecent();
     if (!latest) {
       setLauncherNotice("暂无可继续的存档，请先开始新游戏或读取已有槽位。");
@@ -211,22 +232,20 @@ export default function Bootstrap() {
     setLauncherNotice(null);
     setSessionKey((value) => value + 1);
     setScreen("game");
-  };
+  });
 
-  const openLoadMenu = async () => {
+  const openLoadMenu = () => runLauncherLoad("slots", async () => {
     setHomeSaveSlots(await launcherSaveService?.listSlotSummaries() ?? []);
-    setLauncherNotice(null);
     setLoadMenuOpen(true);
-  };
+  });
 
-  const openNewGameMenu = async () => {
+  const openNewGameMenu = () => runLauncherLoad("slots", async () => {
     setHomeSaveSlots(await launcherSaveService?.listSlotSummaries() ?? []);
-    setLauncherNotice(null);
     setPendingOverwriteSlot(null);
     setNewGameMenuOpen(true);
-  };
+  });
 
-  const loadFromHome = async (slotId: 1 | 2 | 3) => {
+  const loadFromHome = (slotId: 1 | 2 | 3) => runLauncherLoad(`slot-${slotId}`, async () => {
     const loaded = await launcherSaveService?.load(slotId);
     if (!loaded) {
       setLauncherNotice(`槽位 0${slotId} 暂无可读取的存档。`);
@@ -238,7 +257,7 @@ export default function Bootstrap() {
     setLoadMenuOpen(false);
     setSessionKey((value) => value + 1);
     setScreen("game");
-  };
+  });
 
   const startNewGame = (slotId: 1 | 2 | 3) => {
     setInitialState(createFixturePreview());
@@ -251,6 +270,9 @@ export default function Bootstrap() {
   };
 
   if (screen === "home") {
+    const loadingLabel = launcherLoading === "latest" ? "正在继续上次进度…"
+      : launcherLoading === "slots" ? "正在读取存档列表…"
+        : launcherLoading ? `正在读取槽位 0${launcherLoading.slice(-1)}…` : "";
     return <main className="launcher-shell home-screen" style={{ backgroundImage: 'linear-gradient(180deg, rgba(2, 6, 16, .28) 0%, rgba(2, 6, 16, .7) 47%, rgba(2, 6, 16, .96) 100%), url("./story/opening-arena.jpg")' }}>
       <section className="launcher-center">
         <div className="launcher-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 6H4v1a4 4 0 0 0 4 4M16 6h4v1a4 4 0 0 1-4 4M12 12v5M8 21h8M10 17h4v4"/></svg></div>
@@ -263,21 +285,22 @@ export default function Bootstrap() {
         <small>每个决定都会影响薪资空间、球队适配度与未来竞争力。</small>
       </section>
       <section className="launcher-actions">
-        <button className="launcher-primary" data-testid="start-new-game" onClick={() => void openNewGameMenu()}><i className="launcher-play-icon" aria-hidden="true" /><span>开始新游戏</span></button>
-        <button onClick={() => void openLoadMenu()}><i className="launcher-folder-icon" aria-hidden="true" /><span>读取存档</span></button>
-        <button className="launcher-dark" onClick={() => void launchLatest()}><i className="launcher-rotate-icon" aria-hidden="true">↻</i><span>继续上次进度</span></button>
+        <button className="launcher-primary" data-testid="start-new-game" disabled={Boolean(launcherLoading)} onClick={() => void openNewGameMenu()}><i className="launcher-play-icon" aria-hidden="true" /><span>开始新游戏</span></button>
+        <button disabled={Boolean(launcherLoading)} onClick={() => void openLoadMenu()}><i className="launcher-folder-icon" aria-hidden="true" /><span>读取存档</span></button>
+        <button className="launcher-dark" disabled={Boolean(launcherLoading)} onClick={() => void launchLatest()}><i className="launcher-rotate-icon" aria-hidden="true">↻</i><span>继续上次进度</span></button>
       </section>
-      {launcherNotice && <p className="launcher-notice" role="status">{launcherNotice}</p>}
-      {loadMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLoadMenuOpen(false); }}>
+      {launcherNotice && !loadMenuOpen && <p className="launcher-notice" role="status">{launcherNotice}</p>}
+      {loadMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !launcherLoading) setLoadMenuOpen(false); }}>
         <section className="home-load-menu" role="dialog" aria-modal="true" aria-label="读取存档">
-          <header><div><b>读取存档</b><small>选择一个生涯继续游戏</small></div><button onClick={() => setLoadMenuOpen(false)} aria-label="关闭读取存档">×</button></header>
+          <header><div><b>读取存档</b><small>选择一个生涯继续游戏</small></div><button disabled={Boolean(launcherLoading)} onClick={() => setLoadMenuOpen(false)} aria-label="关闭读取存档">×</button></header>
+          {launcherNotice && <p className="home-load-error" role="alert">{launcherNotice}</p>}
           <div className="home-load-slots">
             {([1, 2, 3] as const).map((slotId) => {
               const summary = homeSaveSlots.find((slot) => slot.slotId === slotId);
               return <article key={slotId} className={summary ? "has-save" : "empty-save"}>
                 <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
                 <small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存任何生涯"}</small>
-                <button disabled={!summary} onClick={() => void loadFromHome(slotId)}>{summary ? "读取并继续" : "暂无存档"}</button>
+                <button disabled={!summary || Boolean(launcherLoading)} onClick={() => void loadFromHome(slotId)}>{summary ? "读取并继续" : "暂无存档"}</button>
               </article>;
             })}
           </div>
@@ -299,6 +322,7 @@ export default function Bootstrap() {
           </div>
         </section>
       </div>}
+      {launcherLoading && <div className="launcher-loading-backdrop" role="status" aria-live="polite"><div className="launcher-loading-card"><BasketballSeamLoader /><b>{loadingLabel}</b><small>{launcherLoading === "slots" ? "正在检查可用存档，请稍候" : "正在校验并恢复游戏进度，请稍候"}</small></div></div>}
       <small className="launcher-version">版本 2.0.0｜扩军纪念版</small>
     </main>;
   }

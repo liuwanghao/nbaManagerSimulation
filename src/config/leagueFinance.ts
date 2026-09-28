@@ -28,12 +28,12 @@ const rookieScale = Object.fromEntries(Array.from({ length: 32 }, (_, index) => 
 }));
 
 export const LEAGUE_FINANCE_CONFIG: LeagueFinanceConfig = {
-  version: "finance.v3",
-  salaryCap: 165_000_000,
-  minimumTeamSalary: 139_182_000,
-  luxuryTaxLine: 200_400_000,
-  firstApron: 209_000_000,
-  secondApron: 221_700_000,
+  version: "finance.v4",
+  salaryCap: 164_961_000,
+  minimumTeamSalary: 148_465_000,
+  luxuryTaxLine: 200_428_000,
+  firstApron: 209_015_000,
+  secondApron: 221_686_000,
   minimumSalary: 1_272_870,
   rookieMinimumSalary: 1_272_870,
   rookieScale,
@@ -41,7 +41,7 @@ export const LEAGUE_FINANCE_CONFIG: LeagueFinanceConfig = {
   contractYears: { minimum: 1, otherTeamMaximum: 4, ownTeamMaximum: 5 },
   annualRaisePercentages: { otherTeam: 0.05, ownTeam: 0.08 },
   incompleteRosterMinimumSlots: 12,
-  expansionDraftSalaryLimit: 165_000_000,
+  expansionDraftSalaryLimit: 164_961_000,
   rosterLimits: { offseasonMaximum: 21, regularSeasonMinimum: 14, regularSeasonMaximum: 15, emergencyTarget: 8, hardPlayableMinimum: 5, franchiseCoreMaximum: 3 },
   salaryMatching: { capSpaceBuffer: 250_000, belowFirstApronMultiplier: 1.25, belowFirstApronBuffer: 250_000, firstApronMultiplier: 1, secondApronMultiplier: 1, secondApronAllowsAggregation: false },
   capHolds: { birdUfaPreviousSalaryMultiplier: 1.5, rfaPreviousSalaryMultiplier: 1.5, qualifyingOfferPreviousSalaryMultiplier: 1.25, birdEligibilityYears: 3 },

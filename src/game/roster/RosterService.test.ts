@@ -29,8 +29,19 @@ describe("RosterService", () => {
     expect(locked.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
     expect(locked.teams[locked.userTeamId].playerIds.length).toBeGreaterThanOrEqual(14);
     expect(locked.schedule).toHaveLength(1312);
-    expect(locked.eventState.queue.map((event) => event.definitionId)).toContain("franchise_season_opening_001");
+    expect(locked.eventState.queue.map((event) => event.definitionId)).not.toContain("franchise_season_opening_001");
     expect(locked.teamNotifications).toEqual([]);
+  });
+
+  it("does not queue the expansion opening screen in a later season", () => {
+    const state = createCareer("later-season-opening");
+    state.league.currentPhase = "PRESEASON";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    state.expansion = { finalized: true } as NonNullable<typeof state.expansion>;
+    const locked = lockOpeningRoster(state, true);
+    expect(locked.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
+    expect(locked.eventState.queue.some((event) => event.definitionId === "franchise_season_opening_001")).toBe(false);
   });
 
   it("welcomes an expansion franchise once when its first regular season opens", () => {
@@ -38,6 +49,7 @@ describe("RosterService", () => {
     state.league.currentPhase = "PRESEASON";
     state.expansion = { finalized: true } as NonNullable<typeof state.expansion>;
     const locked = lockOpeningRoster(state, true);
+    expect(locked.eventState.queue.map((event) => event.definitionId)).toContain("franchise_season_opening_001");
     expect(locked.teamNotifications).toEqual([expect.objectContaining({
       id: `expansion-welcome-${state.league.seasonId}`,
       title: `新球队诞生：${state.teams[state.userTeamId].fullName}`,

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { GameState, Player, PlayerSeasonStats } from "../game/state/types";
+import { PlayerPortrait } from "./PlayerPortrait";
 import { playerNameZh } from "./playerNameZh";
 
 const LEADER_STATS = [
@@ -11,6 +12,8 @@ const LEADER_STATS = [
 ] as const satisfies ReadonlyArray<{ key: keyof PlayerSeasonStats; label: string }>;
 
 export type LeagueLeaderStat = (typeof LEADER_STATS)[number]["key"];
+
+const perGame = (player: Player, key: LeagueLeaderStat): string => (player.seasonStats[key] / player.seasonStats.games).toFixed(1);
 
 export function leagueStatLeaders(state: GameState, key: LeagueLeaderStat): Player[] {
   return Object.values(state.players)
@@ -32,15 +35,14 @@ export function LeagueLeadersPanel({ state, onOpenPlayer }: { state: GameState; 
   return <div className="league-stat-grid">
     {leaders.map(({ key, label, players }) => <section key={key} className="league-stat-card" aria-label={`${label}榜`}>
       <header><h4>{label}榜</h4><span>TOP 5 · 场均</span></header>
-      <div className="league-stat-columns"><span>#</span><span>球员 / 球队</span><span className="league-stat-column-labels">{LEADER_STATS.map((stat) => <span key={stat.key} className={stat.key === key ? "selected" : ""}>{stat.label}</span>)}</span></div>
+      <div className="league-stat-columns"><span>#</span><span>球员</span><span>球队</span><span>场均{label}</span></div>
       {players.length ? <ol>{players.map((player, index) => <li key={player.id}>
-        <button type="button" onClick={() => onOpenPlayer(player.id)} aria-label={`查看${playerNameZh(player.name, player.id)}的球员详情`}>
+        <button type="button" onClick={() => onOpenPlayer(player.id)} aria-label={`查看${playerNameZh(player.name, player.id)}的球员详情，场均${label}${perGame(player, key)}`}>
           <span className="league-stat-rank">{String(index + 1).padStart(2, "0")}</span>
-          <span className="league-stat-player"><b>{playerNameZh(player.name, player.id)}</b><small>{state.teams[player.teamId].name}</small></span>
-          <span className="league-stat-metrics" aria-label="赛季场均数据">
-            {LEADER_STATS.map((stat) => <span key={stat.key} className={stat.key === key ? "selected" : ""} title={stat.label}>
-              <strong>{(player.seasonStats[stat.key] / player.seasonStats.games).toFixed(1)}</strong>
-            </span>)}
+          <div className="league-stat-player"><PlayerPortrait player={player} portraitPath={player.portraitPath} className="league-stat-avatar" /><span className="league-stat-player-copy"><b>{playerNameZh(player.name, player.id)}</b><small className="league-stat-summary" title="场均得分 / 篮板 / 助攻">{perGame(player, "pts")} / {perGame(player, "reb")} / {perGame(player, "ast")}</small></span></div>
+          <span className="league-stat-team">{state.teams[player.teamId].name}</span>
+          <span className="league-stat-primary" aria-label={`场均${label}`}>
+            <strong>{perGame(player, key)}</strong>
           </span>
         </button>
       </li>)}</ol> : <p className="league-empty">赛季尚无比赛数据</p>}

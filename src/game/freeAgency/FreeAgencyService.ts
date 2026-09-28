@@ -502,10 +502,16 @@ export function submitFreeAgentOffer(input: GameState, payload: Extract<FreeAgen
 export function withdrawFreeAgentOffer(input: GameState, offerId: string): GameState {
   assertPhaseAllowed(input, "Withdraw free-agent offer", offerPhases);
   const state = structuredClone(input);
-  const offer = state.freeAgency?.offers[offerId];
+  const freeAgency = state.freeAgency;
+  const offer = freeAgency?.offers[offerId];
   if (!offer || offer.teamId !== state.userTeamId || offer.status !== "ACTIVE") throw new Error("Offer cannot be withdrawn");
   offer.status = "WITHDRAWN";
   releaseReservation(state, offerId);
+  const market = freeAgency.markets[offer.playerId];
+  if (market?.marketWindowStatus === "OPEN"
+    && !Object.values(freeAgency.offers).some((entry) => entry.playerId === offer.playerId && entry.status === "ACTIVE")) {
+    market.marketWindowStatus = "CLOSED_NO_SIGNING";
+  }
   return state;
 }
 
@@ -583,7 +589,9 @@ function settlePlayers(state: GameState): void {
     }
     const remaining = active.filter((offer) => offer.status === "ACTIVE").sort((a, b) => b.utility - a.utility || b.guaranteedValue - a.guaranteedValue || b.year1Salary - a.year1Salary || a.offerId.localeCompare(b.offerId));
     const best = remaining[0];
-    if (best && (best.utility >= cfg.earlyAcceptThreshold || freeAgency.currentDay >= market.decisionDeadline && best.utility >= cfg.minimumAcceptThreshold)) {
+    if (!best) {
+      market.marketWindowStatus = "CLOSED_NO_SIGNING";
+    } else if (best.utility >= cfg.earlyAcceptThreshold || freeAgency.currentDay >= market.decisionDeadline && best.utility >= cfg.minimumAcceptThreshold) {
       if (best.kind === "RFA_OFFER_PROPOSAL") resolveRfaOfferSheet(state, best); else signAcceptedOffer(state, best);
     } else if (freeAgency.currentDay >= market.decisionDeadline) {
       for (const offer of remaining) {

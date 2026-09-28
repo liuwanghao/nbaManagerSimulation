@@ -198,6 +198,60 @@ describe("Stage 4 free agency", () => {
     expect(state.freeAgency?.markets[player.id].decisionDeadline).toBe(deadline);
   });
 
+  it("releases a withdrawn offer and accepts a revised offer on the same day after save reload", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-withdraw-rebid"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    const first = { commandId: "first-offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 3, year1Salary: 8_000_000, guaranteedPercent: 0.8, rolePromised: "ROTATION" } } as const;
+    state = executeFreeAgencyCommand(state, first);
+    const original = Object.values(state.freeAgency?.offers ?? {}).find((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId);
+    if (!original) throw new Error("Original offer missing");
+    const beforeWithdrawal = state;
+    state = executeFreeAgencyCommand(state, { commandId: "withdraw-first", type: "WITHDRAW_FA_OFFER", payload: { offerId: original.offerId } });
+    expect(beforeWithdrawal.freeAgency?.offers[original.offerId].status).toBe("ACTIVE");
+    expect(state.freeAgency?.offers[original.offerId].status).toBe("WITHDRAWN");
+    expect(state.freeAgency?.markets[player.id].marketWindowStatus).toBe("CLOSED_NO_SIGNING");
+    expect(state.capState.offerReservations.some((entry) => entry.offerId === original.offerId)).toBe(false);
+    expect(getFreeAgentOfferPreview(state, player.id).valid).toBe(true);
+
+    const restored = JSON.parse(JSON.stringify(state)) as GameState;
+    const failedInput = structuredClone(restored);
+    expect(() => executeFreeAgencyCommand(restored, { commandId: "invalid-rebid", type: "SUBMIT_FA_OFFER", payload: { ...first.payload, year1Salary: 0 } })).toThrow();
+    expect(restored).toEqual(failedInput);
+    const revised = { commandId: "revised-offer", type: "SUBMIT_FA_OFFER", payload: { ...first.payload, years: 2, year1Salary: 7_000_000 } } as const;
+    const rebid = executeFreeAgencyCommand(restored, revised);
+    const active = Object.values(rebid.freeAgency?.offers ?? {}).filter((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId && entry.status === "ACTIVE");
+    expect(active).toHaveLength(1);
+    expect(active[0].offerId).not.toBe(original.offerId);
+    expect(rebid.capState.offerReservations.filter((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId)).toEqual([expect.objectContaining({ offerId: active[0].offerId })]);
+    expect(rebid.freeAgency?.markets[player.id]).toMatchObject({ marketWindowStartDay: rebid.freeAgency?.currentDay, marketWindowStatus: "OPEN" });
+    expect(executeFreeAgencyCommand(rebid, revised)).toBe(rebid);
+    expect(() => executeFreeAgencyCommand(rebid, { commandId: "withdraw-first-again", type: "WITHDRAW_FA_OFFER", payload: { offerId: original.offerId } })).toThrow(/cannot be withdrawn/);
+  });
+
+  it("keeps another team's active offer open after withdrawal and resets a fully closed window", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-withdraw-window"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    const draft = { playerId: player.id, years: 3, year1Salary: 8_000_000, guaranteedPercent: 0.8, rolePromised: "ROTATION" } as const;
+    state = executeFreeAgencyCommand(state, { commandId: "first-offer", type: "SUBMIT_FA_OFFER", payload: draft });
+    const original = Object.values(state.freeAgency?.offers ?? {}).find((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId);
+    if (!original || !state.freeAgency) throw new Error("Original offer missing");
+    const otherTeamId = Object.keys(state.teams).find((teamId) => teamId !== state.userTeamId);
+    if (!otherTeamId) throw new Error("Opponent team missing");
+    state.freeAgency.currentDay = 2;
+    const onlyUserOffer = structuredClone(state);
+    state.freeAgency.offers.otherTeamOffer = { ...original, offerId: "otherTeamOffer", teamId: otherTeamId };
+    state = executeFreeAgencyCommand(state, { commandId: "withdraw-with-opponent", type: "WITHDRAW_FA_OFFER", payload: { offerId: original.offerId } });
+    expect(state.freeAgency?.markets[player.id]).toMatchObject({ marketWindowStatus: "OPEN", decisionDeadline: 3 });
+
+    const closed = executeFreeAgencyCommand(onlyUserOffer, { commandId: "withdraw-last-offer", type: "WITHDRAW_FA_OFFER", payload: { offerId: original.offerId } });
+    expect(closed.freeAgency?.markets[player.id].marketWindowStatus).toBe("CLOSED_NO_SIGNING");
+    const reopened = executeFreeAgencyCommand(closed, { commandId: "same-day-rebid", type: "SUBMIT_FA_OFFER", payload: draft });
+    expect(reopened.freeAgency?.markets[player.id]).toMatchObject({ marketWindowStatus: "OPEN", marketWindowStartDay: 2, decisionDeadline: 4 });
+    expect(reopened.freeAgency?.offers[original.offerId].status).toBe("WITHDRAWN");
+  });
+
   it("does not reopen bidding after a team offer is rejected during the current market window", () => {
     let state = executeFreeAgencyCommand(postDraftState("fa-rejected-reoffer"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
     const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA") as (typeof state.players)[string];

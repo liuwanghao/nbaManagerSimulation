@@ -58,6 +58,28 @@ describe("team notifications", () => {
     expect(state.teamNotifications?.[0].date).toBe("2026-11-03");
   });
 
+  it("hides numeric effect suffixes in new and previously saved notices", () => {
+    const state = createCareer("notice-effect-copy");
+    addTeamNotification(state, {
+      id: "new-streak", category: "TEAM", seasonId: state.league.seasonId,
+      title: "三连败", message: "球队需要尽快终止连败。 球迷支持 -1",
+    });
+    expect(state.teamNotifications?.[0].message).toBe("球队需要尽快终止连败。");
+    state.teamNotifications?.push({
+      id: "saved-event", category: "SEASON", seasonId: state.league.seasonId,
+      title: "球队动态", message: "球员调整完成。 球员士气 +6 · 竞技状态 -0.4",
+      date: state.calendar.openingDate, read: false,
+    });
+    state.teamNotifications?.push({
+      id: "injury", category: "SEASON", seasonId: state.league.seasonId,
+      title: "核心球员受伤", message: "预计缺阵 3 场。",
+      date: state.calendar.openingDate, read: false,
+    });
+    expect(getTeamInboxItems(state).map((item) => item.message)).toEqual([
+      "球队需要尽快终止连败。", "球员调整完成。", "预计缺阵 3 场。",
+    ]);
+  });
+
   it("backfills the first-season expansion welcome only once with the opening date", () => {
     const state = createCareer("old-expansion-save");
     state.league.currentPhase = "REGULAR_PRE_DEADLINE";
@@ -69,5 +91,38 @@ describe("team notifications", () => {
     expect(state.teamNotifications?.[0]).toMatchObject({
       id: `expansion-welcome-${state.league.seasonId}`, date: state.calendar.openingDate,
     });
+  });
+
+  it("replaces the old expansion event notice with the regular-season welcome", () => {
+    const state = createCareer("legacy-expansion-notice");
+    state.league.currentPhase = "PRESEASON";
+    state.expansion = { finalized: true } as NonNullable<typeof state.expansion>;
+    state.teamNotifications = [{
+      id: "event-old-expansion", category: "SEASON", seasonId: state.league.seasonId,
+      title: "新球队诞生", message: "扩军选秀完成，一支新球队正式加入联盟。 球迷支持 +1",
+      date: state.calendar.openingDate, read: false,
+    }];
+    ensureExpansionWelcomeNotification(state);
+    expect(getTeamInboxItems(state).map((item) => item.id)).toEqual([]);
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    ensureExpansionWelcomeNotification(state);
+    ensureExpansionWelcomeNotification(state);
+    expect(getTeamInboxItems(state).map((item) => item.id)).toEqual([`expansion-welcome-${state.league.seasonId}`]);
+    expect(state.teamNotifications?.[0].message).not.toContain("球迷支持 +1");
+  });
+
+  it("never shows or resends the old expansion notice during the draft", () => {
+    const state = createCareer("draft-expansion-notice");
+    state.league.currentPhase = "ROOKIE_DRAFT_PENDING";
+    const obsolete = {
+      id: "event-old-expansion", category: "SEASON" as const, seasonId: state.league.seasonId,
+      title: "新球队诞生", message: "扩军选秀完成，一支新球队正式加入联盟。 球迷支持 +1",
+      date: state.calendar.openingDate, read: false,
+    };
+    state.teamNotifications = [obsolete];
+    expect(getTeamInboxItems(state)).toEqual([]);
+    state.teamNotifications = [];
+    addTeamNotification(state, obsolete);
+    expect(state.teamNotifications).toEqual([]);
   });
 });

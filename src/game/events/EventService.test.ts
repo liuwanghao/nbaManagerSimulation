@@ -1,9 +1,85 @@
 import { describe, expect, it } from "vitest";
 import { EVENT_DEFINITIONS } from "../../data/events";
 import { createCareer } from "../season/career";
-import { blockingEvent, enqueueEvent, executeEventCommand, settleInformationalEvents } from "./EventService";
+import { stableHash } from "../random/hash";
+import { emptyPlayerSeasonStats, type GameResult, type GameState } from "../state/types";
+import { freeAgentAttraction } from "../team/TeamSystemService";
+import { blockingEvent, enqueueAfterUserGameEvents, enqueueEvent, executeEventCommand, recentRookieBreakoutContext, settleInformationalEvents } from "./EventService";
+
+function recentRookieGames(state: GameState, rookieId: string, rookiePoints: number[]): GameResult[] {
+  const rivalId = Object.keys(state.teams).find((id) => id !== state.userTeamId) as string;
+  const veteranId = state.teams[state.userTeamId].playerIds.find((id) => id !== rookieId) as string;
+  state.players[veteranId].serviceYears = 1;
+  return rookiePoints.map((points, index) => {
+    const game: GameResult = {
+      gameId: `rookie-game-${index}`, date: `2026-11-${String(index + 1).padStart(2, "0")}`,
+      homeTeamId: state.userTeamId, awayTeamId: rivalId,
+      homeScore: 100, awayScore: 90, winnerTeamId: state.userTeamId, overtimePeriods: 0,
+      homeBoxScore: {
+        teamId: state.userTeamId, score: 100,
+        playerStats: [
+          { ...emptyPlayerSeasonStats(), games: 1, seconds: 1_800, playerId: rookieId, pts: points, reb: 7, ast: 5 },
+          { ...emptyPlayerSeasonStats(), games: 1, seconds: 1_800, playerId: veteranId, pts: 35 },
+        ],
+        totals: { ...emptyPlayerSeasonStats(), pts: points + 35, reb: 7, ast: 5 },
+      },
+    };
+    state.userGameDetails[game.gameId] = game;
+    return game;
+  });
+}
 
 describe("data-driven event engine", () => {
+  it("names the actual rookie and snapshots recent box-score numbers in a breakout notice", () => {
+    const state = createCareer("rookie-breakout-stats");
+    const rookie = state.players[state.teams[state.userTeamId].playerIds[0]];
+    rookie.serviceYears = 0;
+    const games = recentRookieGames(state, rookie.id, [4, 8, 16, 18, 20, 22]);
+    state.lightweightResults = games.map(({ homeBoxScore: _homeBoxScore, ...game }) => game);
+    const context = recentRookieBreakoutContext(state, state.lightweightResults);
+    expect(context).toEqual({
+      player_id: rookie.id, player_name: rookie.name,
+      recent_summary: "近 3 场场均 20 分、7 篮板、5 助攻；上一场 22 分、7 篮板、5 助攻。",
+    });
+    const event = enqueueEvent(state, "breakout_rookie_001", context);
+    expect(state.teamNotifications?.[0]).toMatchObject({
+      title: `新秀爆发：${rookie.name}`,
+      message: `${rookie.name} 近 3 场场均 20 分、7 篮板、5 助攻；上一场 22 分、7 篮板、5 助攻。`,
+    });
+    expect(state.teamNotifications?.[0].id).toBe(`event-${event?.eventInstanceId}`);
+    expect(recentRookieBreakoutContext(state, state.lightweightResults)).toEqual(context);
+  });
+
+  it("does not label a veteran or an isolated rookie game as a rookie breakout", () => {
+    const state = createCareer("rookie-breakout-eligibility");
+    const rookie = state.players[state.teams[state.userTeamId].playerIds[0]];
+    rookie.serviceYears = 0;
+    const games = recentRookieGames(state, rookie.id, [4, 8, 5, 6, 7, 30]);
+    state.lightweightResults = games.map(({ homeBoxScore: _homeBoxScore, ...game }) => game);
+    expect(recentRookieBreakoutContext(state, state.lightweightResults)).toBeUndefined();
+    rookie.serviceYears = 1;
+    games[3].homeBoxScore!.playerStats[0].pts = 20;
+    games[4].homeBoxScore!.playerStats[0].pts = 20;
+    expect(recentRookieBreakoutContext(state, state.lightweightResults)).toBeUndefined();
+  });
+
+  it("uses the eligible rookie instead of the veteran game scorer when the random event fires", () => {
+    const state = createCareer("rookie-breakout-selection");
+    const rookie = state.players[state.teams[state.userTeamId].playerIds[0]];
+    rookie.serviceYears = 0;
+    const games = recentRookieGames(state, rookie.id, [4, 8, 16, 18, 20, 22]);
+    state.lightweightResults = games.map(({ homeBoxScore: _homeBoxScore, ...game }) => game);
+    const veteranId = games[5].homeBoxScore!.playerStats[1].playerId;
+    const selectedSeed = Array.from({ length: 100 }, (_, index) => `rookie-selection-${index}`).find((seed) => {
+      const roll = Number.parseInt(stableHash(seed, "dynamic-event", 6, veteranId).slice(8, 16), 16) / 0xffffffff;
+      return roll >= 0.5 && roll < 0.75;
+    });
+    expect(selectedSeed).toBeDefined();
+    state.seeds.seasonSeed = selectedSeed as string;
+    enqueueAfterUserGameEvents(state);
+    expect(state.teamNotifications?.some((notice) => notice.title === `新秀爆发：${rookie.name}`
+      && notice.message.includes("近 3 场场均 20 分"))).toBe(true);
+  });
   it("ships at least fifty unique valid V1 definitions", () => {
     expect(EVENT_DEFINITIONS.length).toBeGreaterThanOrEqual(50);
     expect(new Set(EVENT_DEFINITIONS.map((event) => event.id)).size).toBe(EVENT_DEFINITIONS.length);
@@ -38,9 +114,12 @@ describe("data-driven event engine", () => {
   it("settles expansion at completion and keeps the season opening pending until entered", () => {
     const state = createCareer("season-opening-event");
     const supportBefore = state.teams[state.userTeamId].fanSupport;
+    const attractionBefore = freeAgentAttraction(state, state.teams[state.userTeamId]);
     const expansion = enqueueEvent(state, "expansion_complete_001");
     expect(expansion?.status).toBe("RESOLVED");
     expect(state.teams[state.userTeamId].fanSupport).toBe(supportBefore + 1);
+    expect(freeAgentAttraction(state, state.teams[state.userTeamId])).toBe(attractionBefore + 0.25);
+    expect(state.teamNotifications).toEqual([]);
     expect(blockingEvent(state)).toBeUndefined();
     expect(enqueueEvent(state, "expansion_complete_001")).toBeUndefined();
 
@@ -96,20 +175,24 @@ describe("data-driven event engine", () => {
     expect(state.eventState.leagueLog[0]).toMatch(/安全跳过/);
   });
 
-  it("sends an informational injury to the unread team inbox without a confirmation dialog", () => {
+  it("pauses on an injury until a rotation choice is made", () => {
     const state = createCareer("informational-injury");
-    const event = enqueueEvent(state, "injury_depth_test_001", { player_name: "测试球员", games_out: "3" });
-    expect(event?.status).toBe("RESOLVED");
-    expect(state.eventState.queue).toEqual([]);
-    expect(state.eventState.resolvedInstanceIds).toContain(event?.eventInstanceId);
-    expect(state.teamNotifications).toContainEqual(expect.objectContaining({
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    const event = enqueueEvent(state, "injury_depth_test_001", { player_id: player.id, player_name: "测试球员", games_out: "3" });
+    expect(event?.status).toBe("PENDING");
+    expect(blockingEvent(state)?.eventInstanceId).toBe(event?.eventInstanceId);
+    expect(event?.choices.map((choice) => choice.id)).toEqual(["auto_adjust", "manual_adjust"]);
+    expect(state.teamNotifications).not.toContainEqual(expect.objectContaining({ id: `event-${event?.eventInstanceId}` }));
+    const resolved = executeEventCommand(state, { commandId: "injury-choice", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "auto_adjust" } });
+    expect(resolved.eventState.queue).toEqual([]);
+    expect(resolved.eventState.resolvedInstanceIds).toContain(event?.eventInstanceId);
+    expect(resolved.teamNotifications).toContainEqual(expect.objectContaining({
       id: `event-${event?.eventInstanceId}`,
       category: "SEASON",
-      title: "轮换伤病调整",
-      message: "测试球员受伤，预计缺阵 3 场；首发与轮换已自动调整。",
+      title: "轮换球员受伤",
+      message: "测试球员受伤，预计缺阵 3 场。已自动调整轮换。",
       read: false,
     }));
-    expect(state.eventState.leagueLog.some((entry) => entry.includes("轮换伤病调整"))).toBe(false);
   });
 
   it("delivers winning and losing streak milestones as team notices and applies their effects once", () => {
@@ -131,7 +214,7 @@ describe("data-driven event engine", () => {
     }
   });
 
-  it("applies a one-choice franchise milestone immediately and shows its impact in notifications", () => {
+  it("applies a one-choice franchise milestone without showing a numeric effect in notifications", () => {
     const state = createCareer("ten-win-notification");
     const supportBefore = state.teams[state.userTeamId].fanSupport;
     const event = enqueueEvent(state, "franchise_ten_wins_001");
@@ -142,14 +225,14 @@ describe("data-driven event engine", () => {
     expect(state.teamNotifications).toContainEqual(expect.objectContaining({
       id: `event-${event?.eventInstanceId}`,
       title: "初具竞争力",
-      message: "球队取得生涯第十场胜利。 球迷支持 +1",
+      message: "球队取得生涯第十场胜利。",
       read: false,
     }));
     expect(enqueueEvent(state, "franchise_ten_wins_001")).toBeUndefined();
     expect(state.teams[state.userTeamId].fanSupport).toBe(supportBefore + 1);
   });
 
-  it("routes every acknowledgement-only definition to notices without leaving a popup", () => {
+  it("routes visible acknowledgement-only events to notices and background events to the log", () => {
     const state = createCareer("all-acknowledgements");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
     const definitions = EVENT_DEFINITIONS.filter((definition) => definition.choices.length === 1
@@ -159,7 +242,8 @@ describe("data-driven event engine", () => {
       const event = enqueueEvent(state, definition.id, { player_id: player.id, player_name: player.name, games_out: "3" }, `${state.league.seasonId}:${definition.id}`);
       expect(event?.status, definition.id).toBe("RESOLVED");
       expect(state.eventState.queue, definition.id).toEqual([]);
-      expect(state.teamNotifications?.some((item) => item.id === `event-${event?.eventInstanceId}`), definition.id).toBe(true);
+      expect(state.teamNotifications?.some((item) => item.id === `event-${event?.eventInstanceId}`), definition.id)
+        .toBe(definition.visibility === "PLAYER_VISIBLE");
     }
     expect(blockingEvent(state)).toBeUndefined();
   });
@@ -177,6 +261,20 @@ describe("data-driven event engine", () => {
     expect(restored.eventState.queue).toEqual([]);
     expect(restored.teamNotifications).toHaveLength(1);
     expect(restored.eventState.executedEffectIds).toContain(`${event.eventInstanceId}:fan_response`);
+  });
+
+  it("dismisses an old later-season opening event when loading a save", () => {
+    const state = createCareer("legacy-later-season-opening");
+    state.expansion = { finalized: true } as NonNullable<typeof state.expansion>;
+    const opening = enqueueEvent(state, "franchise_season_opening_001");
+    expect(opening?.status).toBe("PENDING");
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    settleInformationalEvents(state);
+    settleInformationalEvents(state);
+    expect(state.eventState.queue).toEqual([]);
+    expect(state.eventState.resolvedInstanceIds).toContain(opening?.eventInstanceId);
+    expect(state.teamNotifications).toEqual([]);
   });
 
   it("migrates a paused one-choice event but keeps legacy player conversations actionable", () => {
@@ -206,14 +304,17 @@ describe("data-driven event engine", () => {
     expect(state.eventState.leagueLog.filter((entry) => entry.includes("联盟交易"))).toHaveLength(0);
   });
 
-  it("records separate injury notices for two players on the same game day", () => {
+  it("queues separate injury decisions for two players on the same game day", () => {
     const state = createCareer("two-injury-notices");
     const first = enqueueEvent(state, "injury_depth_test_001", { player_id: "first", player_name: "甲", games_out: "2" }, "2026-27:D20");
     const second = enqueueEvent(state, "injury_depth_test_001", { player_id: "second", player_name: "乙", games_out: "5" }, "2026-27:D20");
     expect(first?.eventInstanceId).not.toBe(second?.eventInstanceId);
-    expect(state.teamNotifications?.map((item) => item.message)).toEqual([
-      "乙受伤，预计缺阵 5 场；首发与轮换已自动调整。",
-      "甲受伤，预计缺阵 2 场；首发与轮换已自动调整。",
+    expect(state.eventState.queue.map((item) => item.eventInstanceId).sort()).toEqual([first!.eventInstanceId, second!.eventInstanceId].sort());
+    const firstResolved = executeEventCommand(state, { commandId: "injury-first", type: "RESOLVE_EVENT", payload: { eventInstanceId: first!.eventInstanceId, choiceId: "auto_adjust" } });
+    const bothResolved = executeEventCommand(firstResolved, { commandId: "injury-second", type: "RESOLVE_EVENT", payload: { eventInstanceId: second!.eventInstanceId, choiceId: "auto_adjust" } });
+    expect(bothResolved.teamNotifications?.map((item) => item.message)).toEqual([
+      "乙受伤，预计缺阵 5 场。已自动调整轮换。",
+      "甲受伤，预计缺阵 2 场。已自动调整轮换。",
     ]);
     expect(enqueueEvent(state, "injury_depth_test_001", { player_id: "first", player_name: "甲", games_out: "2" }, "2026-27:D20")).toBeUndefined();
   });

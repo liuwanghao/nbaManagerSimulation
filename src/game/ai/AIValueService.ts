@@ -45,6 +45,17 @@ export function publicPlayerValue(player: Player, strategy: ExpansionStrategy = 
   return Math.max(0, Math.min(100, interpolate(ability, config.abilityValueAnchors) + ageValue + potentialValue + contractValue));
 }
 
+/** Extra return required when a team replaces a core player with lower-rated players. */
+export function corePlayerTradePremium(outgoingPlayers: Player[], incomingPlayers: Player[]): number {
+  if (!outgoingPlayers.length || !incomingPlayers.length) return 0;
+  const config = BALANCE_CONFIG.trade.corePlayerPremium;
+  const outgoingOverall = Math.max(...outgoingPlayers.map(calculatePlayerOverall));
+  const incomingOverall = Math.max(...incomingPlayers.map(calculatePlayerOverall));
+  const gap = outgoingOverall - incomingOverall;
+  return outgoingOverall >= config.minimumOverall && gap >= config.minimumOverallGap
+    ? gap * config.valuePerOverallGap : 0;
+}
+
 export function negativeContractScore(player: Player): number {
   return player.contract.salary / BALANCE_CONFIG.trade.negativeContract.salaryMillionsDivisor
     - publicPlayerValue(player) * BALANCE_CONFIG.trade.negativeContract.playerValueMultiplier;

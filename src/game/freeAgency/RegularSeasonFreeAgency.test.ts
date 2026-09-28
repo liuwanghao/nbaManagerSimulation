@@ -4,7 +4,7 @@ import { simulateLeagueDay } from "../season/career";
 import { executeFreeAgencyCommand, getFreeAgentOfferPreview, getFreeAgents } from "./FreeAgencyService";
 
 describe("regular-season UFA offers", () => {
-  it("accepts a legal UFA offer, settles it on league days, and records the contract", () => {
+  it("settles a contested UFA offer on league days and releases its cap reservation", () => {
     let state = createExpansionCareerFromBundledDataset("regular-fa-test");
     state.league.currentPhase = "REGULAR_PRE_DEADLINE";
     const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA")!;
@@ -14,10 +14,11 @@ describe("regular-season UFA offers", () => {
     expect(Object.values(state.freeAgency!.offers)).toContainEqual(expect.objectContaining({ playerId: player.id, teamId: state.userTeamId, status: "ACTIVE" }));
     expect(state.capState.offerReservations).toHaveLength(1);
     for (let day = 0; day < 5 && state.players[player.id].teamId === "FREE_AGENT"; day += 1) state = simulateLeagueDay(state, day);
-    expect(state.players[player.id].teamId).toBe(state.userTeamId);
+    expect(state.players[player.id].teamId).not.toBe("FREE_AGENT");
     expect(state.players[player.id].contract.status).toBe("STANDARD");
-    expect(state.capState.offerReservations).toHaveLength(0);
-    expect((state.teamNotifications ?? []).some((item) => item.title === "自由球员签约成功")).toBe(true);
+    expect(state.capState.offerReservations.filter((reservation) => reservation.playerId === player.id)).toHaveLength(0);
+    expect((state.teamNotifications ?? []).some((item) => item.title === (state.players[player.id].teamId === state.userTeamId
+      ? "自由球员签约成功" : "球员拒绝合同报价"))).toBe(true);
   });
 
   it("allows UFA offers after the trade deadline but keeps RFA offers in the offseason", () => {

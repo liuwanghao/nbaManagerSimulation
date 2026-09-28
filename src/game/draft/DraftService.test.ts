@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { EXPANSION_BRAND_PRESETS } from "../../data/expansionBrands";
 import { REAL_2026_DRAFT } from "../../data/real2026Draft";
 import { NBA_PLAYER_DATASET } from "../../data/nbaPlayerDataset";
+import { playerOverall } from "../development/PlayerDevelopmentService";
 import { executeExpansionCommand, getSelectableExpansionPlayers } from "../expansion/ExpansionService";
 import { stableHash, stableSerialize } from "../random/hash";
-import { createExpansionCareer } from "../season/career";
+import { createCareer, createExpansionCareer } from "../season/career";
 import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { enterFreeAgency, getFreeAgents } from "../freeAgency/FreeAgencyService";
 import type { GameState } from "../state/types";
-import { executeDraftCommand, getAvailableDraftProspects, getNextAiDraftProspect } from "./DraftService";
+import { executeDraftCommand, getAvailableDraftProspects, getDraftLotteryPreview, getNextAiDraftProspect } from "./DraftService";
 
 function finishExpansionState(initial: GameState): GameState {
   const preset = EXPANSION_BRAND_PRESETS.SEA[0];
@@ -67,6 +68,100 @@ function finishRookieDraft(seed: string): GameState {
 }
 
 describe("Stage 4 rookie draft", () => {
+  it("keeps future rookies' entry ratings below established stars across fixed seeds", () => {
+    const topEightRatings: number[] = [];
+    const historicalRookieRatings: number[] = [];
+    let immediateNinetyPlus = 0;
+    for (let seedIndex = 0; seedIndex < 20; seedIndex += 1) {
+      const future = createCareer(`rookie-balance-${seedIndex}`);
+      future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+      future.league.seasonYear = 2027;
+      future.league.seasonId = "2027-28";
+      future.seeds.seasonSeed = stableHash(future.seeds.careerSeed, "season", future.league.seasonId);
+      const prepared = executeDraftCommand(future, {
+        commandId: `prepare-rookie-balance-${seedIndex}`,
+        type: "PREPARE_ROOKIE_DRAFT",
+        payload: {},
+      });
+      const prospects = prepared.rookieDraft?.classPlayerIds.map((id) => prepared.players[id]) ?? [];
+      expect(prospects).toHaveLength(80);
+      topEightRatings.push(...prospects.slice(0, 8).map(playerOverall));
+      const historicalRookies = prospects.filter((player) => player.profileSource === "HISTORICAL_ARCHETYPE");
+      expect(historicalRookies).toHaveLength(3);
+      expect(historicalRookies.every((player) => (player.truePotential ?? 0) >= 90)).toBe(true);
+      historicalRookieRatings.push(...historicalRookies.map(playerOverall));
+      immediateNinetyPlus += prospects.filter((player) => playerOverall(player) >= 90).length;
+    }
+    const averageTopEight = topEightRatings.reduce((sum, rating) => sum + rating, 0) / topEightRatings.length;
+    expect(averageTopEight).toBeGreaterThan(77);
+    expect(averageTopEight).toBeLessThan(82);
+    expect(immediateNinetyPlus).toBe(0);
+    const historicalAverage = historicalRookieRatings.reduce((sum, rating) => sum + rating, 0) / historicalRookieRatings.length;
+    expect(historicalAverage).toBeGreaterThan(72);
+    expect(historicalAverage).toBeLessThan(78);
+    expect(Math.max(...historicalRookieRatings)).toBeLessThan(81);
+  });
+
+  it("previews the future lottery from the same standings and seed used to prepare the draft", () => {
+    const state = finishExpansion("lottery-preview");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    state.seeds.seasonSeed = stableHash(state.seeds.careerSeed, "season", state.league.seasonId);
+    const before = stableHash(stableSerialize(state));
+    const preview = getDraftLotteryPreview(state);
+    expect(preview).toEqual(getDraftLotteryPreview(state));
+    expect(preview).toHaveLength(18);
+    expect(preview.filter((entry) => entry.lotteryBalls === 3)).toHaveLength(9);
+    expect(preview.filter((entry) => entry.lotteryBalls === 2)).toHaveLength(7);
+    expect(preview.filter((entry) => entry.lotteryBalls === 1)).toHaveLength(2);
+    expect(preview.reduce((sum, entry) => sum + entry.lotteryBalls, 0)).toBe(43);
+    expect(preview.find((entry) => entry.lotteryBalls === 3)?.firstPickWeight).toBeCloseTo(300 / 43);
+    expect(preview.find((entry) => entry.lotteryBalls === 2)?.firstPickWeight).toBeCloseTo(200 / 43);
+    expect(preview.find((entry) => entry.lotteryBalls === 1)?.firstPickWeight).toBeCloseTo(100 / 43);
+    expect(preview.reduce((sum, entry) => sum + entry.firstPickWeight, 0)).toBeCloseTo(100);
+    expect(stableHash(stableSerialize(state))).toBe(before);
+    const prepared = executeDraftCommand(state, { commandId: "lottery-preview-prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    expect(prepared.rookieDraft?.lotteryPresented).toBe(false);
+    const firstRound = prepared.rookieDraft?.pickOrder.filter((pick) => pick.round === 1) ?? [];
+    expect(firstRound).toHaveLength(32);
+    expect(new Set(firstRound.slice(0, preview.length).map((pick) => pick.originalTeamId))).toEqual(new Set(preview.map((entry) => entry.teamId)));
+    for (const entry of preview.filter((team) => team.draftRelegated)) {
+      expect(firstRound.find((pick) => pick.originalTeamId === entry.teamId)?.pickNumber).toBeLessThanOrEqual(12);
+    }
+    const saved = structuredClone(prepared);
+    const acknowledged = executeDraftCommand(saved, { commandId: "lottery-preview-ack", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} });
+    expect(acknowledged.rookieDraft?.lotteryPresented).toBe(true);
+    expect(acknowledged.rookieDraft?.pickOrder).toEqual(prepared.rookieDraft?.pickOrder);
+    expect(saved.rookieDraft?.lotteryPresented).toBe(false);
+    expect(executeDraftCommand(acknowledged, { commandId: "lottery-preview-ack", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} })).toBe(acknowledged);
+    expect(() => executeDraftCommand(acknowledged, { commandId: "lottery-preview-ack-again", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} })).toThrow("乐透抽签已公布");
+  });
+  it("blocks consecutive first picks based on the original team even when its pick was traded", () => {
+    const state = finishExpansion("lottery-repeat-limit");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    const restrictedTeamId = getDraftLotteryPreview(state)[0].teamId;
+    state.history.draftFirstRoundResults = [{ year: 2026, pickNumber: 1, originalTeamId: restrictedTeamId }];
+    state.draftPicks[`2027-R1-${restrictedTeamId}`].ownerTeamId = state.userTeamId;
+    expect(getDraftLotteryPreview(state).find((entry) => entry.teamId === restrictedTeamId)?.firstPickWeight).toBe(0);
+    const prepared = executeDraftCommand(state, { commandId: "prepare-repeat-limit", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    expect(prepared.rookieDraft?.pickOrder[0].originalTeamId).not.toBe(restrictedTeamId);
+  });
+  it("keeps an original pick out of the top five after two straight top-five results", () => {
+    const state = finishExpansion("lottery-top-five-limit");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    state.league.seasonYear = 2028;
+    state.league.seasonId = "2028-29";
+    const restrictedTeamId = getDraftLotteryPreview(state)[0].teamId;
+    state.history.draftFirstRoundResults = [
+      { year: 2026, pickNumber: 2, originalTeamId: restrictedTeamId },
+      { year: 2027, pickNumber: 4, originalTeamId: restrictedTeamId },
+    ];
+    const prepared = executeDraftCommand(state, { commandId: "prepare-top-five-limit", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    expect(prepared.rookieDraft?.pickOrder.find((pick) => pick.round === 1 && pick.originalTeamId === restrictedTeamId)?.pickNumber).toBeGreaterThan(5);
+  });
   it("keeps generated undrafted prospects out of the bundled real-player free market", () => {
     let state = executeDraftCommand(finishExpansionState(createExpansionCareerFromBundledDataset("real-free-agent-market")), {
       commandId: "prepare-real-market", type: "PREPARE_ROOKIE_DRAFT", payload: {},
@@ -209,6 +304,8 @@ describe("Stage 4 rookie draft", () => {
     expect(draft).toBeDefined();
     if (!draft) throw new Error("draft missing");
     expect(draft.source).toBe("CURATED_2026");
+    expect(draft.lotteryPresented).toBe(true);
+    expect(() => executeDraftCommand(state, { commandId: "no-2026-lottery", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} })).toThrow("本届没有待确认的乐透抽签");
     expect(REAL_2026_DRAFT.every((entry) => draft.classPlayerIds.includes(entry.playerId))).toBe(true);
     for (const playerId of ["nba:1643516", "nba:1642889", "nba:1642923", "nba:1643551", "nba:1643576", "nba:1643590", "nba:1643555"]) {
       const projection = NBA_PLAYER_DATASET.players.find((player) => player.canonicalPlayerId === playerId);
@@ -336,7 +433,7 @@ describe("Stage 4 rookie draft", () => {
       .toBe(stableHash(stableSerialize(finishRookieDraft("draft-replay"))));
   });
 
-  it("mixes deterministic historical archetypes into future classes without exposing their sources", () => {
+  it("mixes named historical stars into future classes without exposing hidden source IDs", () => {
     const future = finishExpansion("draft-historical");
     future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
     future.league.seasonYear = 2027;
@@ -348,6 +445,7 @@ describe("Stage 4 rookie draft", () => {
     expect(state.rookieDraft?.source).toBe("MIXED_FUTURE");
     expect(reborn).toHaveLength(3);
     expect(new Set(reborn.map((player) => player.historicalSourcePlayerId)).size).toBe(reborn.length);
+    expect(reborn.every((player) => player.name === NBA_PLAYER_DATASET.historicalTemplates.find((template) => template.sourcePlayerId === player.historicalSourcePlayerId)?.sourceName)).toBe(true);
     expect(state.history.rebornHistoricalSourceIds).toEqual(reborn.map((player) => player.historicalSourcePlayerId));
     expect(getAvailableDraftProspects(state).every((player) => !JSON.stringify(player).includes("historicalSourcePlayerId"))).toBe(true);
   });
@@ -371,6 +469,48 @@ describe("Stage 4 rookie draft", () => {
     expect(replay).toEqual(first);
     expect(second).toHaveLength(3);
     expect(second).not.toEqual(first);
+  });
+
+  it("keeps diverse procedural names and named historical stars for 50 future draft classes", () => {
+    const future = finishExpansion("draft-generations");
+    future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    const names = new Set<string>();
+    const starNames = new Set([
+      "Ben Wallace", "Tim Duncan", "Dirk Nowitzki", "Paul Pierce", "Elton Brand", "Shawn Marion",
+      "Andrei Kirilenko", "Manu Ginobili", "Paul Millsap", "Joakim Noah", "Marc Gasol",
+      "Blake Griffin", "DeMarcus Cousins", "Kyrie Irving", "Pau Gasol", "Chris Bosh",
+      "Dwyane Wade", "Dwight Howard", "Andre Iguodala", "Jason Kidd", "Kevin Garnett", "Kobe Bryant",
+    ]);
+    const seenArchetypes = new Set<string>();
+    for (let year = 2027; year < 2077; year += 1) {
+      future.league.seasonYear = year;
+      future.league.seasonId = `${year}-${String(year + 1).slice(-2)}`;
+      future.seeds.seasonSeed = stableHash(future.seeds.careerSeed, "season", future.league.seasonId);
+      const state = executeDraftCommand(future, { commandId: `prepare-${year}`, type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+      const draftPlayers = state.rookieDraft?.classPlayerIds.map((id) => state.players[id]) ?? [];
+      const publicProspects = getAvailableDraftProspects(state);
+      const archetypes = publicProspects.filter((player) => player.historicalArchetypeName);
+      expect(draftPlayers).toHaveLength(80);
+      expect(archetypes.length).toBeGreaterThanOrEqual(2);
+      expect(archetypes.length).toBeLessThanOrEqual(3);
+      expect(new Set(archetypes.map((player) => player.historicalArchetypeName)).size).toBe(archetypes.length);
+      expect(archetypes.every((player) => starNames.has(player.historicalArchetypeName as string))).toBe(true);
+      expect(archetypes.every((player) => player.historicalArchetypeName === player.name)).toBe(true);
+      expect(archetypes.every((player) => state.players[player.id].truePotential! >= 90)).toBe(true);
+      expect(archetypes.every((player) => playerOverall(state.players[player.id]) < 82)).toBe(true);
+      expect(publicProspects.every((player) => !/truePotential|developmentRate|historicalSourcePlayerId/u.test(JSON.stringify(player)))).toBe(true);
+      archetypes.forEach((player) => seenArchetypes.add(player.historicalArchetypeName as string));
+      for (const player of draftPlayers) {
+        if (player.profileSource === "PROCEDURAL_DRAFT") {
+          expect(names.has(player.name)).toBe(false);
+          names.add(player.name);
+        }
+        expect(Number(player.birthDate.slice(0, 4))).toBe(year - player.age);
+      }
+      future.history.rebornHistoricalSourceIds = state.history.rebornHistoricalSourceIds;
+    }
+    expect(names.size).toBe(50 * (80 - 3));
+    expect(seenArchetypes).toEqual(starNames);
   });
 
   it("keeps public ranking independent from hidden development fields", () => {

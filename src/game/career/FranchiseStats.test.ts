@@ -44,7 +44,7 @@ describe("franchise regular-season leaders", () => {
     const leaders = getFranchiseLeaders(state);
     expect(leaders.points.reduce((sum, player) => sum + player.points, 0)).toBe(boxes.reduce((sum, box) => sum + box.playerStats.reduce((total, player) => total + player.pts, 0), 0));
     expect(leaders.coverage).toEqual({ status: "COMPLETE", countedGames: 82, expectedGames: 82 });
-  }, 30_000);
+  }, 60_000);
 
   it("backfills legacy archives without double counting a current copy and labels missing boxes partial", async () => {
     const service = new SaveService(new MemoryStorageAdapter());

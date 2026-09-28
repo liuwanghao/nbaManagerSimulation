@@ -19,6 +19,11 @@ describe("regular-season management pages", () => {
       fit: calculateTeamFit(state, team.id), onOpenPlayer: () => {},
     }));
     expect(markup).toContain("球员赛季概览");
+    expect(markup).toContain('aria-label="按主位置筛选球员赛季数据"');
+    expect(markup).toContain(`<b>全部</b><small>${players.length}</small>`);
+    for (const position of ["PG", "SG", "SF", "PF", "C"]) {
+      expect(markup).toContain(`<b>${position}</b><small>${players.filter((player) => player.position === position).length}</small>`);
+    }
     expect(markup.match(/data-player-id="/g)).toHaveLength(players.length);
     expect(markup).toContain("场均得分");
     expect(markup).toContain("抢断");

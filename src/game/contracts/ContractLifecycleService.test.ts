@@ -54,6 +54,7 @@ describe("ContractLifecycleService", () => {
     let state = rolloverLeagueYear(input);
     expect(() => finalizeOptionPhase(state)).toThrow(/TEAM_OPTIONS_STILL_PENDING/);
     for (const playerId of [...(state.contractLifecycle?.pendingUserTeamOptionPlayerIds ?? [])]) state = resolveTeamOption(state, playerId, "DECLINE");
+    expect(state.players[optionPlayer.id].contract.optionDecision).toBe("DECLINED");
     state = finalizeOptionPhase(state);
     expect(state.league.currentPhase).toBe("OFFSEASON_PRE_DRAFT");
     expect(state.contractLifecycle?.completed).toBe(true);
@@ -63,6 +64,23 @@ describe("ContractLifecycleService", () => {
     const command = { commandId: "rollover-once", type: "ROLLOVER_LEAGUE_YEAR", payload: {} } as const;
     const once = executeContractLifecycleCommand(base, command);
     expect(executeContractLifecycleCommand(once, command)).toBe(once);
+  });
+
+  it("records a player's decision to decline an undervalued player option", () => {
+    const input = offseasonState();
+    const player = input.players[input.teams[input.userTeamId].playerIds[0]];
+    player.contract = {
+      salary: 4_000_000, yearsRemaining: 2, guaranteedAmount: 4_000_000, status: "STANDARD",
+      optionType: "PLAYER", optionDecision: "NOT_APPLICABLE", contractId: "declined-player-option", contractType: "STANDARD",
+      startSeason: 2026, endSeason: 2027, currentYearIndex: 0,
+      salaryByYear: [4_000_000, 1], guaranteedByYear: [4_000_000, 0], optionByYear: ["NONE", "PLAYER_OPTION"],
+      signedTeamId: input.userTeamId, signedPhase: "TEST",
+    };
+
+    const next = rolloverLeagueYear(input);
+    expect(next.players[player.id].contract.status).toBe("UFA");
+    expect(next.players[player.id].contract.optionDecision).toBe("DECLINED");
+    expect(next.contractLifecycle?.transactionLog).toContain(`${player.name} · PLAYER_OPTION_DECLINED · 成为UFA`);
   });
 
   it("makes completed first-round rookie contracts restricted free agents deterministically", () => {

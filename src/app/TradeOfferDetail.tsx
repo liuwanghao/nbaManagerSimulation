@@ -122,9 +122,9 @@ export function TradeOfferDetail({ state, offer, evaluation, busy, onBack, onAcc
           <AssetColumn state={state} playerIds={offer.userIncomingPlayerIds} pickIds={offer.userIncomingPickIds} title="我方得到" teamName={otherName} incoming onOpenPlayer={openPlayer} />
         </div>
         <div className="trade-detail-value-summary"><span>资产价值差 <small>收到 − 送出</small></span><b className={trend(evaluation.userValueDelta)}>{signed(evaluation.userValueDelta)}</b></div>
-        <p className="trade-detail-value-note">估值参考球员能力层级、年龄、可见成长预期、合同及选秀权原球队强弱；不等同于球队实力。</p>
+        <p className="trade-detail-value-note">估值参考球员能力层级、年龄、可见成长预期、合同及选秀权原球队强弱；核心球员拆换时，对方还会要求额外回报。</p>
       </section>
-      <section className="trade-detail-card trade-detail-salary"><div className="manage-section-heading"><div><h3>薪资与交易规则</h3></div><span className={evaluation.legal ? "trade-pass" : "trade-fail"}>{evaluation.legal ? "校验通过" : "无法成交"}</span></div>
+      <section className="trade-detail-card trade-detail-salary"><div className="manage-section-heading"><div><h3>薪资与成交条件</h3></div><span className={evaluation.legal ? "trade-pass" : "trade-fail"}>{evaluation.legal ? "校验通过" : evaluation.reason?.startsWith("对方核心球员") ? "对方拒绝" : "无法成交"}</span></div>
         <div className="trade-detail-salary-grid"><span><small>我方送出年薪</small><b>{moneyLabel(evaluation.outgoingSalary)}</b></span><span><small>我方接收年薪</small><b>{moneyLabel(evaluation.incomingSalary)}</b></span></div>
         {preview && <p className="trade-detail-cap-space">本赛季工资帽空间 <b>{moneyLabel(preview.capSpaceBefore)} → {moneyLabel(preview.capSpaceAfter)}</b></p>}
         <p className="trade-detail-rule-note">{evaluation.reason ?? "已通过薪资配平、选秀权归属与名单人数校验。"}</p>

@@ -67,11 +67,11 @@ function expireContract(state: GameState, player: Player, rfaEligible: boolean, 
   const oldTeamId = detachFromTeam(state, player);
   player.contract.status = rfaEligible ? "RFA" : "UFA";
   player.contract.yearsRemaining = 0;
-  player.contract.optionDecision = reason === "DECLINED" ? "DECLINED" : "NOT_APPLICABLE";
+  player.contract.optionDecision = reason.endsWith("OPTION_DECLINED") ? "DECLINED" : "NOT_APPLICABLE";
   player.contract.guaranteedAmount = 0;
   player.contract.qualifyingOfferDecision = rfaEligible ? "PENDING" : undefined;
   if (oldTeamId) player.birdTeamId = oldTeamId;
-  state.contractLifecycle?.transactionLog.push(`${player.name} · ${reason} · 进入 ${player.contract.status}`);
+  state.contractLifecycle?.transactionLog.push(`${player.name} · ${reason} · 成为${player.contract.status}`);
 }
 
 function activateContractYear(player: Player, nextIndex: number): void {
@@ -172,6 +172,7 @@ export function rolloverLeagueYear(input: GameState): GameState {
   state.capState.capHolds = [];
   state.freeAgency = undefined;
   state.injuryState.pendingUserMajorInjury = undefined;
+  state.injuryState.pendingAutoRotationAfterEmergency = undefined;
   state.tradeDesk = { offers: [] };
   state = processOffseasonPlayerLifecycle(state);
   for (const player of Object.values(state.players).sort((a, b) => a.id.localeCompare(b.id))) advancePlayerContract(state, player);

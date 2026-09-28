@@ -4,12 +4,92 @@ import { createCareer, simulateNextGameDay } from "../game/season/career";
 import { calculateAttributeOverall, calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import { addTeamNotification, executeTeamNotificationCommand } from "../game/notifications/TeamNotificationService";
-import { enqueueEvent } from "../game/events/EventService";
+import { enqueueEvent, executeEventCommand } from "../game/events/EventService";
 import { MemoryStorageAdapter } from "../platform/storage/StorageAdapter";
 import type { StorageAdapter } from "../platform/storage/StorageAdapter";
 import { SaveService } from "./SaveService";
 
 describe("SaveService", () => {
+  it("restores historical rookie names in existing saves without changing the source object", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("historical-name-migration");
+    const player = Object.values(state.players)[0];
+    player.profileSource = "HISTORICAL_ARCHETYPE";
+    player.historicalSourcePlayerId = "nba:977";
+    player.name = "Old Fictional Name";
+    await service.save(1, state);
+
+    const loaded = await service.load(1);
+    expect(loaded?.players[player.id].name).toBe("Kobe Bryant");
+    expect(state.players[player.id].name).toBe("Old Fictional Name");
+    expect((await service.load(1))?.players[player.id].name).toBe("Kobe Bryant");
+  });
+
+  it("removes a false fifty-win milestone from an old save and restores it at the real threshold", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("false-fifty-win-save");
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    state.history.seasons.push({
+      seasonId: "2026-27", championTeamId: "BOS",
+      standings: { [state.userTeamId]: { wins: 30, losses: 52 } },
+      regularSeasonResults: [], userRegularGameDetails: {}, postseasonGameDetails: {},
+      userPostseason: { enteredPlayIn: false, enteredPlayoffs: false, seriesWins: 0,
+        conferenceFinals: false, finalsAppearance: false, champion: false, playoffWins: 0, playoffLosses: 0 },
+    });
+    state.gmCareer.seasons = 1;
+    state.gmCareer.dynastyScore = 100;
+    state.achievements.TWENTY_FIVE_WINS = { unlocked: true, unlockedAt: "2026-27:D80", seasonId: "2026-27" };
+    state.achievements.THIRTY_WIN_SEASON = { unlocked: true, unlockedAt: "2026-27:D120", seasonId: "2026-27" };
+    state.achievements.FIFTY_CAREER_WINS = { unlocked: true, unlockedAt: "2027-28:D0", seasonId: "2027-28" };
+    await service.save(1, state);
+
+    const repaired = await service.load(1);
+    expect(repaired?.achievements.FIFTY_CAREER_WINS).toEqual({ unlocked: false, unlockedAt: null, seasonId: null });
+    expect(repaired?.gmCareer.dynastyScore).toBe(70);
+    expect((await service.load(1))?.gmCareer.dynastyScore).toBe(70);
+
+    repaired!.standings[repaired!.userTeamId].wins = 20;
+    await service.save(1, repaired!);
+    const reached = await service.load(1);
+    expect(reached?.achievements.FIFTY_CAREER_WINS.unlocked).toBe(true);
+    expect(reached?.gmCareer.dynastyScore).toBe(100);
+  });
+
+  it("loads a save when injuries leave only five players available for a 240-minute rotation", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("five-available-player-save");
+    const team = state.teams[state.userTeamId];
+    for (const playerId of team.playerIds.slice(5)) state.players[playerId].available = false;
+
+    await service.save(1, state);
+    const loaded = await service.load(1);
+    expect(loaded).not.toBeNull();
+    expect(Object.values(loaded!.teams[loaded!.userTeamId].rotationPlan!.targetMinutes).reduce((sum, value) => sum + value, 0)).toBe(200);
+    expect(Math.max(...Object.values(loaded!.teams[loaded!.userTeamId].rotationPlan!.targetMinutes))).toBe(40);
+
+    loaded!.players[team.playerIds[5]].available = true;
+    await service.save(1, loaded!);
+    const recovered = await service.load(1);
+    expect(Object.values(recovered!.teams[recovered!.userTeamId].rotationPlan!.targetMinutes).reduce((sum, value) => sum + value, 0)).toBe(240);
+  });
+
+  it("removes the superseded expansion inbox notice from older saves without undoing its support gain", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("legacy-expansion-inbox-save");
+    state.expansion = { finalized: true } as NonNullable<typeof state.expansion>;
+    state.teams[state.userTeamId].fanSupport += 1;
+    state.teamNotifications = [{
+      id: "event-legacy-expansion", category: "SEASON", seasonId: state.league.seasonId,
+      title: "新球队诞生", message: "扩军选秀完成，一支新球队正式加入联盟。 球迷支持 +1",
+      date: state.calendar.openingDate, read: false,
+    }];
+    await service.save(1, state);
+    const loaded = await service.load(1);
+    expect(loaded?.teamNotifications?.map((entry) => entry.id)).toEqual([`expansion-welcome-${state.league.seasonId}`]);
+    expect(loaded?.teams[state.userTeamId].fanSupport).toBe(state.teams[state.userTeamId].fanSupport);
+  });
+
   it("backfills new win achievements in an older slot without adding points twice", async () => {
     const service = new SaveService(new MemoryStorageAdapter());
     const state = createCareer("save-achievement-backfill");
@@ -57,9 +137,8 @@ describe("SaveService", () => {
     const notice = enqueueEvent(state, "injury_depth_test_001", { player_name: "测试球员" });
     const choice = enqueueEvent(state, "morale_minutes_001", { player_id: state.teams[state.userTeamId].playerIds[0] });
     if (!notice || !choice) throw new Error("Expected both event fixtures");
-    notice.status = "PENDING";
+    notice.choices = [{ id: "acknowledge", label: "确认", effects: [] }];
     delete notice.selectedChoiceId;
-    state.eventState.queue.push(notice);
     state.eventState.resolvedInstanceIds = state.eventState.resolvedInstanceIds.filter((id) => id !== notice.eventInstanceId);
     state.teamNotifications = [];
     await service.save(1, state);
@@ -70,6 +149,24 @@ describe("SaveService", () => {
     expect(loaded?.teamNotifications).toContainEqual(expect.objectContaining({
       id: `event-${notice.eventInstanceId}`, message: expect.stringContaining("测试球员"), read: false,
     }));
+  });
+
+  it("keeps a new injury rotation decision pending after a save reload", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("injury-decision-save");
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    const event = enqueueEvent(state, "injury_core_major_001", {
+      player_id: player.id, player_name: player.name, games_out: "8",
+    })!;
+    await service.save(1, state);
+    const loaded = await service.load(1);
+    expect(loaded?.eventState.queue.map((entry) => entry.eventInstanceId)).toContain(event.eventInstanceId);
+    expect(loaded?.eventState.queue.find((entry) => entry.eventInstanceId === event.eventInstanceId)?.choices.map((choice) => choice.id)).toEqual(["auto_adjust", "manual_adjust"]);
+    const resolved = executeEventCommand(loaded!, {
+      commandId: "saved-injury-auto", type: "RESOLVE_EVENT",
+      payload: { eventInstanceId: event.eventInstanceId, choiceId: "auto_adjust" },
+    });
+    expect(resolved.eventState.queue).toEqual([]);
   });
 
   it("turns an older major-injury pause into an unread notice on load", async () => {

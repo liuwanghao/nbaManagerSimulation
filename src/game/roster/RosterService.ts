@@ -205,7 +205,9 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
   state.league.currentPhase = "REGULAR_PRE_DEADLINE";
   ensureExpansionWelcomeNotification(state);
   enqueueCareerMilestoneEvents(state);
-  enqueueEvent(state, "franchise_season_opening_001");
+  if (state.expansion?.finalized && state.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear) {
+    enqueueEvent(state, "franchise_season_opening_001");
+  }
   return state;
 }
 

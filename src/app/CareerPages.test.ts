@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createCareer } from "../game/season/career";
+import { evaluateRegularSeasonAchievements } from "../game/career/AchievementService";
 import type { GameResult } from "../game/state/types";
 import { CareerPages } from "./CareerPages";
 
@@ -20,6 +21,30 @@ describe("career pages", () => {
     expect(html).toContain("3 / 25 胜");
     expect(html).toContain("3 / 50 胜");
     expect(html).toContain("0 / 28 已解锁");
+  });
+
+  it("names the cumulative fifty-win milestone explicitly while a season remains below fifty wins", () => {
+    const state = createCareer("career-page-cumulative-fifty");
+    state.history.seasons.push({
+      seasonId: "2025-26",
+      championTeamId: "ATL",
+      standings: { [state.userTeamId]: { wins: 30, losses: 52 } },
+      regularSeasonResults: [],
+      userRegularGameDetails: {},
+      postseasonGameDetails: {},
+      userPostseason: { enteredPlayIn: false, enteredPlayoffs: false, seriesWins: 0, conferenceFinals: false, finalsAppearance: false, champion: false, playoffWins: 0, playoffLosses: 0 },
+    });
+    state.standings[state.userTeamId].wins = 20;
+    evaluateRegularSeasonAchievements(state);
+    const html = renderToStaticMarkup(createElement(CareerPages, {
+      state,
+      activeTab: "milestones",
+      onOpenPlayer: () => {},
+      onOpenGame: () => {},
+    }));
+    const timeline = html.match(/<ol class="career-timeline">([\s\S]*?)<\/ol>/u)?.[1];
+    expect(timeline).toContain("<b>生涯累计五十胜</b>");
+    expect(timeline).not.toContain("<b>50胜</b>");
   });
 
   it("shows archived season detail, manager moves, and an available game detail entry", () => {

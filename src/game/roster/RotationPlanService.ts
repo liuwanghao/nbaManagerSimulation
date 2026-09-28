@@ -75,8 +75,11 @@ function assignDefaultStarters(players: Player[], fixed: Partial<Record<Position
 }
 
 function allocateMinutes(weights: number[], maximum: number): number[] {
+  if (!weights.length) throw new Error("ROTATION_MINUTE_CAPACITY_EXHAUSTED");
   const result = weights.map(() => 0);
-  let remaining = BALANCE_CONFIG.rotationPlan.regulationMinutes;
+  // A short-handed roster cannot reach 240 without exceeding the per-player cap.
+  // Keep a partial plan so an existing save remains readable until players return.
+  let remaining = Math.min(BALANCE_CONFIG.rotationPlan.regulationMinutes, weights.length * maximum);
   while (remaining > 0) {
     const candidates = weights.map((weight, index) => ({ weight, index }))
       .filter(({ index }) => result[index] < maximum);

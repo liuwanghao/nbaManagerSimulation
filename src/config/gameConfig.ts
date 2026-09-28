@@ -7,7 +7,7 @@ import { LEAGUE_FINANCE_CONFIG } from "./leagueFinance";
  * 工具、测试和后续配置面板只需要读取 GAME_CONFIG。
  */
 export const GAME_CONFIG = {
-  version: "game-config.v6",
+  version: "game-config.v14",
   balance: BALANCE_CONFIG,
   simulation: SIMULATION_CONFIG,
   finance: LEAGUE_FINANCE_CONFIG,
@@ -41,7 +41,9 @@ export function validateGameConfig(): string[] {
   assert(balance.draft.historicalRebirth.classShare >= 0 && balance.draft.historicalRebirth.classShare <= 1, "历史原型新秀占比必须在 0～1");
   assert(balance.draft.historicalRebirth.maximumPerClass >= 0 && balance.draft.historicalRebirth.maximumPerClass <= balance.draft.classSize, "历史原型新秀人数不能超过 Draft 人数");
   assert(balance.draft.historicalRebirth.mode === "LEGEND_ARCHETYPE", "当前版本仅支持传奇原型身份模式");
-  assert(balance.draft.historicalRebirth.reusePerCareer === 1, "同一历史来源在单个存档中只能使用一次");
+  assert(balance.draft.historicalRebirth.potentialFloor >= balance.draft.potentialDistribution.minimum
+    && balance.draft.historicalRebirth.potentialFloor <= balance.draft.potentialDistribution.maximum, "历史球星原型潜力下限无效");
+  assert(balance.draft.historicalRebirth.reusePolicy === "LEAST_RECENTLY_USED", "历史球星原型必须按最久未使用原则轮换");
   assert(balance.leagueBalance.annualRookieInflow === balance.draft.classSize, "联盟年度新秀供给应与 Draft 人数一致");
   assert(Object.values(balance.injuries.severityWeights).reduce((sum, value) => sum + value, 0) === 100, "伤病类型权重之和必须为 100");
   assert(Math.abs(Object.values(balance.teamFit.scoreWeights).reduce((sum, value) => sum + value, 0) - 1) < 0.0001, "Team Fit 权重之和必须为 1");
@@ -50,6 +52,9 @@ export function validateGameConfig(): string[] {
   assert(Object.values(balance.overall.attributeWeightsByPosition).every((weights) =>
     Math.abs(Object.values(weights).reduce((sum, value) => sum + value, 0) - 1) < 0.0001), "各位置 OVR 权重之和必须为 1");
   assert(balance.teamOverall.minimum < balance.teamOverall.maximum && balance.teamOverall.rawScale > 0, "球队 OVR 映射必须单调且上下限有效");
+  assert(balance.trade.corePlayerPremium.minimumOverall >= 0
+    && balance.trade.corePlayerPremium.minimumOverallGap > 0
+    && balance.trade.corePlayerPremium.valuePerOverallGap > 0, "核心球员交易溢价参数必须有效");
   assert(balance.rotationPlan.defaultMinuteWeights.reduce((sum, value) => sum + value, 0) === balance.rotationPlan.regulationMinutes, "默认轮换分钟必须合计 240");
   assert(balance.rotationPlan.defaultMinuteWeights.every((value) => value <= balance.rotationPlan.regularSeasonMaximumMinutes), "默认轮换不能超过常规赛单人分钟上限");
   assert(balance.rotationPlan.positionMismatchPenaltyByDistance.every((value, index, values) => index === 0 || value >= values[index - 1]), "错位惩罚必须随位置距离单调递增");

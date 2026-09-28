@@ -19,14 +19,32 @@ export function notificationDate(state: GameState): string {
   return date.toISOString().slice(0, 10);
 }
 
+function isSupersededExpansionNotice(notification: Pick<TeamNotification, "title" | "message">): boolean {
+  return notification.title === "新球队诞生"
+    && notification.message.startsWith("扩军选秀完成，一支新球队正式加入联盟。");
+}
+
+function notificationMessage(message: string): string {
+  const effectSuffix = /(?:\s*·)?\s*(?:球迷支持|球队声望|球员士气|竞技状态)\s*[+-]\d+(?:\.\d+)?\s*$/u;
+  let visible = message;
+  while (effectSuffix.test(visible)) visible = visible.replace(effectSuffix, "");
+  return visible;
+}
+
 export function addTeamNotification(state: GameState, notification: Omit<TeamNotification, "read">): void {
+  if (isSupersededExpansionNotice(notification)) return;
   state.teamNotifications ??= [];
   if (state.teamNotifications.some((entry) => entry.id === notification.id)) return;
-  state.teamNotifications.unshift({ ...notification, date: notification.date ?? notificationDate(state), read: false });
+  state.teamNotifications.unshift({ ...notification, message: notificationMessage(notification.message), date: notification.date ?? notificationDate(state), read: false });
   state.teamNotifications.length = Math.min(state.teamNotifications.length, MAX_NOTIFICATIONS);
 }
 
 export function ensureExpansionWelcomeNotification(state: GameState): void {
+  // Older saves may already contain the draft-completion notice. Its +1 effect remains in
+  // the saved team state; only the superseded inbox copy is removed.
+  if (state.teamNotifications?.some(isSupersededExpansionNotice)) {
+    state.teamNotifications = state.teamNotifications.filter((entry) => !isSupersededExpansionNotice(entry));
+  }
   if (!state.expansion?.finalized || state.history.seasons.length > 0
     || !["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"].includes(state.league.currentPhase)) return;
   const team = state.teams[state.userTeamId];
@@ -53,7 +71,7 @@ export function getTeamInboxItems(state: GameState): TeamInboxItem[] {
     category: "SEASON", seasonId: state.league.seasonId, title: "紧急名单待处理",
     message: `当前仅有 ${emergency.availableCount} 名可用球员，请在赛季页面补齐名单。`, date: notificationDate(state), read: false, pending: true,
   });
-  return [...pending, ...(state.teamNotifications ?? []).map((entry) => ({ ...entry, pending: false }))];
+  return [...pending, ...(state.teamNotifications ?? []).filter((entry) => !isSupersededExpansionNotice(entry)).map((entry) => ({ ...entry, message: notificationMessage(entry.message), pending: false }))];
 }
 
 export function executeTeamNotificationCommand(input: GameState, command: TeamNotificationCommand): GameState {

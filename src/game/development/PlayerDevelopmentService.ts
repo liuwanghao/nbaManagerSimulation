@@ -130,8 +130,15 @@ function updateUnemployment(player: Player): void {
 
 function retirementProbability(player: Player): number {
   const career = ensureCareer(player);
-  const overall = playerOverall(player);
   const retirement = cfg.retirement;
+  if (player.age <= retirement.earlyCareerMaximumAge) {
+    const severeInjury = player.injuryRating < retirement.lowInjuryRatingThreshold
+      && career.careerInjuryGamesMissed >= retirement.earlyCareerInjuryGamesMissed;
+    const longUnemployment = player.teamId === "FREE_AGENT" && player.contract.status === "UFA"
+      && career.unemployedLeagueYears >= retirement.earlyCareerUnemploymentYears;
+    if (!severeInjury && !longUnemployment) return 0;
+  }
+  const overall = playerOverall(player);
   let probability = retirement.ageProbability.find((band) => player.age >= band.minimumAge)?.probability
     ?? retirement.ageProbability.at(-1)?.probability
     ?? 0;
@@ -142,7 +149,10 @@ function retirementProbability(player: Player): number {
   if (player.personality === "COMPETITIVE") probability -= retirement.competitiveReduction;
   if (player.age >= retirement.unemploymentAgeMinimum && career.unemployedGameDays >= retirement.unemploymentDaysThreshold) probability += retirement.unemploymentAddition;
   if (player.age >= retirement.unemploymentAgeMinimum && career.unemployedLeagueYears >= retirement.unemploymentYearsThreshold) probability = Math.max(probability, retirement.unemploymentProbabilityFloor);
-  return Math.max(retirement.probabilityMin, Math.min(retirement.probabilityMax, probability));
+  return Math.max(retirement.probabilityMin, Math.min(
+    player.age <= retirement.youngMaximumAge ? retirement.youngProbabilityMaximum : retirement.probabilityMax,
+    probability,
+  ));
 }
 
 function hallOfFameScore(player: Player): number {
@@ -202,6 +212,8 @@ export function processOffseasonPlayerLifecycle(input: GameState): GameState {
   const players = Object.values(state.players).sort((left, right) => left.id.localeCompare(right.id));
   const eligibleBefore = players.filter((player) => player.contract.status !== "RETIRED");
   const beforeValues = eligibleBefore.map(playerOverall);
+  const userTeamPlayerIds = new Set(state.teams[state.userTeamId].playerIds);
+  const userTeamOverallChanges: NonNullable<PlayerLifecycleReport["userTeamOverallChanges"]> = [];
   const developedPlayerIds: string[] = [];
   const regressedPlayerIds: string[] = [];
   const retiredPlayerIds: string[] = [];
@@ -213,6 +225,7 @@ export function processOffseasonPlayerLifecycle(input: GameState): GameState {
     player.age = calculateAge(player, state.league.seasonYear);
     updateUnemployment(player);
     const { before, after } = evolveAttributes(state, player, trainingAssignments[player.id]);
+    if (userTeamPlayerIds.has(player.id)) userTeamOverallChanges.push({ playerId: player.id, before: Math.round(before), after: Math.round(after) });
     if (after > before + cfg.changeReportEpsilon) developedPlayerIds.push(player.id);
     if (after < before - cfg.changeReportEpsilon) regressedPlayerIds.push(player.id);
     const career = ensureCareer(player);
@@ -227,6 +240,7 @@ export function processOffseasonPlayerLifecycle(input: GameState): GameState {
   const remaining = Object.values(state.players).filter((player) => player.contract.status !== "RETIRED");
   const report: PlayerLifecycleReport = {
     processedSeasonId: state.league.seasonId,
+    userTeamOverallChanges,
     developedPlayerIds,
     regressedPlayerIds,
     retiredPlayerIds,

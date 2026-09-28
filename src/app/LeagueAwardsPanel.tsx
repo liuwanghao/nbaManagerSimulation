@@ -40,7 +40,9 @@ export function LeagueAwardsPanel({ state, conferenceStandings, onOpenPlayer }: 
           <span className="league-award-player"><b>{playerNameZh(player.name, player.id)}</b><small>{team.name} · {conferenceLabel(team.conference)}第{conferenceRank} · {record.wins}-{record.losses}</small></span>
           <span className="league-award-stats" aria-label="赛季场均数据">{STATS.map(({ key, label }) => <span key={key} title={label}><strong>{(player.seasonStats[key] / player.seasonStats.games).toFixed(1)}</strong></span>)}</span>
         </button></li>;
-      })}</ol> : <p className="league-empty">赛季开始后将显示候选球员。</p>}
+      })}</ol> : <p className="league-empty">{type === "MIP"
+        ? state.history.seasons.length === 0 ? "开局赛季缺少上赛季数据，下一赛季起开放评选。" : "暂无满足两季出场与进步门槛的球员。"
+        : "赛季开始后将显示候选球员。"}</p>}
     </section>)}
   </div>;
 }

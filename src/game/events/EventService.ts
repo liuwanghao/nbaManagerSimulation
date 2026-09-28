@@ -1,7 +1,7 @@
 import { EVENT_DEFINITION_BY_ID } from "../../data/events";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { addTeamNotification } from "../notifications/TeamNotificationService";
-import { applyRotationPlanToPlayers, planPlayerRotationResponse } from "../roster/RotationPlanService";
+import { applyRotationPlanToPlayers, buildDefaultRotationPlan, planPlayerRotationResponse, validateRotationPlan } from "../roster/RotationPlanService";
 import { stableHash } from "../random/hash";
 import type { EventDefinition, EventEffectDefinition, EventInstance, GameResult, GameState, Player } from "../state/types";
 
@@ -92,18 +92,6 @@ function isInformationalEvent(event: EventInstance): boolean {
     && choicesForEvent(event).length === 1;
 }
 
-function informationalImpact(effects: EventEffectDefinition[]): string {
-  return effects.map((effect) => {
-    if (typeof effect.value !== "number") return "";
-    const change = `${effect.value > 0 ? "+" : ""}${effect.value}`;
-    if (effect.type === "TEAM_FAN_SUPPORT") return `球迷支持 ${change}`;
-    if (effect.type === "TEAM_REPUTATION") return `球队声望 ${change}`;
-    if (effect.type === "PLAYER_MORALE") return `球员士气 ${change}`;
-    if (effect.type === "PLAYER_FORM") return `竞技状态 ${change}`;
-    return "";
-  }).filter(Boolean).join(" · ");
-}
-
 function settleInformationalEvent(state: GameState, event: EventInstance): void {
   event.status = "RESOLVED";
   event.effectivePause = false;
@@ -116,14 +104,13 @@ function settleInformationalEvent(state: GameState, event: EventInstance): void 
   }
   if (!state.eventState.resolvedInstanceIds.includes(event.eventInstanceId)) state.eventState.resolvedInstanceIds.push(event.eventInstanceId);
   const definition = EVENT_DEFINITION_BY_ID[event.definitionId];
-  if (definition?.scope === "PLAYER_TEAM" || definition?.visibility === "PLAYER_VISIBLE") {
-    const impact = informationalImpact(event.choices[0].effects);
+  if (definition?.visibility === "PLAYER_VISIBLE") {
     addTeamNotification(state, {
       id: `event-${event.eventInstanceId}`,
       category: event.category === "STREAK" ? "TEAM" : event.category === "FREE_AGENCY" || event.category === "RFA" ? "FREE_AGENCY" : "SEASON",
       seasonId: event.seasonId,
       title: event.title,
-      message: impact ? `${event.description} ${impact}` : event.description,
+      message: event.description,
     });
   } else {
     state.eventState.leagueLog.unshift(event.description && event.description !== event.title
@@ -135,7 +122,16 @@ function settleInformationalEvent(state: GameState, event: EventInstance): void 
 /** Removes acknowledgement-only notices from older saves after their gameplay effects have already happened. */
 export function settleInformationalEvents(state: GameState): void {
   for (const event of state.eventState.queue) {
-    if (event.status === "PENDING" && isInformationalEvent(event)) settleInformationalEvent(state, event);
+    if (event.status !== "PENDING") continue;
+    if (event.definitionId === "franchise_season_opening_001"
+      && (!state.expansion?.finalized || state.league.seasonYear !== BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear)) {
+      event.status = "RESOLVED";
+      event.effectivePause = false;
+      event.selectedChoiceId = event.choices[0]?.id;
+      if (!state.eventState.resolvedInstanceIds.includes(event.eventInstanceId)) {
+        state.eventState.resolvedInstanceIds.push(event.eventInstanceId);
+      }
+    } else if (isInformationalEvent(event)) settleInformationalEvent(state, event);
   }
   state.eventState.queue = state.eventState.queue.filter((event) => event.status === "PENDING");
 }
@@ -152,11 +148,12 @@ export function enqueueEvent(
     state.eventState.leagueLog = state.eventState.leagueLog.slice(0, BALANCE_CONFIG.randomEvents.leagueLogLimit);
     return undefined;
   }
-  const repeatableInjuryNotice = definition.category === "INJURY" && !definition.pauseSimulation
-    && definition.choices.length === 1
-    && definition.choices[0].effects.every((effect) => effect.type === "LEAGUE_LOG");
-  if (!repeatableInjuryNotice && !canOccur(state, definition)) return undefined;
-  const eventInstanceId = repeatableInjuryNotice
+  const eventContext = definitionId === "breakout_rookie_001"
+    ? { recent_summary: "最近比赛数据暂缺。", ...context }
+    : context;
+  const repeatableInjuryEvent = definition.category === "INJURY" && Boolean(context.player_id);
+  if (!repeatableInjuryEvent && !canOccur(state, definition)) return undefined;
+  const eventInstanceId = repeatableInjuryEvent
     ? stableHash(state.seeds.seasonSeed, definition.id, scheduledAt, careerGameCount(state), context.player_id)
     : stableHash(state.seeds.seasonSeed, definition.id, scheduledAt, careerGameCount(state));
   if (state.eventState.queue.some((event) => event.eventInstanceId === eventInstanceId)
@@ -171,8 +168,8 @@ export function enqueueEvent(
     seasonId: state.league.seasonId,
     scheduledAt,
     priority: definition.priority,
-    title: interpolate(definition.content.title, context),
-    description: interpolate(definition.content.description, context),
+    title: interpolate(definition.content.title, eventContext),
+    description: interpolate(definition.content.description, eventContext),
     category: definition.category,
     illustrationKey: definition.visual.illustrationKey,
     effectivePause,
@@ -237,6 +234,21 @@ export function resolveEvent(input: GameState, eventInstanceId: string, choiceId
   const choices = choicesForEvent(event);
   event.choices = choices;
   if (!choices.some((choice) => choice.id === choiceId)) throw new Error("EVENT_CHOICE_INVALID");
+  if (event.category === "INJURY" && ["auto_adjust", "manual_adjust"].includes(choiceId)) {
+    const team = state.teams[state.userTeamId];
+    const players = team.playerIds.map((id) => state.players[id]).filter(Boolean);
+    const eligiblePlayers = players.filter((player) => player.contract.status === "STANDARD");
+    const enoughMinutes = eligiblePlayers.filter((player) => player.available && !player.injury).length
+      * BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes >= BALANCE_CONFIG.rotationPlan.regulationMinutes;
+    if (choiceId === "auto_adjust" && enoughMinutes) {
+      team.rotationPlan = buildDefaultRotationPlan(eligiblePlayers);
+      applyRotationPlanToPlayers(players, team.rotationPlan);
+      state.injuryState.pendingAutoRotationAfterEmergency = undefined;
+    }
+    if (choiceId === "auto_adjust" && !enoughMinutes) state.injuryState.pendingAutoRotationAfterEmergency = true;
+    if (choiceId === "manual_adjust" && !enoughMinutes) throw new Error("ROTATION_REQUIRES_EMERGENCY_ROSTER");
+    if (choiceId === "manual_adjust" && enoughMinutes && team.rotationPlan) validateRotationPlan(players, team.rotationPlan);
+  }
   event.status = "RESOLVED";
   event.selectedChoiceId = choiceId;
   const choice = choices.find((candidate) => candidate.id === choiceId) as EventInstance["choices"][number];
@@ -245,6 +257,14 @@ export function resolveEvent(input: GameState, eventInstanceId: string, choiceId
   state.eventState.leagueLog.unshift(`${event.title} · ${choices.find((choice) => choice.id === choiceId)?.label ?? choiceId}`);
   state.eventState.leagueLog = state.eventState.leagueLog.slice(0, BALANCE_CONFIG.randomEvents.leagueLogLimit);
   state.eventState.queue = state.eventState.queue.filter((candidate) => candidate.status === "PENDING");
+  if (event.category === "INJURY" && ["auto_adjust", "manual_adjust"].includes(choiceId)) {
+    const outcome = choiceId === "manual_adjust" ? "已保存轮换方案。"
+      : state.injuryState.pendingAutoRotationAfterEmergency ? "名单不足，补齐后将自动安排轮换。" : "已自动调整轮换。";
+    addTeamNotification(state, {
+      id: `event-${event.eventInstanceId}`, category: "SEASON", seasonId: event.seasonId,
+      title: event.title, message: `${event.description.replace(/。请选择.*$/u, "。")}${outcome}`,
+    });
+  }
   return state;
 }
 
@@ -287,6 +307,34 @@ function chooseConversationPlayer(state: GameState, definition: EventDefinition,
   return eligible.length ? eligible[Number.parseInt(rollHash.slice(0, 8), 16) % eligible.length] : undefined;
 }
 
+export function recentRookieBreakoutContext(state: GameState, userResults: GameResult[]): Record<string, string> | undefined {
+  const recentGames = userResults.slice(-3).map((result) => state.userGameDetails[result.gameId]).filter(Boolean);
+  const latest = recentGames.at(-1);
+  if (!latest || latest.gameId !== userResults.at(-1)?.gameId) return undefined;
+  const boxes = recentGames.map((game) => game.homeTeamId === state.userTeamId ? game.homeBoxScore : game.awayBoxScore);
+  const latestBox = boxes.at(-1);
+  const eligible = latestBox?.playerStats.filter((stat) => {
+    const player = state.players[stat.playerId];
+    return player?.teamId === state.userTeamId && player.serviceYears === 0 && stat.seconds > 0;
+  }).map((last) => {
+    const recent = boxes.flatMap((box) => box?.playerStats.filter((stat) => stat.playerId === last.playerId && stat.seconds > 0) ?? []);
+    const averagePoints = recent.reduce((sum, stat) => sum + stat.pts, 0) / recent.length;
+    return { last, recent, averagePoints };
+  }).filter((entry) => entry.recent.length >= 2 && entry.averagePoints >= 15)
+    .sort((left, right) => right.averagePoints - left.averagePoints || right.last.pts - left.last.pts || left.last.playerId.localeCompare(right.last.playerId))[0];
+  if (!eligible) return undefined;
+  const player = state.players[eligible.last.playerId];
+  const average = (key: "pts" | "reb" | "ast") => {
+    const value = eligible.recent.reduce((sum, stat) => sum + stat[key], 0) / eligible.recent.length;
+    return value.toFixed(1).replace(/\.0$/u, "");
+  };
+  return {
+    player_id: player.id,
+    player_name: player.name,
+    recent_summary: `近 ${eligible.recent.length} 场场均 ${average("pts")} 分、${average("reb")} 篮板、${average("ast")} 助攻；上一场 ${eligible.last.pts} 分、${eligible.last.reb} 篮板、${eligible.last.ast} 助攻。`,
+  };
+}
+
 export function enqueueAfterUserGameEvents(state: GameState): void {
   const streak = consecutiveUserResults(state);
   if (!streak.length) return;
@@ -297,6 +345,7 @@ export function enqueueAfterUserGameEvents(state: GameState): void {
   const userResults = state.lightweightResults.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId);
   const eventConfig = BALANCE_CONFIG.randomEvents;
   if (userResults.length % eventConfig.triggerEveryUserGames === 0) {
+    const rookieContext = recentRookieBreakoutContext(state, userResults);
     const latest = state.userGameDetails[userResults.at(-1)?.gameId ?? ""];
     const box = latest?.homeTeamId === state.userTeamId ? latest.homeBoxScore : latest?.awayBoxScore;
     const top = box?.playerStats.slice().sort((left, right) => right.pts - left.pts || left.playerId.localeCompare(right.playerId))[0];
@@ -306,8 +355,9 @@ export function enqueueAfterUserGameEvents(state: GameState): void {
       const recoveryActive = !won && streak.length >= eventConfig.losingStreakRecovery.minimumLosses;
       const recoveryCategories = new Set(["MORALE", "ROLE", "SLUMP"]);
       const dynamicCategories = new Set(["BREAKOUT", "MORALE", "ROLE", "SLUMP"]);
-      const candidates = EVENT_DEFINITION_BY_ID ? Object.values(EVENT_DEFINITION_BY_ID).filter((definition) =>
-        definition.category === category || recoveryActive && dynamicCategories.has(definition.category)) : [];
+      const candidates = Object.values(EVENT_DEFINITION_BY_ID).filter((definition) =>
+        (definition.category === category || recoveryActive && dynamicCategories.has(definition.category))
+        && (definition.id !== "breakout_rookie_001" || rookieContext));
       const rollHash = stableHash(state.seeds.seasonSeed, "dynamic-event", userResults.length, top.playerId);
       const probabilityRoll = Number.parseInt(rollHash.slice(0, 8), 16) / 0xffffffff;
       if (candidates.length && probabilityRoll < eventConfig.triggerProbability) {
@@ -322,8 +372,9 @@ export function enqueueAfterUserGameEvents(state: GameState): void {
         let target = (Number.parseInt(rollHash.slice(8, 16), 16) / 0xffffffff) * total;
         const selected = weighted.find((entry) => { target -= entry.weight; return target <= 0; }) ?? weighted.at(-1);
         if (selected) {
-          const subject = chooseConversationPlayer(state, selected.definition, player, rollHash);
-          if (subject) enqueueEvent(state, selected.definition.id, { player_id: subject.id, player_name: subject.name });
+          const subject = selected.definition.id === "breakout_rookie_001" ? undefined : chooseConversationPlayer(state, selected.definition, player, rollHash);
+          if (selected.definition.id === "breakout_rookie_001" && rookieContext) enqueueEvent(state, selected.definition.id, rookieContext);
+          else if (subject) enqueueEvent(state, selected.definition.id, { player_id: subject.id, player_name: subject.name });
         }
       }
     }

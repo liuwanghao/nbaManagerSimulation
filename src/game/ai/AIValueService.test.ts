@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { createCareer } from "../season/career";
-import { publicPlayerValue, tradeDraftPickValue } from "./AIValueService";
+import { corePlayerTradePremium, publicPlayerValue, tradeDraftPickValue } from "./AIValueService";
 
 function ratedPlayer(overall: number) {
   const player = structuredClone(Object.values(createCareer("trade-value-tests").players)[0]);
@@ -15,6 +15,13 @@ function ratedPlayer(overall: number) {
 }
 
 describe("AI trade asset value", () => {
+  it("requires a premium when an 86-rated core is exchanged for 78/75-rated depth", () => {
+    const core = ratedPlayer(86);
+    const depth = [ratedPlayer(78), ratedPlayer(75)];
+    expect(corePlayerTradePremium([core], depth)).toBe(16);
+    expect(corePlayerTradePremium(depth, [core])).toBe(0);
+    expect(corePlayerTradePremium([core], [ratedPlayer(83)])).toBe(0);
+  });
   it("prices elite ability above a pair of replacement-level players", () => {
     const elite = ratedPlayer(90);
     const depth = ratedPlayer(70);

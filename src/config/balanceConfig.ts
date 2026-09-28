@@ -1,5 +1,5 @@
 export const BALANCE_CONFIG = {
-  version: "balance.v8-trade-value",
+  version: "balance.v13-historical-rookie-readiness",
   freeAgency: {
     offerValidDays: 3,
     decisionWindowDays: 3,
@@ -98,6 +98,7 @@ export const BALANCE_CONFIG = {
     freeAgency: { minimumTargetValue: 0, rfaMatchValue: 70, salaryOfferMinMultiplier: 0.9, salaryOfferMaxMultiplier: 1.1, longOfferMaximumAge: 27, longOfferYears: 3, veteranOfferYears: 2, guaranteedPercent: 0.85 },
   },
   trade: {
+    corePlayerPremium: { minimumOverall: 85, minimumOverallGap: 5, valuePerOverallGap: 2 },
     valueWeights: { futureFirstAge: 1.2, winNowAge: 0.65, balancedAge: 0.8 },
     valueLimits: { futureFirstAgeFloor: -8, winNowAgeFloor: -6, balancedAgeFloor: -7 },
     abilityValueAnchors: [
@@ -175,6 +176,11 @@ export const BALANCE_CONFIG = {
       regressionInjuryDivisor: 500,
     },
     retirement: {
+      earlyCareerMaximumAge: 34,
+      youngMaximumAge: 30,
+      earlyCareerInjuryGamesMissed: 82,
+      earlyCareerUnemploymentYears: 2,
+      youngProbabilityMaximum: 0.02,
       ageProbability: [
         { minimumAge: 40, probability: 0.86 },
         { minimumAge: 39, probability: 0.7 },
@@ -249,12 +255,10 @@ export const BALANCE_CONFIG = {
   draft: {
     classSize: 80,
     rounds: 2,
-    lotteryDrawCount: 4,
-    lotteryWeights: [14, 14, 14, 12, 10.5, 9, 7.5, 6, 4.5, 3, 2, 1.5, 1, 0.7, 0.2, 0.1],
     potentialDistribution: { base: 96, rankSlope: 0.35, noise: 7, minimum: 55, maximum: 99, readinessGapMinimum: 2 },
     archetypeDistribution: { positions: { PG: 20, SG: 20, SF: 20, PF: 20, C: 20 }, traits: { PRIMARY_CREATOR: 10, SECONDARY_CREATOR: 10, SPACER: 10, SLASHER: 10, RIM_RUNNER: 10, WING_STOPPER: 10, RIM_PROTECTOR: 10, REBOUNDER: 10, TWO_WAY: 10, SIXTH_MAN: 10 } },
     scouting: { confidenceBase: 94, rankSlope: 0.62, confidenceNoise: 6, confidenceMin: 35, confidenceMax: 96, errorByConfidence: [{ minimumConfidence: 85, error: 2 }, { minimumConfidence: 70, error: 5 }, { minimumConfidence: 50, error: 9 }, { minimumConfidence: 0, error: 13 }] },
-    readinessTiers: [{ rankExclusive: 8, base: 85, noise: 5 }, { rankExclusive: 18, base: 75, noise: 5 }, { rankExclusive: 42, base: 66, noise: 7 }, { rankExclusive: 999, base: 59, noise: 7 }],
+    readinessTiers: [{ rankExclusive: 8, base: 78, noise: 5 }, { rankExclusive: 18, base: 75, noise: 5 }, { rankExclusive: 42, base: 66, noise: 7 }, { rankExclusive: 999, base: 59, noise: 7 }],
     age: { base: 18, topRankExclusive: 30, topRange: 3, remainingRange: 4 },
     developmentRateTiers: [{ rankExclusive: 8, minimum: 1, range: 0.25 }, { rankExclusive: 18, minimum: 0.82, range: 0.43 }, { rankExclusive: 999, minimum: 0.75, range: 0.5 }],
     potentialGrades: [{ minimum: 94, grade: "S", publicValue: 98 }, { minimum: 89, grade: "A+", publicValue: 92 }, { minimum: 84, grade: "A", publicValue: 87 }, { minimum: 79, grade: "B+", publicValue: 81 }, { minimum: 74, grade: "B", publicValue: 76 }, { minimum: 66, grade: "C", publicValue: 68 }, { minimum: 0, grade: "D", publicValue: 58 }],
@@ -270,8 +274,10 @@ export const BALANCE_CONFIG = {
       classShare: 0.0375,
       maximumPerClass: 3,
       rookieAttributeJitter: 3,
+      rookieAttributeOffset: -3,
       potentialJitter: 4,
-      reusePerCareer: 1,
+      potentialFloor: 90,
+      reusePolicy: "LEAST_RECENTLY_USED" as const,
     },
   },
   randomEvents: {
@@ -324,7 +330,7 @@ export const BALANCE_CONFIG = {
     FIRST_WIN: { label: "队史首胜", trigger: { type: "CAREER_WINS", value: 1 }, reward: { dynastyScore: 10 } },
     TEN_WINS: { label: "初具竞争力", trigger: { type: "CAREER_WINS", value: 10 }, reward: { dynastyScore: 15 } },
     TWENTY_FIVE_WINS: { label: "稳步前行", trigger: { type: "CAREER_WINS", value: 25 }, reward: { dynastyScore: 20 } },
-    FIFTY_CAREER_WINS: { label: "五十胜里程", trigger: { type: "CAREER_WINS", value: 50 }, reward: { dynastyScore: 30 } },
+    FIFTY_CAREER_WINS: { label: "生涯累计五十胜", trigger: { type: "CAREER_WINS", value: 50 }, reward: { dynastyScore: 30 } },
     HUNDRED_WINS: { label: "百胜经理", trigger: { type: "CAREER_WINS", value: 100 }, reward: { dynastyScore: 50 } },
     TWO_HUNDRED_WINS: { label: "两百胜名帅", trigger: { type: "CAREER_WINS", value: 200 }, reward: { dynastyScore: 80 } },
     FIRST_PLAY_IN: { label: "第一次附加赛", trigger: { type: "PLAY_IN", value: 1 }, reward: { dynastyScore: 15 } },
@@ -427,9 +433,11 @@ export const BALANCE_CONFIG = {
     allStarsPerConference: 12,
     productionWeights: { points: 1, rebounds: 1.15, assists: 1.45, steals: 2.2, blocks: 2.1, turnovers: -0.8 },
     teamWinScoreMaximum: 14,
+    mvpMaximumConferenceRank: 6,
+    mvpTeamWinWeight: 2,
     dpoyWeights: { steals: 4, blocks: 4.5, rebounds: 0.5, perimeterDefense: 0.12, interiorDefense: 0.12, teamWins: 0.45 },
-    rookie: { maximumServiceYears: 1, maximumAge: 24 },
-    mostImproved: { minimumGames: 41, fallbackMaximumAge: 27, seasonGamesDivisor: 82, previousSeasonMinimumGames: 20 },
+    rookie: { maximumServiceYears: 0 },
+    mostImproved: { minimumGames: 41, previousSeasonMinimumGames: 20, minimumProductionGain: 2, seasonGamesDivisor: 82 },
   },
   historyCompression: {
     fullSeasonsToKeep: 1,

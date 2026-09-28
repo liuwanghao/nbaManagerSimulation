@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createFixtureDataset } from "../../data/fixture";
 import { buildDefaultRotationPlan } from "../roster/RotationPlanService";
 import type { PlayerBoxScore, TeamBoxScore } from "../state/types";
+import { buildTeamBoxScore } from "./boxScore";
 import { solveRotationSeconds } from "./minutes";
 import { moraleEfficiencyModifier, simulateGame } from "./simulateGame";
 
@@ -24,6 +25,35 @@ function expectLegalBoxScore(box: TeamBoxScore, overtimePeriods: number): void {
 }
 
 describe("simulation contract", () => {
+  it("credits rebounders and primary creators without changing team totals", () => {
+    const fixture = createFixtureDataset("box-score-specialists");
+    const players = fixture.teams.SEA.playerIds.slice(0, 5).map((id, index) => ({
+      ...fixture.players[id],
+      position: (["PG", "SG", "SF", "PF", "C"] as const)[index],
+      attributes: {
+        ...fixture.players[id].attributes,
+        rebounding: 75,
+        playmaking: index === 0 ? 95 : 55,
+        basketballIq: 75,
+      },
+    }));
+    const seconds = Object.fromEntries(players.map((player) => [player.id, 2_880]));
+    const boxes = Array.from({ length: 32 }, (_, index) => buildTeamBoxScore("SEA", players, seconds, 115, 100, `box-score-specialists-${index}`));
+    const totalForPosition = (position: typeof players[number]["position"], key: "reb" | "ast") => boxes.reduce((total, box) => {
+      const playerIndex = players.findIndex((player) => player.position === position);
+      return total + box.playerStats[playerIndex][key];
+    }, 0);
+
+    expect(totalForPosition("C", "reb")).toBeGreaterThan(totalForPosition("PG", "reb"));
+    expect(totalForPosition("PF", "reb")).toBeGreaterThan(totalForPosition("SG", "reb"));
+    expect(totalForPosition("PG", "ast") / boxes.length).toBeGreaterThan(10);
+    for (const box of boxes) {
+      expect(sum(box.playerStats, "reb")).toBe(box.totals.reb);
+      expect(sum(box.playerStats, "ast")).toBe(box.totals.ast);
+      expect(box.totals.ast).toBeLessThanOrEqual(box.totals.fgm);
+    }
+  });
+
   it("adds an available reserve when only five planned players remain under the minute cap", () => {
     const fixture = createFixtureDataset("rotation-minute-cap-fallback");
     const players = fixture.teams.SEA.playerIds.map((id) => fixture.players[id]);
@@ -69,5 +99,28 @@ describe("simulation contract", () => {
     expect(first.homePeriodScores).toHaveLength(4 + first.overtimePeriods);
     expectLegalBoxScore(first.homeBoxScore as TeamBoxScore, first.overtimePeriods);
     expectLegalBoxScore(first.awayBoxScore as TeamBoxScore, first.overtimePeriods);
+  });
+
+  it("allows a scorer to have hot and quiet nights across different games", () => {
+    const fixture = createFixtureDataset("variance-probe");
+    const home = fixture.teams.SEA;
+    const away = fixture.teams.BOS;
+    const games = Array.from({ length: 32 }, (_, index) => simulateGame({
+      id: `variance-${index}`,
+      seasonId: "2026-27",
+      dateIndex: index,
+      date: "2026-10-20",
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      matchupOrdinal: index,
+      status: "SCHEDULED",
+    }, home, away, fixture.players, "variance-season"));
+    const firstBox = games[0].homeBoxScore as TeamBoxScore;
+    const scorer = [...firstBox.playerStats].sort((left, right) => right.pts - left.pts)[0];
+    const scorerGames = games.map((game) => (game.homeBoxScore as TeamBoxScore).playerStats.find((stat) => stat.playerId === scorer.playerId)!);
+
+    expect(new Set(scorerGames.map((stat) => stat.fga)).size).toBeGreaterThanOrEqual(5);
+    expect(Math.max(...scorerGames.map((stat) => stat.pts)) - Math.min(...scorerGames.map((stat) => stat.pts))).toBeGreaterThanOrEqual(10);
+    for (const game of games) expectLegalBoxScore(game.homeBoxScore as TeamBoxScore, game.overtimePeriods);
   });
 });

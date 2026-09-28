@@ -66,6 +66,12 @@ export function swapRotationPositions(plan: TeamRotationPlan, firstPlayerId: str
   return { ...plan, starters, benchOrder, selectionMode: "MANUAL" };
 }
 
+export function limitedRotationMinutes(currentMinutes: number, totalMinutes: number, requestedMinutes: number, playerMaximum: number): number {
+  const remainingForPlayer = Math.max(0, BALANCE_CONFIG.rotationPlan.regulationMinutes - (totalMinutes - currentMinutes));
+  const requested = Number.isFinite(requestedMinutes) ? Math.round(requestedMinutes) : 0;
+  return Math.max(0, Math.min(playerMaximum, remainingForPlayer, requested));
+}
+
 export function RotationEditor({ players, plan, postseason, busy, onSave }: RotationEditorProps) {
   const fallback = useMemo(() => buildDefaultRotationPlan(players), [players]);
   const normalized = useMemo(() => normalizeRotationPlan(players, plan ?? fallback), [players, plan, fallback]);
@@ -74,6 +80,8 @@ export function RotationEditor({ players, plan, postseason, busy, onSave }: Rota
   const [swapMessage, setSwapMessage] = useState("");
   useEffect(() => { setDraft(normalized); setSelectedPlayerId(null); setSwapMessage(""); }, [normalized]);
   const total = players.reduce((sum, player) => sum + (draft.targetMinutes[player.id] ?? 0), 0);
+  const teamMinuteLimit = BALANCE_CONFIG.rotationPlan.regulationMinutes;
+  const playerMinuteLimit = postseason ? BALANCE_CONFIG.rotationPlan.postseasonMaximumMinutes : BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes;
   const activeCount = players.filter((player) => (draft.targetMinutes[player.id] ?? 0) > 0).length;
   const starters = LINEUP_POSITIONS.flatMap((slot) => {
     const player = players.find((candidate) => candidate.id === draft.starters[slot]);
@@ -93,6 +101,10 @@ export function RotationEditor({ players, plan, postseason, busy, onSave }: Rota
   })];
   let validationError = "";
   try { validateRotationPlan(players, draft, postseason); } catch (error) { validationError = errorLabel(error instanceof Error ? error.message : "轮换方案无效"); }
+  const requiredAvailablePlayers = Math.ceil(teamMinuteLimit / playerMinuteLimit);
+  if (players.filter((player) => player.available && !player.injury).length < requiredAvailablePlayers) {
+    validationError = `至少需要 ${requiredAvailablePlayers} 名可出战球员才能分配 ${teamMinuteLimit} 分钟`;
+  }
 
   const selectPlayer = (playerId: string) => {
     if (!selectedPlayerId) {
@@ -116,16 +128,21 @@ export function RotationEditor({ players, plan, postseason, busy, onSave }: Rota
     setSelectedPlayerId(null);
     setSwapMessage(activatesReserve ? "替补顺位与目标时间已互换" : benchSwap ? "替补顺位已互换，出场时间不变" : "首发位置已互换，出场时间不变");
   };
-  const setMinutes = (playerId: string, value: number) => setDraft((current) => ({
-    ...current,
-    targetMinutes: { ...current.targetMinutes, [playerId]: Math.max(0, Math.min(postseason ? 42 : 40, Math.round(value || 0))) },
-    selectionMode: "MANUAL",
-  }));
+  const setMinutes = (playerId: string, value: number) => setDraft((current) => {
+    const currentMinutes = current.targetMinutes[playerId] ?? 0;
+    const currentTotal = players.reduce((sum, player) => sum + (current.targetMinutes[player.id] ?? 0), 0);
+    return {
+      ...current,
+      targetMinutes: { ...current.targetMinutes, [playerId]: limitedRotationMinutes(currentMinutes, currentTotal, value, playerMinuteLimit) },
+      selectionMode: "MANUAL",
+    };
+  });
   const renderPlayer = (player: Player) => {
     const starterSlot = LINEUP_POSITIONS.find((slot) => draft.starters[slot] === player.id);
     const benchRank = benchRanks.get(player.id);
     const mismatchPenalty = starterSlot ? positionMismatchPenalty(player, starterSlot) : 0;
     const minutes = draft.targetMinutes[player.id] ?? 0;
+    const maximumForPlayer = Math.min(playerMinuteLimit, minutes + Math.max(0, teamMinuteLimit - total));
     const unavailable = !player.available || Boolean(player.injury);
     const name = playerNameZh(player.name, player.id);
     return <article key={player.id} data-player-id={player.id} className={`rotation-player-card${starterSlot ? " starter" : ""}${selectedPlayerId === player.id ? " selected" : ""}${unavailable ? " unavailable" : ""}${player.injury ? " injured" : ""}`}>
@@ -138,8 +155,8 @@ export function RotationEditor({ players, plan, postseason, busy, onSave }: Rota
       </button>
       <div className="rotation-minute-stepper">
         <button type="button" aria-label={`${name}减少一分钟`} disabled={busy || minutes <= 0 || unavailable} onClick={() => setMinutes(player.id, minutes - 1)}>−</button>
-        <label className="rotation-minute-value"><input aria-label={`${name}目标分钟`} disabled={busy || unavailable} type="number" min={0} max={postseason ? 42 : 40} value={minutes} onChange={(event) => setMinutes(player.id, Number(event.target.value))} /><small>分钟</small></label>
-        <button type="button" aria-label={`${name}增加一分钟`} disabled={busy || minutes >= (postseason ? 42 : 40) || unavailable} onClick={() => setMinutes(player.id, minutes + 1)}>＋</button>
+        <label className="rotation-minute-value"><input aria-label={`${name}目标分钟`} disabled={busy || unavailable} type="number" min={0} max={maximumForPlayer} value={minutes} onChange={(event) => setMinutes(player.id, Number(event.target.value))} /><small>分钟</small></label>
+        <button type="button" aria-label={`${name}增加一分钟`} disabled={busy || minutes >= maximumForPlayer || unavailable} onClick={() => setMinutes(player.id, minutes + 1)}>＋</button>
       </div>
     </article>;
   };
@@ -151,11 +168,11 @@ export function RotationEditor({ players, plan, postseason, busy, onSave }: Rota
     </header>
 
     <div className="rotation-minute-summary">
-      <span className={total === 240 ? "valid" : "invalid"}><small>已分配</small><b>{total} / 240</b></span>
+      <span className={total === teamMinuteLimit ? "valid" : "invalid"}><small>已分配</small><b>{total} / {teamMinuteLimit}</b></span>
       <span><small>轮换人数</small><b>{activeCount} / {BALANCE_CONFIG.rotationPlan.maximumActivePlayers}</b></span>
-      <span><small>单人上限</small><b>{postseason ? 42 : 40} 分钟</b></span>
+      <span><small>单人上限</small><b>{playerMinuteLimit} 分钟</b></span>
     </div>
-    <p className="rotation-swap-status" role="status">{swapMessage || "点击球员卡可调整首发位置或替补顺位"}</p>
+    <p className="rotation-swap-status" role="status">{swapMessage || "点击球员卡可调整首发位置或替补顺位"}{total >= teamMinuteLimit ? "；时间已分配完，先减少再增加" : ""}</p>
 
     <div className="rotation-groups">
       <section className="rotation-group" aria-label="首发阵容"><h3>首发阵容</h3><div className="rotation-minute-list">{starters.map(renderPlayer)}</div></section>

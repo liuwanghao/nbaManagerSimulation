@@ -55,6 +55,24 @@ describe("career achievements", () => {
     expect(state.achievements.FIRST_WIN.unlockedAt).toBe(unlockedAt);
   });
 
+  it("distinguishes cumulative fifty wins from a fifty-win season and does not count an archived season twice", () => {
+    const state = createCareer("career-fifty-win-boundary");
+    state.history.seasons = [archive(state, "2025-26", 30)];
+    state.standings[state.userTeamId].wins = 19;
+    evaluateRegularSeasonAchievements(state);
+    expect(state.achievements.FIFTY_CAREER_WINS.unlocked).toBe(false);
+    state.standings[state.userTeamId].wins = 20;
+    evaluateRegularSeasonAchievements(state);
+    expect(state.achievements.FIFTY_CAREER_WINS.unlocked).toBe(true);
+    expect(state.achievements.FIFTY_WIN_SEASON.unlocked).toBe(false);
+
+    const archivedCurrent = createCareer("career-fifty-win-archived-current");
+    archivedCurrent.history.seasons = [archive(archivedCurrent, archivedCurrent.league.seasonId, 25)];
+    archivedCurrent.standings[archivedCurrent.userTeamId].wins = 25;
+    evaluateRegularSeasonAchievements(archivedCurrent);
+    expect(archivedCurrent.achievements.FIFTY_CAREER_WINS.unlocked).toBe(false);
+  });
+
   it("recognizes homegrown awards and every postseason milestone", () => {
     const state = createCareer("achievement-postseason");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];

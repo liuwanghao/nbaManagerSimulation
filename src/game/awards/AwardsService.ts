@@ -4,6 +4,7 @@ import { evaluateAwardAchievements } from "../career/AchievementService";
 import { enqueueCareerMilestoneEvents } from "../events/EventService";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
+import { resolveConferenceStandings } from "../standings/standings";
 
 type HonorKey = keyof NonNullable<PlayerCareerRecord["honors"]>;
 
@@ -43,7 +44,17 @@ function availability(player: Player): number {
 }
 
 function mvpScore(state: GameState, player: Player): number {
-  return (productionScore(player) + teamWinScore(state, player)) * availability(player);
+  return (productionScore(player) + teamWinScore(state, player) * BALANCE_CONFIG.awards.mvpTeamWinWeight) * availability(player);
+}
+
+function mvpCandidates(state: GameState, candidates: Player[]): Player[] {
+  const eligibleTeams = new Set((["WEST", "EAST"] as const).flatMap((conference) =>
+    resolveConferenceStandings(conference, state.standings, state.teams, state.seeds.seasonSeed)
+      .slice(0, BALANCE_CONFIG.awards.mvpMaximumConferenceRank)
+      .map((record) => record.teamId)));
+  const eligible = candidates.filter((player) => eligibleTeams.has(player.teamId));
+  if (eligible.length) return eligible;
+  return state.schedule.length > 0 && state.schedule.every((game) => game.status === "FINAL") ? [] : candidates;
 }
 
 export function getAwardRace(state: GameState, type: AwardType = "MVP", limit = 5): Player[] {
@@ -107,9 +118,9 @@ function selectAllStars(state: GameState, record: SeasonAwardsRecord): void {
   }
 }
 
-function previousProduction(player: Player): number {
+function previousProduction(player: Player): number | null {
   const previous = player.career?.lastSeasonStats;
-  if (!previous || previous.games < BALANCE_CONFIG.awards.mostImproved.previousSeasonMinimumGames) return 0;
+  if (!previous || previous.games < BALANCE_CONFIG.awards.mostImproved.previousSeasonMinimumGames) return null;
   const weights = BALANCE_CONFIG.awards.productionWeights;
   return perGame(previous, "pts") * weights.points + perGame(previous, "reb") * weights.rebounds + perGame(previous, "ast") * weights.assists
     + perGame(previous, "stl") * weights.steals + perGame(previous, "blk") * weights.blocks + perGame(previous, "tov") * weights.turnovers;
@@ -118,15 +129,18 @@ function previousProduction(player: Player): number {
 function rankedAwardCandidates(state: GameState, type: AwardType, candidates: Player[]): Player[] {
   if (type === "FINALS_MVP") return [];
   let eligible = candidates;
+  if (type === "MVP") eligible = mvpCandidates(state, candidates);
   if (type === "ROY") {
     const rookie = BALANCE_CONFIG.awards.rookie;
-    const rookies = candidates.filter((player) => player.serviceYears <= rookie.maximumServiceYears && player.age <= rookie.maximumAge);
-    eligible = rookies.length ? rookies : candidates.filter((player) => player.age <= rookie.maximumAge);
+    eligible = candidates.filter((player) => player.serviceYears <= rookie.maximumServiceYears && (player.career?.seasonsPlayed ?? 0) === 0);
   }
   if (type === "MIP") {
     const improvedConfig = BALANCE_CONFIG.awards.mostImproved;
-    const improved = candidates.filter((player) => player.seasonStats.games >= improvedConfig.minimumGames && previousProduction(player) > 0);
-    eligible = improved.length ? improved : candidates.filter((player) => player.age <= improvedConfig.fallbackMaximumAge);
+    eligible = candidates.filter((player) => {
+      const previous = previousProduction(player);
+      return player.seasonStats.games >= improvedConfig.minimumGames && previous !== null
+        && productionScore(player) - previous >= improvedConfig.minimumProductionGain;
+    });
   }
   if (type === "SIXTH_MAN") eligible = candidates.filter((player) => player.rotationRole === "SIXTH_MAN");
   const score = (player: Player): number => {
@@ -138,7 +152,7 @@ function rankedAwardCandidates(state: GameState, type: AwardType, candidates: Pl
       + player.attributes.interiorDefense * BALANCE_CONFIG.awards.dpoyWeights.interiorDefense
       + teamWinScore(state, player) * BALANCE_CONFIG.awards.dpoyWeights.teamWins
     ) * availability(player);
-    if (type === "MIP") return productionScore(player) - previousProduction(player)
+    if (type === "MIP") return productionScore(player) - (previousProduction(player) ?? productionScore(player))
       + player.seasonStats.games / BALANCE_CONFIG.awards.mostImproved.seasonGamesDivisor;
     return productionScore(player) * availability(player);
   };

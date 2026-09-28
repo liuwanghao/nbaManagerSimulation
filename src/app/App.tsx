@@ -21,7 +21,7 @@ import { getGmLevelLabel } from "../game/career/AchievementService";
 import { getGameMvpStat } from "../game/awards/AwardsService";
 import { getCapSheet } from "../game/cap/CapSheetService";
 import { blockingEvent, choicesForEvent, executeEventCommand, nextPendingEvent, type EventCommand } from "../game/events/EventService";
-import type { GameResult, GameState, Player, PlayerBoxScore, Position, Team, TeamRotationPlan } from "../game/state/types";
+import type { GameResult, GameState, Player, Position, Team, TeamRotationPlan } from "../game/state/types";
 import { createBrowserPlatform } from "../platform/PlatformAdapter";
 import { SaveService, type SaveEnvelope, type SaveSlotSummary } from "../storage/SaveService";
 import { ExpansionFlow } from "./ExpansionFlow";
@@ -30,6 +30,7 @@ import { calculateTeamFit } from "../game/team/TeamFitService";
 import { freeAgentAttraction } from "../game/team/TeamSystemService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { GameChrome, SeasonNavigation, type SeasonTab } from "./GameChrome";
+import { BasketballSeamLoader } from "./BasketballSeamLoader";
 import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import {
   awardLabel, conferenceLabel, eventCategoryLabel, humanizeUiText,
@@ -41,6 +42,7 @@ import { StarterMatchupModal } from "./StarterMatchup";
 import { StandingsPanel, type StandingsView } from "./StandingsPanel";
 import { LeagueLeadersPanel } from "./LeagueLeadersPanel";
 import { LeagueAwardsPanel } from "./LeagueAwardsPanel";
+import { SeasonResultsPanel } from "./SeasonResultsPanel";
 import { CareerPages, type CareerTab } from "./CareerPages";
 import { LeagueSchedulePanel } from "./LeagueSchedulePanel";
 import { RotationEditor } from "./RotationEditor";
@@ -56,6 +58,8 @@ import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 import { calculateTeamOverall } from "../game/team/TeamRatingService";
 import { playerRatingStyle } from "./playerRatingColor";
 import { postgameStatLeaders, sortPostgameBoxRows } from "./postgameStats";
+import { postgameAccentColor } from "./postgameAccentColor";
+import { hasRemainingScheduledDay, visibleRecentGames } from "./seasonCommandView";
 
 declare global {
   interface Window {
@@ -114,6 +118,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     ? "新赛季已开始 · 等待下一项经理决策"
     : `已进入${phaseLabel(initialState.league.currentPhase)}`);
   const [busy, setBusy] = useState(false);
+  const [leagueRolloverLoading, setLeagueRolloverLoading] = useState(false);
   const [activeSlot, setActiveSlot] = useState<1 | 2 | 3>(initialActiveSlot);
   const [saveSlots, setSaveSlots] = useState<SaveSlotSummary[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -133,6 +138,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const [selectedCalendarGameId, setSelectedCalendarGameId] = useState<string | null>(() => initialState.schedule.find((game) => game.status === "SCHEDULED" && (game.homeTeamId === initialState.userTeamId || game.awayTeamId === initialState.userTeamId))?.id ?? null);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [eventError, setEventError] = useState<string | null>(null);
+  const [manualInjuryEventId, setManualInjuryEventId] = useState<string | null>(null);
   const [saveConflict, setSaveConflict] = useState<SaveConflictState | null>(null);
   const refreshSaveSlots = async () => setSaveSlots(await saveService?.listSlotSummaries() ?? []);
   useEffect(() => { void refreshSaveSlots(); }, []);
@@ -151,7 +157,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const playedGames = myRecord.wins + myRecord.losses;
   const nextGame = state.schedule.find((game) => game.status === "SCHEDULED" && (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId));
   const latestUserGame = [...Object.values(state.userGameDetails)].at(-1);
-  const recentUserGames = Object.values(state.userGameDetails).slice(-5).reverse();
+  const recentUserGames = visibleRecentGames(state.userGameDetails, fiveGameAnimation?.frames, fiveGameAnimation?.completed);
   const userSchedule = useMemo(() => state.schedule.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId), [state.schedule, state.userTeamId]);
   const currentCalendarDate = calendarDateAtIndex(state.calendar.openingDate, state.calendar.currentDateIndex);
   const scheduleMonths = useMemo(() => [...new Set([...userSchedule.map((game) => game.date.slice(0, 7)), currentCalendarDate.slice(0, 7)])].sort(), [userSchedule, currentCalendarDate]);
@@ -166,7 +172,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const nextOpponentOverall = useMemo(() => nextOpponent ? calculateTeamOverall(state, nextOpponent.id) : null, [state, nextOpponent]);
   const currentInjuries = myRoster.filter((player) => !player.available || player.injury).slice(0, 2);
   const selectedCalendarDateIsReachable = Boolean(selectedCalendarDate && selectedCalendarDate >= currentCalendarDate);
-  const selectedGame = selectedGameId ? state.userGameDetails[selectedGameId] : undefined;
+  const selectedGame = selectedGameId
+    ? state.userGameDetails[selectedGameId] ?? fiveGameAnimation?.frames.slice(0, fiveGameAnimation.completed).find((frame) => frame.game?.gameId === selectedGameId)?.game
+    : undefined;
   const selectedPlayer = selectedPlayerId ? state.players[selectedPlayerId] : undefined;
   const selectedTeam = selectedTeamId ? state.teams[selectedTeamId] : undefined;
   const latestAwards = state.history.seasonAwards.at(-1);
@@ -355,7 +363,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
           setBusy(false);
         }
       })();
-    }, 0);
+    }, 32);
   };
 
   const focusCalendarAtCurrentDate = (next: GameState) => {
@@ -375,7 +383,8 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     let next = state;
     const frames: FiveGameAnimation["frames"] = [];
     let completedGames = 0;
-    while (next.calendar.currentDateIndex < next.calendar.finalDateIndex && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next)) {
+    while (hasRemainingScheduledDay(next.schedule, next.calendar.currentDateIndex, next.calendar.finalDateIndex)
+      && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next)) {
       const dateIndex = next.calendar.currentDateIndex;
       const knownGames = new Set(Object.keys(next.userGameDetails));
       const day = simulateLeagueDay(next);
@@ -460,14 +469,15 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     }
   };
 
-  const readSlot = async (slot: 1 | 2 | 3): Promise<boolean> => {
+  const readSlot = async (slot: 1 | 2 | 3, alreadyLoaded?: GameState): Promise<boolean> => {
     setActiveSlot(slot);
-    const loaded = await saveService?.load(slot);
+    const loaded = alreadyLoaded ?? await saveService?.load(slot);
     if (loaded && initialState.meta.dataVersion.startsWith("hupu.nba.live-roster") && !loaded.meta.dataVersion.startsWith("hupu.nba.live-roster")) {
       setStatus("旧版虚构名单存档与真实阵容版本不兼容，请重新开局");
       return false;
     }
     if (loaded) {
+      setManualInjuryEventId(null);
       setOpenLoadDrawer(false);
       focusCalendarAtCurrentDate(loaded);
       setState(loaded);
@@ -479,7 +489,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const load = async (slot: 1 | 2 | 3 = activeSlot) => {
     if (busy) return false;
     setBusy(true);
+    setStatus(`正在读取${slotLabel(slot)}…`);
     try {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 32));
       return await readSlot(slot);
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : `${slotLabel(slot)}读取失败`);
@@ -492,13 +504,15 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const loadLatest = async () => {
     if (busy) return false;
     setBusy(true);
+    setStatus("正在读取最近存档…");
     try {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 32));
       const latest = await saveService?.loadMostRecent();
       if (!latest) {
         setStatus("没有可继续的存档");
         return false;
       }
-      return await readSlot(latest.slotId);
+      return await readSlot(latest.slotId, latest.state);
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "读取最近存档失败");
       return false;
@@ -539,7 +553,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       setState(next);
       const nextPick = next.rookieDraft?.pickOrder[next.rookieDraft.currentPickIndex];
       const completedPickNumber = "expectedPickNumber" in command.payload ? command.payload.expectedPickNumber : 0;
-      setStatus(next.league.currentPhase === "OFFSEASON_POST_DRAFT"
+      setStatus(command.type === "PREPARE_ROOKIE_DRAFT" && next.league.seasonYear > 2026
+        ? "乐透抽签结果已锁定 · 正在公布顺位"
+        : next.league.currentPhase === "OFFSEASON_POST_DRAFT"
         ? `新秀选秀完成 · ${next.rookieDraft?.pickOrder.filter((pick) => pick.playerId).length ?? 0} 份合同已结算`
         : nextPick?.ownerTeamId === next.userTeamId
           ? `第 #${nextPick.pickNumber} 顺位 · 轮到你的球队选择`
@@ -593,25 +609,44 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     const targetSlot = activeSlot;
     setBusy(true); setStatus(command.type === "SET_ROTATION_PLAN" ? "正在校验并保存首发与轮换…" : "正在校验交易、名单与工资帽…");
     try {
-      const next = command.type === "GENERATE_TRADE_OFFERS" || command.type === "ACCEPT_TRADE_OFFER" ? executeTradeCommand(state, command) : executeRosterCommand(state, command);
-      await persistState(next, targetSlot); setState(next); setStatus(command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "GENERATE_TRADE_OFFERS" ? `已生成 ${next.tradeDesk.offers.length} 个动态报价 · 适配度变化已计算` : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : command.type === "SET_ROTATION_PLAN" ? command.payload.plan.selectionMode === "AUTO" ? "已自动匹配并保存首发与轮换" : "已保存首发、替补顺位与目标分钟" : "经理事务已原子提交并自动保存");
-    } catch (error) { setStatus(error instanceof Error ? humanizeUiText(error.message) : "操作失败，状态未改变"); } finally { setBusy(false); }
+      let next = command.type === "GENERATE_TRADE_OFFERS" || command.type === "ACCEPT_TRADE_OFFER" ? executeTradeCommand(state, command) : executeRosterCommand(state, command);
+      const manualEvent = command.type === "SET_ROTATION_PLAN" && manualInjuryEventId
+        ? next.eventState.queue.find((event) => event.eventInstanceId === manualInjuryEventId && event.category === "INJURY") : undefined;
+      if (manualEvent) next = executeEventCommand(next, {
+        commandId: `event-${manualEvent.eventInstanceId}-manual_adjust`, type: "RESOLVE_EVENT",
+        payload: { eventInstanceId: manualEvent.eventInstanceId, choiceId: "manual_adjust" },
+      });
+      await persistState(next, targetSlot); setState(next);
+      if (manualEvent) setManualInjuryEventId(null);
+      setStatus(manualEvent ? "轮换已保存 · 可继续模拟" : command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "GENERATE_TRADE_OFFERS" ? `已生成 ${next.tradeDesk.offers.length} 个动态报价 · 适配度变化已计算` : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : command.type === "SET_ROTATION_PLAN" ? command.payload.plan.selectionMode === "AUTO" ? "已自动匹配并保存首发与轮换" : "已保存首发、替补顺位与目标分钟" : "经理事务已原子提交并自动保存");
+    } catch (error) {
+      setStatus(error instanceof Error ? humanizeUiText(error.message) : "操作失败，状态未改变");
+      if (command.type === "GENERATE_TRADE_OFFERS") throw error;
+    } finally { setBusy(false); }
   };
 
   const runContractCommand = async (command: ContractLifecycleCommand) => {
-    if (!saveService) return;
+    if (!saveService || busy) return;
     const targetSlot = activeSlot;
+    const isRollover = command.type === "ROLLOVER_LEAGUE_YEAR";
+    const loadingStarted = Date.now();
     setBusy(true);
-    setStatus("正在统一滚动合同、效力年限与伯德权…");
+    if (isRollover) setLeagueRolloverLoading(true);
+    setStatus(isRollover ? "正在进入下一联盟年度…" : "正在处理合同选项…");
     try {
-      if (command.type === "ROLLOVER_LEAGUE_YEAR") await saveService.saveCheckpoint(targetSlot, `pre-rollover-${state.league.seasonId}`, state);
+      if (isRollover) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 60));
+        await saveService.saveCheckpoint(targetSlot, `pre-rollover-${state.league.seasonId}`, state);
+      }
       const next = executeContractLifecycleCommand(state, command);
       await persistState(next, targetSlot);
+      if (isRollover) await new Promise<void>((resolve) => window.setTimeout(resolve, Math.max(0, 350 - (Date.now() - loadingStarted))));
       setState(next);
       setStatus(next.league.currentPhase === "OFFSEASON_PRE_DRAFT" ? "合同年度结算完成 · 可以进入新秀选秀" : "合同选项已原子提交并自动保存");
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "合同年度结算失败，状态未改变");
     } finally {
+      if (isRollover) setLeagueRolloverLoading(false);
       setBusy(false);
     }
   };
@@ -645,6 +680,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       const next = executeEventCommand(state, command);
       await persistState(next, targetSlot);
       setState(next);
+      if (command.payload.choiceId === "auto_adjust") setManualInjuryEventId(null);
       setStatus(enteringRegularSeason ? "常规赛已开启 · 赛程已公布" : nextPendingEvent(next) ? "事件已处理 · 队列还有待确认事件" : "事件队列已清空 · 可继续模拟");
     } catch (error) {
       const message = error instanceof Error ? humanizeUiText(error.message) : "事件处理失败，状态未改变";
@@ -694,8 +730,17 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const conflictModal = saveConflict ? <SaveConflictModal conflict={saveConflict} busy={busy} onResolve={resolveSaveConflict} /> : null;
-  const eventModal = !saveConflict && queuedEvent && queuedEvent.definitionId !== "franchise_season_opening_001"
-    ? <EventCard event={queuedEvent} state={state} pendingCount={state.eventState.queue.filter((event) => event.status === "PENDING").length} busy={busy} error={eventError} onResolve={(command) => void runEventCommand(command)} />
+  const editingManualInjury = queuedEvent?.eventInstanceId === manualInjuryEventId && activeTab === "manage" && manageSubTab === "roster";
+  const eventModal = !saveConflict && queuedEvent && !editingManualInjury && queuedEvent.definitionId !== "franchise_season_opening_001"
+    ? <EventCard event={queuedEvent} state={state} pendingCount={state.eventState.queue.filter((event) => event.status === "PENDING").length} busy={busy} error={eventError} onResolve={(command) => {
+      if (queuedEvent.category === "INJURY" && command.payload.choiceId === "manual_adjust") {
+        setEventError(null);
+        setManualInjuryEventId(queuedEvent.eventInstanceId);
+        setActiveTab("manage");
+        setManageSubTab("roster");
+        setStatus("请在阵容轮换中完成调整并保存");
+      } else void runEventCommand(command);
+    }} />
     : null;
 
   if (["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
@@ -707,7 +752,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     return <><Stage4Flow state={state} busy={busy} status={status} onCommand={runDraftCommand} onContractCommand={runContractCommand} onFreeAgencyCommand={runFreeAgencyCommand} onTradeCommand={runManagerCommand} onRosterCommand={runManagerCommand} onSave={save} onLoad={load} onLoadLatest={loadLatest} saveSlots={saveSlots} activeSlot={activeSlot} onSlotChange={changeActiveSlot} onHome={onExitToHome} onMarkNotificationsRead={markTeamNotificationsRead} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{eventModal}{conflictModal}</>;
   }
 
-  const seasonOpeningEvent = queuedEvent && (
+  const seasonOpeningEvent = state.expansion?.finalized && state.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear && queuedEvent && (
     queuedEvent.definitionId === "franchise_season_opening_001"
     || queuedEvent.definitionId === "expansion_complete_001" && playedGames === 0 && state.history.seasons.length === 0
   ) ? queuedEvent : null;
@@ -720,6 +765,11 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   }
 
   const phaseDone = state.schedule.every((game) => game.status === "FINAL");
+  const postseasonSettled = state.league.currentPhase === "OFFSEASON";
+  const postseasonRunning = busy && status.startsWith("正在结算附加赛");
+  const seasonChampion = state.history.champions.find((entry) => entry.seasonId === state.league.seasonId);
+  const seasonFinalsMvpId = state.history.seasonAwards.find((entry) => entry.seasonId === state.league.seasonId)?.winners.FINALS_MVP;
+  const seasonFinalsMvp = seasonFinalsMvpId ? state.players[seasonFinalsMvpId] : undefined;
   const visibleRecord = fiveGameAnimation ? {
     wins: myRecord.wins + fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).flatMap((frame) => frame.game ? [frame.game] : []).filter((game) => game.winnerTeamId === state.userTeamId).length,
     losses: myRecord.losses + fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).flatMap((frame) => frame.game ? [frame.game] : []).filter((game) => game.winnerTeamId !== state.userTeamId).length,
@@ -779,7 +829,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
         </article>
 
         <article className="season-command-matchup">
-          <header><div><small>下一场对阵</small><b>{nextGame ? `${nextGame.date} · ${nextGame.homeTeamId === state.userTeamId ? "主场" : "客场"}` : "常规赛已完成"}</b></div><span>第 {String(Math.min(playedGames + 1, userSchedule.length)).padStart(2, "0")} 场</span></header>
+          <header><div><small>{phaseDone ? "赛季进程" : "下一场对阵"}</small><b>{nextGame ? `${nextGame.date} · ${nextGame.homeTeamId === state.userTeamId ? "主场" : "客场"}` : postseasonSettled ? "季后赛已结算" : "常规赛已完成"}</b></div><span>{phaseDone ? state.league.seasonId : `第 ${String(Math.min(playedGames + 1, userSchedule.length)).padStart(2, "0")} 场`}</span></header>
           {nextGame && nextAwayTeam && nextHomeTeam ? <>
             <div className="season-command-versus">
               <SeasonMatchupTeamButton team={nextAwayTeam} venue="away" record={matchupRecord(nextAwayTeam)} rank={matchupRank(nextAwayTeam)} overall={matchupOverall(nextAwayTeam)} onOpen={() => setSelectedTeamId(nextAwayTeam.id)} />
@@ -789,8 +839,13 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
             <button type="button" className="season-command-primary" data-testid="simulate-next-game" disabled={busy || Boolean(simulationBlockingEvent) || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster)} onClick={simulateNextGame}>模拟下一场比赛</button>
             <div className="season-command-secondary-actions"><button type="button" disabled={busy || Boolean(simulationBlockingEvent)} onClick={simulateNextDay}>推进 1 天</button><button type="button" data-testid="simulate-five" disabled={busy || Boolean(simulationBlockingEvent) || Boolean(fiveGameAnimation)} onClick={simulateFive}>连续模拟 5 场</button></div>
             {selectedCalendarDate && selectedCalendarDate > currentCalendarDate && <button type="button" className="season-command-date-action" disabled={busy || Boolean(simulationBlockingEvent) || !selectedCalendarDateIsReachable} onClick={simulateToSelectedDate}>模拟至 {selectedCalendarDate.slice(5, 7)}月{selectedCalendarDate.slice(8)}日</button>}
-          </> : <div className="season-command-complete"><b>常规赛程已经完成</b><p>可以进入附加赛与季后赛结算。</p><button type="button" disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", simulatePostseason)}>结算季后赛</button></div>}
+          </> : <div className={`season-command-complete${postseasonSettled ? " postseason-settled" : ""}`}>{postseasonSettled ? <>
+            <div className="season-command-honors"><span><small>总冠军</small><strong>{seasonChampion ? state.teams[seasonChampion.teamId]?.fullName ?? seasonChampion.teamId : "待公布"}</strong></span><span><small>总决赛 MVP</small><strong>{seasonFinalsMvp ? playerNameZh(seasonFinalsMvp.name, seasonFinalsMvp.id) : "待公布"}</strong></span></div>
+            <button type="button" disabled={busy} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button>
+          </> : <><b>常规赛程已经完成</b><p>可以进入附加赛与季后赛结算。</p><button type="button" disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", simulatePostseason)}>{postseasonRunning ? "正在结算…" : "结算季后赛"}</button></>}</div>}
         </article>
+
+        {phaseDone && <SeasonResultsPanel state={state} onOpenPlayer={setSelectedPlayerId} />}
 
         {(recentUserGames.length > 0 || currentInjuries.length > 0) && <div className="season-command-support-grid">
           {recentUserGames.length > 0 && <article><header><b>近期赛果</b><span>最新 {Math.min(recentUserGames.length, 3)} 场</span></header>{recentUserGames.slice(0, 3).map((game) => { const won = game.winnerTeamId === state.userTeamId; const opponent = state.teams[game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId]; return <button type="button" key={game.gameId} onClick={() => setSelectedGameId(game.gameId)}><em className={won ? "win" : "loss"}>{won ? "胜" : "负"}</em><div><b>{opponent.name}</b><small>{Number(game.date.slice(5, 7))}月{Number(game.date.slice(8))}日 · {game.homeTeamId === state.userTeamId ? "主场" : "客场"}</small></div><span>{game.awayScore}–{game.homeScore}</span></button>; })}</article>}
@@ -880,6 +935,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
           <ManagementOverview team={myTeam} players={myRoster} record={myRecord} rank={conferenceStandings[myTeam.conference].findIndex((record) => record.teamId === state.userTeamId) + 1} seasonId={state.league.seasonId} overall={myTeamOverall.overall} fit={myTeamFit} onOpenPlayer={setSelectedPlayerId} />
         </section>
         <section id="manage-panel-roster" role="tabpanel" aria-labelledby="manage-tab-roster" hidden={manageSubTab !== "roster"} data-testid="team-roster-card" className="manage-page cyber-manage-roster">
+          {editingManualInjury && <div className="injury-rotation-prompt" role="status"><b>请手动调整轮换</b><span>保存首发与目标分钟后，才能继续模拟比赛。</span></div>}
           <div id="season-roster">{myRoster.filter((player) => player.available && !player.injury).length * BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes >= BALANCE_CONFIG.rotationPlan.regulationMinutes
             ? <RotationEditor players={myRoster} plan={myTeam.rotationPlan} postseason={["POSTSEASON", "PLAY_IN", "PLAYOFFS"].includes(state.league.currentPhase)} busy={busy} onSave={(plan: TeamRotationPlan) => void runManagerCommand({ commandId: `rotation-${state.league.seasonId}-${state.calendar.currentDateIndex}-${Object.keys(state.commandReceipts).length}`, type: "SET_ROTATION_PLAN", payload: { plan } })} />
             : <div className="cyber-panel"><h2>可用球员不足</h2><p>目前无法组成完整的 240 分钟轮换。球队会先自动补齐紧急名单，再重新安排首发和轮换。</p></div>}
@@ -962,6 +1018,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       </>}
 
       <SeasonNavigation activeTab={activeTab} onChange={setActiveTab} />
+      {leagueRolloverLoading && <div className="league-rollover-backdrop" role="status" aria-live="assertive" aria-label="正在进入下一联盟年度"><div className="league-rollover-card"><BasketballSeamLoader /><small>SEASON TRANSITION</small><b>正在进入下一联盟年度</b><p>结算合同、球员发展与球队选项，请稍候…</p></div></div>}
       {eventModal}
       {selectedGame && <GameDetailModal key={selectedGame.gameId} game={selectedGame} state={state} onClose={() => setSelectedGameId(null)} />}
       {selectedCareerGame && <GameDetailModal key={selectedCareerGame.gameId} game={selectedCareerGame} state={state} onClose={() => setSelectedCareerGame(null)} />}
@@ -1013,38 +1070,6 @@ function PlayerDetailModal({ player, teamName, fromRoster, onClose }: { player: 
   return <div className={`player-detail-backdrop${fromRoster ? " from-team-roster" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="reference-player-dialog" role="dialog" aria-modal="true" aria-label={`${displayName} 球员详情`}><button className="detail-close" onClick={onClose} aria-label="关闭">×</button><ReferencePlayerCard player={player} teamName={teamName} /></section></div>;
 }
 
-function PostgamePlayerName({ name }: { name: string }) {
-  const nameRef = useRef<HTMLElement>(null);
-  const [fontSize, setFontSize] = useState(12);
-
-  useLayoutEffect(() => {
-    const updateSize = () => {
-      const nameElement = nameRef.current;
-      const cell = nameElement?.parentElement;
-      if (!nameElement || !cell) return;
-      const badge = cell.querySelector<HTMLElement>(".postgame-position-badge");
-      const availableWidth = cell.clientWidth - (badge?.offsetWidth ?? 0) - 18;
-      const context = document.createElement("canvas").getContext("2d");
-      if (!context || availableWidth <= 0) return;
-      const style = window.getComputedStyle(nameElement);
-      context.font = `${style.fontWeight} 12px ${style.fontFamily}`;
-      const fullSizeWidth = context.measureText(name).width;
-      const nextSize = fullSizeWidth > availableWidth
-        ? Math.max(8, Math.floor((12 * availableWidth / fullSizeWidth) * 10) / 10)
-        : 12;
-      setFontSize((current) => current === nextSize ? current : nextSize);
-    };
-
-    updateSize();
-    const cell = nameRef.current?.parentElement;
-    const observer = cell ? new ResizeObserver(updateSize) : null;
-    if (cell) observer?.observe(cell);
-    return () => observer?.disconnect();
-  }, [name]);
-
-  return <b ref={nameRef} className="postgame-player-name" style={{ fontSize: `${fontSize}px` }}>{name}</b>;
-}
-
 function PostgameMvpName({ name }: { name: string }) {
   const nameRef = useRef<HTMLElement>(null);
   const [fontSize, setFontSize] = useState(15);
@@ -1085,7 +1110,6 @@ export function GameDetailModal({ game, state, onClose }: { game: GameResult; st
   const periods = Math.max(game.homePeriodScores?.length ?? 0, game.awayPeriodScores?.length ?? 0);
   const displayedPeriods = Math.max(periods, 4);
   const teams = [state.teams[game.awayTeamId], state.teams[game.homeTeamId]];
-  const fgPercent = (stat: PlayerBoxScore) => stat.fga ? `${Math.round(stat.fgm / stat.fga * 100)}%` : "—";
   const TeamBox = ({ team, score, venue }: { team: typeof teams[number]; score: number; venue: "away" | "home" }) => {
     const won = game.winnerTeamId === team.id;
     const scoreView = <strong className={won ? "score-win" : "score-lose"}>{score}</strong>;
@@ -1120,7 +1144,7 @@ export function GameDetailModal({ game, state, onClose }: { game: GameResult; st
       {best && <section className="postgame-mvp-card"><div><span>MVP</span><div className="postgame-mvp-copy"><small>本场最佳球员</small><PostgameMvpName name={mvpName!} /></div></div><strong>{best.pts}分 · {best.reb}篮板 · {best.ast}助攻</strong></section>}
       <section className="postgame-roster-section">
         <div className="postgame-roster-tabs" role="tablist" aria-label="按球队查看球员数据">
-          {teams.map((team, index) => <button type="button" role="tab" id={`postgame-tab-${team.id}`} aria-controls="postgame-roster-panel" aria-selected={activeTeamId === team.id} tabIndex={activeTeamId === team.id ? 0 : -1} className={activeTeamId === team.id ? "active" : ""} style={{ "--postgame-team-color": team.primaryColor } as React.CSSProperties} key={team.id} onClick={() => setActiveTeamId(team.id)} onKeyDown={(event) => {
+          {teams.map((team, index) => <button type="button" role="tab" id={`postgame-tab-${team.id}`} aria-controls="postgame-roster-panel" aria-selected={activeTeamId === team.id} tabIndex={activeTeamId === team.id ? 0 : -1} className={activeTeamId === team.id ? "active" : ""} style={{ "--postgame-team-color": postgameAccentColor(team.primaryColor) } as React.CSSProperties} key={team.id} onClick={() => setActiveTeamId(team.id)} onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
             event.preventDefault();
             const nextIndex = (index + (event.key === "ArrowRight" ? 1 : -1) + teams.length) % teams.length;
@@ -1128,21 +1152,24 @@ export function GameDetailModal({ game, state, onClose }: { game: GameResult; st
             event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
           }}><i aria-hidden="true" />{index === 0 ? "客场" : "主场"} · {team.name}</button>)}
         </div>
-        <article className="postgame-roster-card" id="postgame-roster-panel" role="tabpanel" aria-labelledby={`postgame-tab-${activeTeamId}`} style={{ "--postgame-team-color": activeTeam.primaryColor } as React.CSSProperties}>
+        <article className="postgame-roster-card" id="postgame-roster-panel" role="tabpanel" aria-labelledby={`postgame-tab-${activeTeamId}`} style={{ "--postgame-team-color": postgameAccentColor(activeTeam.primaryColor) } as React.CSSProperties}>
           {activeBox ? <div className="postgame-table-scroll"><table className="postgame-box-table">
-            <thead><tr><th>球员</th><th>时间</th><th>得分</th><th>篮板</th><th>助攻</th><th>抢断</th><th>盖帽</th><th>FG%</th><th>+/-</th></tr></thead>
+            <thead><tr><th>球员</th><th>时间</th><th>得分</th><th>篮板</th><th>助攻</th><th>投篮</th><th>三分</th><th>罚球</th><th>抢断</th><th>盖帽</th><th>失误</th></tr></thead>
             <tbody>{sortPostgameBoxRows(activeBox.playerStats).map((stat) => {
               const player = state.players[stat.playerId];
               const name = player ? playerNameZh(player.name, player.id) : stat.playerId;
               return <tr key={stat.playerId} data-player-id={stat.playerId}>
-                <td><span className="postgame-position-badge">{player ? positionLabel(player.position) : "—"}</span><PostgamePlayerName name={name} /></td>
+                <td><span className="postgame-position-badge">{player ? positionLabel(player.position) : "—"}</span><b className="postgame-player-name">{name}</b></td>
                 <td>{Math.round(stat.seconds / 60)}′</td>
                 <td className={statLeaders?.pts === stat.playerId ? "team-leader" : ""}>{stat.pts}</td>
                 <td className={statLeaders?.reb === stat.playerId ? "team-leader" : ""}>{stat.reb}</td>
                 <td className={statLeaders?.ast === stat.playerId ? "team-leader" : ""}>{stat.ast}</td>
+                <td>{stat.fgm}/{stat.fga}</td>
+                <td>{stat.threePm}/{stat.threePa}</td>
+                <td>{stat.ftm}/{stat.fta}</td>
                 <td className={statLeaders?.stl === stat.playerId ? "team-leader" : ""}>{stat.stl}</td>
                 <td className={statLeaders?.blk === stat.playerId ? "team-leader" : ""}>{stat.blk}</td>
-                <td>{fgPercent(stat)}</td><td className="postgame-pm-neutral">—</td>
+                <td>{stat.tov}</td>
               </tr>;
             })}</tbody>
           </table></div> : <p className="postgame-roster-empty">该队本场球员数据未保存。</p>}
@@ -1168,6 +1195,8 @@ function EventCard({ event, state, pendingCount, busy, error, onResolve }: {
   const conversation = player && choices.length > 1;
   const description = conversation ? EVENT_DEFINITION_BY_ID[event.definitionId]?.content.description ?? event.description : event.description;
   const teamPlayers = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]).filter(Boolean);
+  const enoughPlayersForRotation = teamPlayers.filter((candidate) => candidate.available && !candidate.injury && candidate.contract.status === "STANDARD").length
+    * BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes >= BALANCE_CONFIG.rotationPlan.regulationMinutes;
   const rotationPreview = player ? planPlayerRotationResponse(teamPlayers, state.teams[state.userTeamId].rotationPlan,
     player.id, event.definitionId === "role_starter_claim_001") : null;
   const currentMinutes = player ? state.teams[state.userTeamId].rotationPlan?.targetMinutes[player.id] ?? 0 : 0;
@@ -1178,6 +1207,8 @@ function EventCard({ event, state, pendingCount, busy, error, onResolve }: {
     return () => { if (previousFocus?.isConnected) previousFocus.focus(); };
   }, [event.eventInstanceId]);
   const impactText = (choice: typeof choices[number]): string => {
+    if (event.category === "INJURY" && choice.id === "auto_adjust") return enoughPlayersForRotation ? "系统重排首发与出场时间" : "名单不足，补齐后自动重排轮换";
+    if (event.category === "INJURY" && choice.id === "manual_adjust") return enoughPlayersForRotation ? "前往阵容轮换，保存后继续赛程" : "可用球员不足，需先补齐名单";
     const impact = choice.effects.map((effect) => {
       if (effect.type === "LEAGUE_LOG") return "记录至联盟动态";
       if (typeof effect.value !== "number") return "";
@@ -1205,8 +1236,8 @@ function EventCard({ event, state, pendingCount, busy, error, onResolve }: {
       <div className="event-dialog-hero"><h2 id="event-dialog-title">{localizePlayerNamesInText(event.title, Object.values(state.players))}</h2></div>
       {conversation ? <div className="event-dialog-conversation"><div><strong>{playerNameZh(player.name, player.id)}</strong><span>对你说</span></div><blockquote id="event-dialog-description">“{localizePlayerNamesInText(humanizeUiText(description), Object.values(state.players))}”</blockquote></div>
         : <p id="event-dialog-description" className="event-dialog-description">{localizePlayerNamesInText(humanizeUiText(description), Object.values(state.players))}</p>}
-      <div className="event-dialog-action-heading"><b>{choices.length > 1 ? "你的决定" : "事件影响"}</b><span>选择后立即生效</span></div>
-      <div className="event-dialog-choices">{choices.map((choice) => <button key={choice.id} type="button" className={`event-dialog-choice${choice.effects.some((effect) => typeof effect.value === "number" && effect.value < 0) ? " is-negative" : ""}`} disabled={busy} onClick={() => onResolve({ commandId: `event-${event.eventInstanceId}-${choice.id}`, type: "RESOLVE_EVENT", payload: { eventInstanceId: event.eventInstanceId, choiceId: choice.id } })}><span><b>{choice.id === "acknowledge" ? "确认并继续" : choice.label}</b><small>{impactText(choice)}</small></span><i aria-hidden="true">→</i></button>)}</div>
+      <div className="event-dialog-action-heading"><b>{choices.length > 1 ? "你的决定" : "事件影响"}</b><span>{event.category === "INJURY" ? "手动调整需保存轮换" : "选择后立即生效"}</span></div>
+      <div className="event-dialog-choices">{choices.map((choice) => <button key={choice.id} type="button" className={`event-dialog-choice${choice.effects.some((effect) => typeof effect.value === "number" && effect.value < 0) ? " is-negative" : ""}`} disabled={busy || event.category === "INJURY" && choice.id === "manual_adjust" && !enoughPlayersForRotation} onClick={() => onResolve({ commandId: `event-${event.eventInstanceId}-${choice.id}`, type: "RESOLVE_EVENT", payload: { eventInstanceId: event.eventInstanceId, choiceId: choice.id } })}><span><b>{choice.id === "acknowledge" ? "确认并继续" : choice.label}</b><small>{impactText(choice)}</small></span><i aria-hidden="true">→</i></button>)}</div>
       {error && <p className="event-dialog-error" role="alert">{error}</p>}
       {pendingCount > 1 && <p className="event-dialog-next">处理后将展示下一则事件</p>}
     </section>

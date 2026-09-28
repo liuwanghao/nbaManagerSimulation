@@ -1,6 +1,8 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createCareer } from "../game/season/career";
-import { leagueStatLeaders } from "./LeagueLeadersPanel";
+import { LeagueLeadersPanel, leagueStatLeaders } from "./LeagueLeadersPanel";
 
 describe("leagueStatLeaders", () => {
   it("keeps the leaderboard empty before any player has played", () => {
@@ -29,5 +31,28 @@ describe("leagueStatLeaders", () => {
     expect(leagueStatLeaders(state, "pts").map((player) => player.id)).toEqual([second.id, first.id, third.id, fourth.id, fifth.id]);
     expect(leagueStatLeaders(state, "stl")[0].id).toBe(third.id);
     expect(leagueStatLeaders(state, "blk")[0].id).toBe(fourth.id);
+  });
+
+  it("shows one prominent value per board with a smaller points, rebounds and assists summary", () => {
+    const state = createCareer("league-leaders-layout");
+    const player = Object.values(state.players)[0];
+    player.seasonStats.games = 2;
+    Object.assign(player.seasonStats, { pts: 42, reb: 18, ast: 12, stl: 4, blk: 2 });
+
+    const markup = renderToStaticMarkup(createElement(LeagueLeadersPanel, { state, onOpenPlayer: () => {} }));
+    for (const [label, value] of [
+      ["得分", "21.0"], ["篮板", "9.0"], ["助攻", "6.0"],
+      ["抢断", "2.0"], ["盖帽", "1.0"],
+    ]) {
+      const board = markup.match(new RegExp(`<section[^>]*aria-label="${label}榜"[\\s\\S]*?</section>`))?.[0];
+      expect(board).toContain(`场均${label}`);
+      expect(board?.match(/class="gemini-prospect-avatar league-stat-avatar/gu)).toHaveLength(1);
+      expect(board).toContain(`<span class="league-stat-team">${state.teams[player.teamId].name}</span>`);
+      expect(board).toContain(`<strong>${value}</strong>`);
+      expect(board).toContain("21.0 / 9.0 / 6.0");
+      expect(board).toContain('title="场均得分 / 篮板 / 助攻"');
+      expect(board).not.toMatch(/<small>[分板助断帽]<\/small>/u);
+      expect(board?.match(/<strong>/gu)).toHaveLength(1);
+    }
   });
 });

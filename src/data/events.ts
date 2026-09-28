@@ -5,10 +5,10 @@ type EventSeed = [id: string, title: string, description: string, priority?: num
 
 const seedGroups: Record<string, EventSeed[]> = {
   INJURY: [
-    ["injury_core_major_001", "核心球员受伤", "{{player_name}}受伤，预计缺阵 {{games_out}} 场；首发与轮换已自动调整。", 90],
-    ["injury_recovery_001", "伤员回归", "{{player_name}}已恢复出战，首发与轮换已自动重新调整。", 45],
+    ["injury_core_major_001", "核心球员受伤", "{{player_name}}受伤，预计缺阵 {{games_out}} 场。请选择如何调整首发与轮换。", 90, true],
+    ["injury_recovery_001", "伤员回归", "{{player_name}}已恢复出战。请选择如何重新安排首发与轮换。", 45, true],
     ["injury_emergency_roster_001", "紧急名单", "可用球员不足，球队启用紧急名单。", 95, true],
-    ["injury_depth_test_001", "轮换伤病调整", "{{player_name}}受伤，预计缺阵 {{games_out}} 场；首发与轮换已自动调整。", 55],
+    ["injury_depth_test_001", "轮换球员受伤", "{{player_name}}受伤，预计缺阵 {{games_out}} 场。请选择如何调整首发与轮换。", 55, true],
   ],
   MORALE: [
     ["morale_role_unhappy_001", "角色不满", "教练，我想在轮换里承担更多责任。能多给我一些上场时间吗？", 70, true],
@@ -26,7 +26,7 @@ const seedGroups: Record<string, EventSeed[]> = {
     ["breakout_scorer_001", "得分爆发", "{{player_name}} 打出赛季代表作。", 45],
     ["breakout_defender_001", "防守突破", "一名球员正在成为可靠的防守支柱。", 42],
     ["breakout_playmaker_001", "组织蜕变", "球队出现新的持球组织点。", 42],
-    ["breakout_rookie_001", "新秀爆发", "新秀连续交出超预期表现。", 50],
+    ["breakout_rookie_001", "新秀爆发：{{player_name}}", "{{player_name}} {{recent_summary}}", 50],
   ],
   SLUMP: [
     ["slump_shooting_001", "投篮低迷", "球队外线手感连续低迷。", 38],
@@ -97,6 +97,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
   const [id, title, description, priority = 40, pauseSimulation = false, scope = "PLAYER_TEAM"] = seed;
   const seasonOpening = id === "franchise_season_opening_001";
   const expansionComplete = id === "expansion_complete_001";
+  const injuryRotationDecision = ["injury_core_major_001", "injury_depth_test_001", "injury_recovery_001"].includes(id);
   const choiceEffects: EventEffectDefinition[] = seasonOpening ? [] : category === "MORALE" || category === "ROLE"
     ? [{ effectId: "morale_response", type: "PLAYER_MORALE", target: "{{player_id}}", value: category === "MORALE" ? 6 : 4, executionPhase: "ON_CHOICE" }]
     : category === "BREAKOUT"
@@ -106,7 +107,12 @@ function definition(category: string, seed: EventSeed): EventDefinition {
         : category === "STREAK" || category === "FRANCHISE" || category === "EXPANSION" || category === "PLAYOFFS"
           ? [{ effectId: "fan_response", type: "TEAM_FAN_SUPPORT", value: id.includes("losing") ? -1 : 1, executionPhase: "ON_CHOICE" }]
           : [{ effectId: "event_log", type: "LEAGUE_LOG", value: title, executionPhase: "ON_CHOICE" }];
-  const choices = category === "MORALE" || category === "ROLE"
+  const choices = injuryRotationDecision
+    ? [
+      { id: "auto_adjust", label: "一键自动调整轮换", effects: [] },
+      { id: "manual_adjust", label: "手动调整轮换", effects: [] },
+    ]
+    : category === "MORALE" || category === "ROLE"
     ? [
       {
         id: "increase_role",
@@ -125,7 +131,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     : [{ id: "acknowledge", label: "确认", effects: choiceEffects }];
   return {
     id,
-    version: 1,
+    version: injuryRotationDecision ? 2 : 1,
     type: category,
     category,
     scope,

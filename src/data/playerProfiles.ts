@@ -10,6 +10,8 @@ const FIRST_NAMES = [
   "Malcolm", "Marcus", "Micah", "Miles", "Nolan", "Owen", "Quentin", "Rafael",
   "Reece", "Roman", "Samson", "Silas", "Terrence", "Theo", "Tristan", "Tyrese",
   "Victor", "Wesley", "Xavier", "Zaire", "Avery", "Desmond", "Keon", "Landon",
+  "Aaron", "Alex", "Brandon", "Christian", "Damian", "Evan", "Gary", "John",
+  "Michael", "Jonathan", "Tyler", "Daniel", "Stephen", "Coby", "Jayson", "Jerami",
 ] as const;
 
 const LAST_NAMES = [
@@ -19,6 +21,8 @@ const LAST_NAMES = [
   "Jefferson", "Keaton", "Kendall", "Langston", "Lawson", "Mercer", "Merritt", "Monroe",
   "Nash", "Noble", "Palmer", "Prescott", "Ramsey", "Reeves", "Rowan", "Sampson",
   "Shepherd", "Sloan", "Sterling", "Sutton", "Vaughn", "Warren", "Whitaker", "Wilder",
+  "Brown", "Davis", "Edwards", "Gordon", "Harris", "Jackson", "Robinson", "Walker",
+  "Young", "Williams", "Thompson", "Collins", "Miller", "Green", "Butler", "Washington",
 ] as const;
 
 const PERSONALITIES: PlayerPersonality[] = [

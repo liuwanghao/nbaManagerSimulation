@@ -16,7 +16,7 @@ const PHASE_LABELS: Record<string, string> = {
   EXPANSION_TRADE: "扩军交易",
   EXPANSION_DRAFT: "扩军选秀",
   ROOKIE_DRAFT_PENDING: "新秀选秀准备",
-  OFFSEASON_PRE_DRAFT: "选秀前休赛期",
+  OFFSEASON_PRE_DRAFT: "选秀前准备",
   DRAFT: "新秀选秀",
   OFFSEASON_POST_DRAFT: "选秀后休赛期",
   PRESEASON: "季前准备",
@@ -71,7 +71,7 @@ const PROFILE_SOURCE_LABELS: Record<string, string> = {
   HUPU_LIVE_ROSTER: "虎扑实时阵容",
   CURATED_DATASET: "离线球员资料",
   PROCEDURAL_DRAFT: "程序化新秀",
-  HISTORICAL_ARCHETYPE: "传奇原型新秀",
+  HISTORICAL_ARCHETYPE: "历史球星新秀",
 };
 
 const INJURY_LABELS: Record<InjurySeverity, string> = {
@@ -187,8 +187,9 @@ const UI_TERM_REPLACEMENTS: Array<[RegExp, string]> = [
   [/Payload/giu, "参数"], [/Package/giu, "权益方案"], [/Seed/giu, "随机种子"], [/Reserve/giu, "预留"],
   [/AI GM/giu, "电脑经理"], [/AI Picks/giu, "电脑球队选秀"], [/AI 球队/giu, "电脑球队"],
   [/\bAI\b/gu, "电脑球队"], [/\bUFA\b/gu, "完全自由球员"], [/\bRFA\b/gu, "受限自由球员"],
+  [/进入\s+(完全|受限)自由球员/gu, "成为$1自由球员"],
   [/\bSlot\s*(\d+)/giu, "存档 $1"], [/\bDay\s*(\d+)/giu, "第 $1 天"], [/\bFit\b/gu, "适配度"],
-  [/PLAYER_OPTION_DECLINED/gu, "球员选项被拒绝"], [/TEAM_OPTION_DECLINED/gu, "球队选项被拒绝"],
+  [/PLAYER_OPTION_DECLINED/gu, "拒绝执行球员选项"], [/TEAM_OPTION_DECLINED/gu, "球队放弃该球员的球队选项"],
   [/CONTRACT_EXPIRED/gu, "合同到期"], [/PLAYER_OPTION_EXERCISED/gu, "球员选项已执行"], [/TEAM_OPTION_EXERCISED/gu, "球队选项已执行"],
   [/SELECT_PLAYER/gu, "指定选择球员"], [/PICK_UP/gu, "执行选项"], [/DECLINE/gu, "放弃"],
   [/is not allowed during/giu, "不能在当前阶段执行："], [/not found/giu, "不存在"], [/invalid/giu, "无效"],
@@ -196,6 +197,7 @@ const UI_TERM_REPLACEMENTS: Array<[RegExp, string]> = [
 
 export function humanizeUiText(value: string | undefined | null): string {
   if (!value) return "";
+  const normalized = value.replace(/^(.+?) · TEAM_OPTION_DECLINED(?= · |$)/u, "球队放弃$1的球队选项");
   const codeLabels: Record<string, string> = {
     TEAM_OPTION_NOT_PENDING: "该球队选项当前不在待处理列表中", TEAM_OPTION_NOT_CONTROLLED: "你无法处理该球队选项", TEAM_OPTIONS_STILL_PENDING: "仍有球队选项尚未处理",
     TRAINING_PLAYER_NOT_ON_USER_ROSTER: "该培养球员不在你的阵容中", TRAINING_FOCUS_LIMIT_REACHED: "重点培养名额已满", ROLE_PLAYER_NOT_ON_USER_ROSTER: "该球员不在你的阵容中",
@@ -203,14 +205,20 @@ export function humanizeUiText(value: string | undefined | null): string {
     EVENT_NOT_PENDING: "该事件当前不在待处理队列中", EVENT_CHOICE_INVALID: "事件选项无效", MAJOR_INJURY_NOT_PENDING: "没有待确认的重大伤病",
     MAJOR_INJURY_ACK_REQUIRED: "请先确认重大伤病", EMERGENCY_HARD_BLOCK: "可用球员不足，必须先处理紧急名单", EMERGENCY_TEAM_NOT_FOUND: "紧急名单球队不存在",
     EMERGENCY_USER_TEAM_ONLY: "只能处理自己球队的紧急名单", EMERGENCY_ROSTER_NOT_PENDING: "当前没有待处理的紧急名单",
-    DRAFT_PICK_NOT_OWNED: "球队不拥有该选秀权", CONSECUTIVE_FIRST_ROUND_LIMIT: "交易违反连续首轮签限制", EMERGENCY_CONTRACT_NOT_TRADEABLE: "紧急合同不能交易",
+    DRAFT_PICK_NOT_OWNED: "球队不拥有该选秀权", DRAFT_PICK_RESERVED: "选秀权已被其他承诺占用", DRAFT_PICK_OUTSIDE_SEVEN_YEAR_WINDOW: "只能交易未来七届的选秀权", CONSECUTIVE_FIRST_ROUND_LIMIT: "交易违反连续首轮签限制", EMERGENCY_CONTRACT_NOT_TRADEABLE: "紧急合同不能交易",
+    PLAYER_NOT_OWNED: "球员已不在原球队", PLAYER_NOT_TRADEABLE: "球员合同当前不可交易", DUPLICATE_TRADE_ASSET: "交易筹码不能重复", TRADE_ASSET_REQUIRED: "请至少选择一项交易筹码",
     NOT_ENOUGH_LEGAL_TRADE_OFFERS: "没有足够的合法交易报价", OUTGOING_ASSET_NOT_OWNED: "球队不拥有送出的资产", INCOMING_ASSET_NOT_OWNED: "对方球队不拥有送出的资产",
-    ROSTER_LIMIT_EXCEEDED: "交易后名单人数超出限制", SECOND_APRON_SALARY_MATCH_FAILED: "交易未通过第二土豪线薪资匹配", FIRST_APRON_SALARY_MATCH_FAILED: "交易未通过第一土豪线薪资匹配",
+    ROSTER_LIMIT_EXCEEDED: "交易后名单人数超出限制", ROSTER_BELOW_NBA_MINIMUM: "交易后常规赛名单不能少于 12 人", SECOND_APRON_SALARY_MATCH_FAILED: "交易未通过第二土豪线薪资匹配", FIRST_APRON_SALARY_MATCH_FAILED: "交易未通过第一土豪线薪资匹配",
     SALARY_MATCH_FAILED: "交易薪资不匹配", NO_SAVE_CONFLICT: "当前没有存档冲突", CONFLICT_BACKUP_VERIFICATION_FAILED: "冲突备份校验失败", SAVE_WRITE_VERIFICATION_FAILED: "存档写入校验失败",
   };
-  if (codeLabels[value]) return codeLabels[value];
-  const translated = UI_TERM_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
+  if (codeLabels[normalized]) return codeLabels[normalized];
+  const translated = UI_TERM_REPLACEMENTS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), normalized);
   return /^[A-Z][A-Z0-9_:-]+$/u.test(translated) ? "操作未通过规则校验" : translated;
+}
+
+export function freeAgencyTransactionLabel(value: string): string {
+  return humanizeUiText(value).replace(/(\d+(?:\.\d+)?)M\b/gu, (_, millions: string) =>
+    adaptiveMoneyLabel(Number(millions) * 1_000_000));
 }
 
 const EVENT_CATEGORY_LABELS: Record<string, string> = {

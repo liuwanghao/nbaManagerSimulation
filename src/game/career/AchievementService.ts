@@ -58,8 +58,9 @@ export function unlockAchievement(state: GameState, id: AchievementId): void {
 
 export function evaluateRegularSeasonAchievements(state: GameState): void {
   const current = state.standings[state.userTeamId];
+  const currentArchived = state.history.seasons.some((season) => season.seasonId === state.league.seasonId);
   const historicalWins = state.history.seasons.reduce((sum, season) => sum + (season.standings[state.userTeamId]?.wins ?? 0), 0);
-  const careerWins = historicalWins + current.wins;
+  const careerWins = historicalWins + (currentArchived ? 0 : current.wins);
   if (careerWins >= BALANCE_CONFIG.achievements.FIRST_WIN.trigger.value) unlockAchievement(state, "FIRST_WIN");
   if (careerWins >= BALANCE_CONFIG.achievements.TEN_WINS.trigger.value) unlockAchievement(state, "TEN_WINS");
   for (const id of NEW_CAREER_WIN_IDS) if (careerWins >= BALANCE_CONFIG.achievements[id].trigger.value) unlockAchievement(state, id);
@@ -125,6 +126,24 @@ export function backfillNewAchievements(state: GameState): void {
     const currentWins = state.standings[state.userTeamId]?.wins ?? 0;
     for (const id of NEW_CAREER_WIN_IDS) if (careerWins + currentWins >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, state.league.seasonId);
     for (const id of NEW_SEASON_WIN_IDS) if (currentWins >= BALANCE_CONFIG.achievements[id].trigger.value) mark(id, state.league.seasonId);
+  }
+}
+
+/** Correct win milestones unlocked by older saves that counted an archived season twice. */
+export function repairInvalidWinAchievements(state: GameState): void {
+  if (state.history.seasons.length === 0 && state.gmCareer.seasons > 0) return;
+  const archivedWins = state.history.seasons.map((season) => season.standings[state.userTeamId]?.wins ?? 0);
+  const currentArchived = state.history.seasons.some((season) => season.seasonId === state.league.seasonId);
+  const currentWins = currentArchived ? 0 : state.standings[state.userTeamId]?.wins ?? 0;
+  const careerWins = archivedWins.reduce((sum, wins) => sum + wins, 0) + currentWins;
+  const bestSeasonWins = Math.max(0, ...archivedWins, currentWins);
+  const careerIds = ["FIRST_WIN", "TEN_WINS", ...NEW_CAREER_WIN_IDS] as const;
+  const seasonIds = [...NEW_SEASON_WIN_IDS, "FIFTY_WIN_SEASON", "SIXTY_WIN_SEASON"] as const;
+  for (const id of [...careerIds, ...seasonIds]) {
+    const actual = (careerIds as readonly string[]).includes(id) ? careerWins : bestSeasonWins;
+    if (!state.achievements[id].unlocked || actual >= BALANCE_CONFIG.achievements[id].trigger.value) continue;
+    state.achievements[id] = { unlocked: false, unlockedAt: null, seasonId: null };
+    state.gmCareer.dynastyScore = Math.max(0, state.gmCareer.dynastyScore - BALANCE_CONFIG.achievements[id].reward.dynastyScore);
   }
 }
 

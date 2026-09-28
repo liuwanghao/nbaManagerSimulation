@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { SaveSlotSummary } from "../storage/SaveService";
 import type { TeamInboxItem } from "../game/notifications/TeamNotificationService";
@@ -7,6 +7,7 @@ import type { Player } from "../game/state/types";
 import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import { humanizeUiText, phaseLabel } from "./uiText";
 import { UserFeedbackDialog } from "./UserFeedbackDialog";
+import { BasketballSeamLoader } from "./BasketballSeamLoader";
 
 export type SeasonTab = "home" | "manage" | "market" | "league" | "career";
 
@@ -61,6 +62,9 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<"save" | "load">(initialDrawerTab ?? "save");
+  const [loadingSlot, setLoadingSlot] = useState<"latest" | 1 | 2 | 3 | null>(null);
+  const loadingInFlight = useRef(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
     if (!settingsOpen) return;
     const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setSettingsOpen(false); };
@@ -70,8 +74,24 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
   const openDrawer = (tab: "save" | "load") => {
     setInboxOpen(false);
     setSettingsOpen(false);
+    setLoadError(null);
     setDrawerTab(tab);
     setDrawerOpen(true);
+  };
+  const readSave = async (slot: "latest" | 1 | 2 | 3) => {
+    if (busy || loadingInFlight.current) return;
+    loadingInFlight.current = true;
+    setLoadingSlot(slot);
+    setLoadError(null);
+    try {
+      const loaded = slot === "latest" ? await onLoadLatest?.() : await onLoad?.(slot);
+      if (loaded) setDrawerOpen(false);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "读取失败，请重试。");
+    } finally {
+      loadingInFlight.current = false;
+      setLoadingSlot(null);
+    }
   };
   const latestSave = [...saveSlots].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.revision - left.revision || right.slotId - left.slotId)[0];
   const summaryFor = (slot: 1 | 2 | 3) => saveSlots.find((summary) => summary.slotId === slot);
@@ -102,21 +122,23 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
       </div>, document.body)}
       {feedbackOpen && createPortal(<UserFeedbackDialog onClose={() => setFeedbackOpen(false)} />, document.body)}
       {inboxOpen && createPortal(<TeamInboxDrawer notifications={notifications} players={players} attentionCount={attentionCount} unreadIds={unreadIds} busy={busy} onClose={() => setInboxOpen(false)} onMarkRead={onMarkNotificationsRead} onHandlePending={(item) => { setInboxOpen(false); onHandlePendingNotification?.(item); }} />, document.body)}
-      {drawerOpen && <div className="save-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawerOpen(false); }}>
-        <section className="save-drawer" role="dialog" aria-modal="true" aria-label="存档管理" aria-busy={busy}>
+      {drawerOpen && <div className="save-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy && loadingSlot === null) setDrawerOpen(false); }}>
+        <section className="save-drawer" role="dialog" aria-modal="true" aria-label="存档管理" aria-busy={busy || loadingSlot !== null}>
           <header>
             <div className="save-drawer-tabs">
-              <button className={drawerTab === "save" ? "active" : ""} onClick={() => setDrawerTab("save")}>保存游戏</button>
-              <button className={drawerTab === "load" ? "active" : ""} onClick={() => setDrawerTab("load")}>读取存档</button>
+              <button className={drawerTab === "save" ? "active" : ""} disabled={busy || loadingSlot !== null} onClick={() => setDrawerTab("save")}>保存游戏</button>
+              <button className={drawerTab === "load" ? "active" : ""} disabled={busy || loadingSlot !== null} onClick={() => setDrawerTab("load")}>读取存档</button>
             </div>
-            <button className="save-drawer-close" onClick={() => setDrawerOpen(false)} aria-label="关闭存档管理">×</button>
+            <button className="save-drawer-close" disabled={busy || loadingSlot !== null} onClick={() => setDrawerOpen(false)} aria-label="关闭存档管理">×</button>
           </header>
+          {loadingSlot !== null && <p className="save-drawer-loading" role="status"><BasketballSeamLoader compact />{loadingSlot === "latest" ? "正在读取最近存档…" : `正在读取槽位 0${loadingSlot}…`}</p>}
+          {loadError && <p className="save-drawer-load-error" role="alert">{loadError}</p>}
           <div className="save-drawer-body">
             <article className="save-slot-card featured auto-save-card">
               <span className="save-slot-badge">最近存档</span>
               <b>{latestSave ? `槽位 0${latestSave.slotId} · ${latestSave.teamName}` : "还没有可读取的存档"}</b>
               <small>{latestSave ? `${summaryText(latestSave)} · ${phaseLabel(latestSave.phase)}` : "进行一次操作后会自动保存，或手动保存到槽位。"}</small>
-              {drawerTab === "load" && latestSave && <button className="save-drawer-primary" disabled={busy} onClick={() => void onLoadLatest?.().then((loaded) => { if (loaded) setDrawerOpen(false); })}>继续最近进度</button>}
+              {drawerTab === "load" && latestSave && <button className="save-drawer-primary" disabled={busy || loadingSlot !== null} onClick={() => void readSave("latest")}>{loadingSlot === "latest" ? "正在读取…" : "继续最近进度"}</button>}
             </article>
             {([1, 2, 3] as const).map((slot) => {
               const summary = summaryFor(slot);
@@ -125,7 +147,7 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
               <div className="save-slot-summary"><b>{summary?.teamName ?? "空存档"}</b><small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存，可将当前进度写入此位置"}</small></div>
               {drawerTab === "save"
                 ? <button className="save-drawer-primary" disabled={busy} onClick={() => { onSlotChange?.(slot); void onSave?.(slot).then(() => setDrawerOpen(false)); }}>{slot === activeSlot ? "覆盖保存" : "存入此位置"}</button>
-                : <button className="save-drawer-dark" disabled={busy} onClick={() => { onSlotChange?.(slot); void onLoad?.(slot).then((loaded) => { if (loaded) setDrawerOpen(false); }); }}>读取此存档</button>}
+                : <button className="save-drawer-dark" disabled={busy || loadingSlot !== null} onClick={() => { onSlotChange?.(slot); void readSave(slot); }}>{loadingSlot === slot ? "正在读取…" : "读取此存档"}</button>}
             </article>;
             })}
           </div>

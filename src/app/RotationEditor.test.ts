@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { buildDefaultRotationPlan } from "../game/roster/RotationPlanService";
 import { createCareer } from "../game/season/career";
 import type { TeamRotationPlan } from "../game/state/types";
-import { RotationEditor, swapRotationPositions } from "./RotationEditor";
+import { RotationEditor, limitedRotationMinutes, swapRotationPositions } from "./RotationEditor";
 
 const plan: TeamRotationPlan = {
   starters: { PG: "pg", SG: "sg", SF: "sf", PF: "pf", C: "c" },
@@ -14,6 +14,37 @@ const plan: TeamRotationPlan = {
 };
 
 describe("rotation card position swap", () => {
+  it("caps typed and stepped minutes at the remaining team allowance", () => {
+    expect(limitedRotationMinutes(20, 238, 30, 40)).toBe(22);
+    expect(limitedRotationMinutes(20, 240, 21, 40)).toBe(20);
+    expect(limitedRotationMinutes(20, 240, 19, 40)).toBe(19);
+    expect(limitedRotationMinutes(20, 230, 50, 40)).toBe(30);
+    expect(limitedRotationMinutes(20, 230, -1, 40)).toBe(0);
+  });
+
+  it("disables every increase button when all 240 team minutes are assigned", () => {
+    const state = createCareer("rotation-minute-cap");
+    const players = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
+    const rotation = buildDefaultRotationPlan(players);
+    const markup = renderToStaticMarkup(createElement(RotationEditor, {
+      players, plan: rotation, postseason: false, busy: false, onSave: () => {},
+    }));
+    expect(markup).toContain("时间已分配完，先减少再增加");
+    expect(markup.match(/aria-label="[^"]+增加一分钟" disabled=""/g)).toHaveLength(players.length);
+  });
+
+  it("explains why a five-player roster cannot reach 240 minutes", () => {
+    const state = createCareer("rotation-five-available");
+    const players = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
+    for (const player of players.slice(5)) player.available = false;
+    const markup = renderToStaticMarkup(createElement(RotationEditor, {
+      players, plan: buildDefaultRotationPlan(players), postseason: false, busy: false, onSave: () => {},
+    }));
+    expect(markup).toContain("200 / 240");
+    expect(markup).toContain("至少需要 6 名可出战球员才能分配 240 分钟");
+    expect(markup).toContain('data-testid="save-rotation-plan" disabled=""');
+  });
+
   it("exchanges two starter slots without changing either player's minutes", () => {
     const swapped = swapRotationPositions(plan, "pg", "sg");
     expect(swapped?.starters).toEqual({ PG: "sg", SG: "pg", SF: "sf", PF: "pf", C: "c" });

@@ -4,13 +4,50 @@ import { describe, expect, it } from "vitest";
 import { getFreeAgents } from "../game/freeAgency/FreeAgencyService";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { createCareer } from "../game/season/career";
+import App from "./App";
 import { generateTradeOffers } from "../game/trade/TradeService";
-import { TradeDesk } from "./Stage4Flow";
-import { RegularSeasonFreeAgents } from "./RegularSeasonFreeAgents";
+import { freeAgencyOfferCommandId, TradeDesk } from "./Stage4Flow";
+import { getUpcomingFreeAgents, RegularSeasonFreeAgents } from "./RegularSeasonFreeAgents";
 import { MarketTradeRecords } from "./MarketTradeRecords";
 import { tradeAssetPositionCounts, tradeInquiryCommandId, tradeOfferStatusLabel, tradePickLabel } from "./tradeView";
 
 describe("regular-season market", () => {
+  it("uses a fresh command id when an offseason offer is withdrawn and retried on the same day", () => {
+    const state = createCareer("offseason-offer-ids");
+    state.freeAgency = { opened: true, currentDay: 1, offers: {}, markets: {}, settledPlayerDay: {}, transactionLog: [] };
+    const playerId = "retry-player";
+    const first = freeAgencyOfferCommandId(state, playerId);
+    state.freeAgency.offers.previous = { offerId: "previous", teamId: state.userTeamId, playerId, status: "WITHDRAWN" } as typeof state.freeAgency.offers[string];
+    const second = freeAgencyOfferCommandId(state, playerId);
+    expect(second).not.toBe(first);
+    expect(freeAgencyOfferCommandId(structuredClone(state), playerId)).toBe(second);
+  });
+  it("explains that a rejected free-agent offer can be revised in a new decision window", () => {
+    const state = createCareer("rejected-offer-market-label");
+    state.league.currentPhase = "OFFSEASON_POST_DRAFT";
+    const userTeam = state.teams[state.userTeamId];
+    const playerId = userTeam.playerIds.pop();
+    if (!playerId) throw new Error("Expected a roster player");
+    state.players[playerId].teamId = "FREE_AGENT";
+    state.players[playerId].contract.status = "UFA";
+    for (const id of userTeam.playerIds) state.players[id].contract.salary = 0;
+    state.capState.capHolds = [];
+    state.capState.offerReservations = [];
+    state.freeAgency = {
+      opened: true, currentDay: 4, settledPlayerDay: {}, transactionLog: [],
+      markets: { [playerId]: { playerId, marketWindowStartDay: 1, decisionDeadline: 3, marketWindowStatus: "CLOSED_NO_SIGNING" } },
+      offers: { rejected: {
+        offerId: "rejected", playerId, teamId: state.userTeamId, createdDay: 1, expiresDay: 3,
+        years: 2, year1Salary: 4_000_000, totalValue: 8_000_000, guaranteedValue: 8_000_000,
+        rolePromised: "ROTATION", capReservation: 4_000_000, utility: 30,
+        status: "REJECTED", resolutionReason: "PLAYER_REJECTED", kind: "UFA_OFFER",
+      } },
+    };
+    const markup = renderToStaticMarkup(createElement(App, { initialState: state }));
+    expect(markup).toContain("此前报价被拒绝，可调整条件重新报价");
+    expect(markup).toContain(`data-testid="open-fa-offer-${playerId}"`);
+    expect(markup).toContain("重新报价");
+  });
   it("shows free agents during the season without offering an unsupported signing action", () => {
     const state = createCareer("regular-season-free-agents");
     state.league.currentPhase = "REGULAR_PRE_DEADLINE";
@@ -23,6 +60,33 @@ describe("regular-season market", () => {
     expect(markup).toContain("赛季中可浏览未签约球员");
     expect(markup).not.toContain("FREE AGENTS");
     expect(markup).not.toContain('data-testid="submit-fa-offer"');
+    expect(markup).toContain("休赛期到期");
+  });
+
+  it("previews only rostered players whose contract expires after this season", () => {
+    const state = createCareer("market-upcoming-free-agents");
+    const [expiringId, continuingId, otherId, legacyId] = state.teams[state.userTeamId].playerIds;
+    const expiring = state.players[expiringId];
+    expiring.contract = { ...expiring.contract, status: "STANDARD", yearsRemaining: 1,
+      salaryByYear: [4_000_000, 5_000_000], currentYearIndex: 1 };
+    const continuing = state.players[continuingId];
+    continuing.contract = { ...continuing.contract, status: "STANDARD", yearsRemaining: 2,
+      salaryByYear: [4_000_000, 5_000_000], currentYearIndex: 0,
+      optionByYear: ["NONE", "PLAYER_OPTION"] };
+    const other = state.players[otherId];
+    other.teamId = "FREE_AGENT";
+    other.contract.status = "UFA";
+    const legacy = state.players[legacyId];
+    legacy.contract = { ...legacy.contract, status: "STANDARD", yearsRemaining: 1,
+      salaryByYear: [4_000_000, 5_000_000], currentYearIndex: undefined };
+    const upcoming = getUpcomingFreeAgents(state);
+    expect(upcoming).toContain(expiring);
+    expect(upcoming).toContain(legacy);
+    expect(upcoming).not.toContain(continuing);
+    expect(upcoming).not.toContain(other);
+    const market = renderToStaticMarkup(createElement(RegularSeasonFreeAgents, { state, onOpenPlayer: () => {}, onCommand: async () => {} }));
+    expect(market).toContain(`休赛期到期 <span>${upcoming.length}</span>`);
+    expect(market).toContain("当前自由球员");
   });
 
   it("offers regular-season UFA bids and displays both user and AI trade records", () => {
@@ -78,6 +142,19 @@ describe("regular-season market", () => {
       offerId: "offer", inquiryKey: "query", inquiryCount: 0, counterpartyTeamId: state.userTeamId,
       userOutgoingPlayerIds: [], userOutgoingPickIds: [], userIncomingPlayerIds: [], userIncomingPickIds: [], status: "REJECTED",
     })).toBe("已失效");
+  });
+
+  it("shows player and draft-pick controls for a bundled inquiry", () => {
+    const state = createCareer("market-bundled-inquiry");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const pick = Object.values(state.draftPicks).find((asset) => asset.ownerTeamId === state.userTeamId && asset.year > state.league.seasonYear);
+    if (!pick) throw new Error("Expected a future user draft pick");
+    const markup = renderToStaticMarkup(createElement(TradeDesk, { state, busy: false, onTradeCommand: async () => {} }));
+    expect(markup).toContain("获取报价");
+    expect(markup).toContain("选择我方交易筹码");
+    expect(tradeInquiryCommandId(state, [state.teams[state.userTeamId].playerIds[0]], [pick.id])).not.toBe(
+      tradeInquiryCommandId(state, [state.teams[state.userTeamId].playerIds[0]], []),
+    );
   });
 
   it("counts tradeable roster players once by primary position", () => {

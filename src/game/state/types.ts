@@ -315,6 +315,7 @@ export interface RookieDraftState {
   draftSeed: string;
   classPlayerIds: string[];
   revealedProspectIds?: string[];
+  lotteryPresented?: boolean;
   pickOrder: RookieDraftPick[];
   currentPickIndex: number;
   completed: boolean;
@@ -427,6 +428,8 @@ export interface TradeOffer {
 
 export interface TradeDeskState {
   selectedPlayerId?: string;
+  selectedPlayerIds?: string[];
+  selectedPickIds?: string[];
   offers: TradeOffer[];
 }
 
@@ -445,6 +448,7 @@ export interface ContractLifecycleState {
 
 export interface PlayerLifecycleReport {
   processedSeasonId: string;
+  userTeamOverallChanges?: Array<{ playerId: string; before: number; after: number }>;
   developedPlayerIds: string[];
   regressedPlayerIds: string[];
   retiredPlayerIds: string[];
@@ -472,6 +476,9 @@ export interface SeasonHistoryArchive {
   regularSeasonResults: GameResult[];
   userRegularGameDetails: Record<string, GameResult>;
   postseasonGameDetails: Record<string, GameResult>;
+  lotteryContext?: {
+    sevenEightLoserTeamIds: string[];
+  };
   userPostseason: {
     enteredPlayIn: boolean;
     enteredPlayoffs: boolean;
@@ -694,6 +701,7 @@ export interface FranchiseStatsState {
 export interface InjuryState {
   recentEvents: InjuryEvent[];
   pendingUserMajorInjury?: InjuryEvent;
+  pendingAutoRotationAfterEmergency?: boolean;
   pendingEmergencyRoster?: {
     teamId: string;
     availableCount: number;
@@ -753,6 +761,7 @@ export interface GameState {
   franchiseStats: FranchiseStatsState;
   history: {
     champions: Array<{ seasonId: string; teamId: string }>;
+    draftFirstRoundResults?: Array<{ year: number; pickNumber: number; originalTeamId: string }>;
     retiredPlayerIds: string[];
     rebornHistoricalSourceIds: string[];
     seasonAwards: SeasonAwardsRecord[];

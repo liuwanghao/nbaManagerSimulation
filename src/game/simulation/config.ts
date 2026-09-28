@@ -1,5 +1,5 @@
 export const SIMULATION_CONFIG = {
-  version: "simulation.v2",
+  version: "simulation.v4",
   ratings: {
     minimum: 25,
     maximum: 99,
@@ -73,11 +73,32 @@ export const SIMULATION_CONFIG = {
     offensiveRebounds: { baseRate: 0.115, reboundingCoefficient: 0.0012, noise: 0.01, minimumRate: 0.07, maximumRate: 0.18 },
     threeRate: { minimum: 0.25, maximum: 0.55 },
     reconciliation: { fgaDeltaMin: -4, fgaDeltaMax: 8, threePaDeltaMin: -5, threePaDeltaMax: 5, ftaDeltaMin: -6, ftaDeltaMax: 8, minimumFga: 60, minimumThreePa: 15, minimumTwoPointAttempts: 10, minimumFta: 8, targetThreePointPercentage: 0.36, targetFreeThrowPercentage: 0.78 },
-    rebounds: { defensiveBase: 29, noise: 3 },
-    assists: { baseMadeFieldGoalRate: 0.58, playmakingCoefficient: 0.003, minimumRate: 0.45, maximumRate: 0.75, minimum: 8 },
+    rebounds: {
+      defensiveBase: 32,
+      noise: 3,
+      positionWeight: { PG: 0.75, SG: 0.8, SF: 0.95, PF: 1.15, C: 1.4 },
+    },
+    assists: {
+      baseMadeFieldGoalRate: 0.67,
+      playmakingCoefficient: 0.003,
+      minimumRate: 0.5,
+      maximumRate: 0.82,
+      minimum: 8,
+      playmakingFloor: 25,
+      iqBaseline: 75,
+      positionWeight: { PG: 1.25, SG: 1.05, SF: 0.95, PF: 0.85, C: 0.9 },
+    },
     steals: { base: 7, noise: 1.5, minimum: 2 },
     blocks: { base: 5, noise: 1.3, minimum: 1 },
     usage: { tendencyWeight: 0.55, offenseImpactWeight: 0.45 },
+    playerGameVariation: {
+      minimumMultiplier: 0.55,
+      maximumMultiplier: 1.45,
+      usageSd: 0.23,
+      shootingSd: 0.18,
+      reboundSd: 0.25,
+      assistSd: 0.28,
+    },
   },
   playerStatus: {
     fatigueMinimumGameLoad: 2,

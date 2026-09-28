@@ -4,6 +4,7 @@ import type { CapSheet } from "../game/cap/CapSheetService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import type { DraftPickAsset, Player, StandingRecord, Team } from "../game/state/types";
 import { fitGrade, type TeamFitBreakdown } from "../game/team/TeamFitService";
+import { EXPANSION_POSITION_FILTERS, getCurrentRosterPositionCounts, matchesExpansionPosition, type ExpansionPositionFilter } from "./expansionDraftView";
 import { PlayerPortrait } from "./PlayerPortrait";
 import { playerNameZh } from "./playerNameZh";
 import { adaptiveMoneyLabel as moneyLabel, conferenceLabel, contractStatusLabel, positionPairLabel } from "./uiText";
@@ -33,8 +34,10 @@ export function ManagementOverview({ team, players, record, rank, seasonId, over
   onOpenPlayer: (playerId: string) => void;
 }) {
   const [sort, setSort] = useState<PlayerSort>("minutes");
+  const [positionFilter, setPositionFilter] = useState<ExpansionPositionFilter>("ALL");
   const games = record.wins + record.losses;
-  const sortedPlayers = [...players].sort((left, right) => {
+  const positionCounts = getCurrentRosterPositionCounts(players);
+  const sortedPlayers = players.filter((player) => matchesExpansionPosition(player, positionFilter)).sort((left, right) => {
     const value = (player: Player) => sort === "overall" ? calculatePlayerOverall(player)
       : sort === "points" ? player.seasonStats.pts / Math.max(1, player.seasonStats.games)
         : player.seasonStats.seconds / Math.max(1, player.seasonStats.games);
@@ -62,6 +65,9 @@ export function ManagementOverview({ team, players, record, rank, seasonId, over
     </section>
     <section className="manage-section-card manage-player-section" aria-label="球员赛季数据">
       <div className="manage-section-heading"><div><h3>球员赛季概览</h3></div><label>排序 <select aria-label="球员数据排序" value={sort} onChange={(event) => setSort(event.target.value as PlayerSort)}><option value="minutes">出场时间</option><option value="points">场均得分</option><option value="overall">能力值</option></select></label></div>
+      <div className="draft-current-roster-filter manage-player-position-filter" role="group" aria-label="按主位置筛选球员赛季数据">
+        {EXPANSION_POSITION_FILTERS.map((position) => <button type="button" key={position} className={positionFilter === position ? "active" : ""} aria-pressed={positionFilter === position} onClick={() => setPositionFilter(position)}><b>{position === "ALL" ? "全部" : position}</b><small>{position === "ALL" ? players.length : positionCounts.find((entry) => entry.position === position)?.count ?? 0}</small></button>)}
+      </div>
       <p className="manage-section-note">场均数据随比赛更新；点击球员可查看详细资料。左右滑动查看完整数据。</p>
       <div className="manage-table-scroll"><table className="manage-player-table"><thead><tr><th scope="col">球员</th><th scope="col">总评</th><th scope="col">场次</th><th scope="col">分钟</th><th scope="col">得分</th><th scope="col">篮板</th><th scope="col">助攻</th><th scope="col">抢断</th><th scope="col">盖帽</th><th scope="col">投篮</th><th scope="col">三分</th></tr></thead><tbody>{sortedPlayers.map((player) => {
         const stats = player.seasonStats;
