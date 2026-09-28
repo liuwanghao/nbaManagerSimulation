@@ -404,6 +404,9 @@ describe("Stage 4 free agency", () => {
     }
     const signedElsewhere = executeFreeAgencyCommand(signedElsewhereInput, { commandId: "sign-day", type: "ADVANCE_FA_DAY", payload: {} });
     expect(signedElsewhere.players[player.id].teamId).toBe(destinationTeamId);
+    expect(Object.values(signedElsewhere.freeAgency!.offers).filter((offer) => offer.playerId === player.id && offer.status === "ACCEPTED")).toHaveLength(1);
+    expect(signedElsewhere.capState.offerReservations.some((reservation) => reservation.playerId === player.id)).toBe(false);
+    expect(Object.values(signedElsewhere.teams).filter((team) => team.playerIds.includes(player.id))).toHaveLength(1);
     expect(signedElsewhere.teamNotifications).toContainEqual(expect.objectContaining({
       playerId: player.id,
       title: "球员拒绝合同报价",

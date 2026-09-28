@@ -1,5 +1,39 @@
 Original prompt: 那就按照你的开发计划执行吧
 
+Current request (2026-09-28): 存档槽显示最后一次保存的北京时间；完成后覆盖发布 ZIP 并提交推送远端 Git。
+
+### 存档北京时间与发布 — complete
+
+- [x] 复用存档信封现有 `updatedAt`，不修改存档 Schema；统一按 `Asia/Shanghai` 格式化为北京时间。
+- [x] 首页读档/新生涯槽位、游戏内最近存档与三个存档槽均显示最后保存时间。
+- [x] 北京时间格式化单测、SaveService 回归、TypeScript、全量 78 文件/439 项测试、生产构建及差异检查通过。
+- [x] 390×844 只读虚拟槽位确认 `2026-09-28T00:05:59.000Z` 显示为“最后保存：2026-09-28 08:05（北京时间）”，无控制台错误。
+- [x] 已用最新 `h5/` 覆盖唯一正式包 `release/篮球经理_联盟扩军时代.zip`；74 个文件与构建目录逐项一致、80 个 ZIP 条目 CRC 校验通过，大小 9,215,424 bytes，SHA-256 为 `58d240cafc5385e2afde926bf03ecc30e8df803333a53682f1b74f052eb5f063`。
+- [ ] Git 提交与远端推送待完成。
+
+Current request (2026-09-28): Loading 图标再缩小一点。
+
+### Loading 图标二次微调 — complete
+
+- [x] 普通 Loading 图标由 56px 缩小至 48px，20px 紧凑版保持不变。
+- [x] 390×844 手机视口确认图标为 48×48px、纹路清晰且比例紧凑；Playwright 无控制台错误，TypeScript 与生产构建通过。
+
+Current request (2026-09-28): Loading 图标缩小一些。
+
+### Loading 图标尺寸微调 — complete
+
+- [x] 普通 Loading 图标由 80px 缩小至 56px，存档栏 20px 紧凑版保持不变。
+- [x] 390×844 手机视口确认图标为 56×56px、纹路清晰且留白协调；Playwright 无控制台错误，TypeScript 与生产构建通过。
+
+Current request (2026-09-28): 将游戏 Loading 图形替换为 `basketball_loading_optimized_mobile.html`，并检查手机端是否掉帧卡顿。
+
+### 移动端 Loading 动画优化 — complete
+
+- [x] 将五个独立 SVG 流光动画合并为一条渐变路径，保留启动页、赛季切换和存档读取三处复用。
+- [x] 页面进入后台时暂停动画，并为减少动态效果偏好保留静态降级。
+- [x] 390×844 手机视口画面确认无裁切；动画运行 10 秒仅比暂停多约 29ms 主线程任务、无 Layout 开销，未发现由该动画引起的卡顿风险。
+- [x] TypeScript、生产构建、差异检查、Playwright 页面检查和减少动态效果降级均通过；全量测试 434/436 通过，另两项既有交易/选秀固定种子用例在 30 秒超时。
+
 Current request (2026-09-26): 阵容轮换页不再横排展示五个首发位置。
 
 ### 轮换编辑器改为逐人调整 — complete

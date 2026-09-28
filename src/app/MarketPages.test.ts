@@ -5,7 +5,7 @@ import { getFreeAgents } from "../game/freeAgency/FreeAgencyService";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { createCareer } from "../game/season/career";
 import App from "./App";
-import { generateTradeOffers } from "../game/trade/TradeService";
+import { executeTradeCommand, generateTradeOffers } from "../game/trade/TradeService";
 import { freeAgencyOfferCommandId, TradeDesk } from "./Stage4Flow";
 import { getUpcomingFreeAgents, RegularSeasonFreeAgents } from "./RegularSeasonFreeAgents";
 import { MarketTradeRecords } from "./MarketTradeRecords";
@@ -132,6 +132,20 @@ describe("regular-season market", () => {
     expect(markup).not.toContain("⟳");
     expect(markup).not.toContain('aria-label="筛选交易报价球员"');
     expect(markup).not.toContain("重置");
+  });
+
+  it("reopens the trade tab without chips or stale quotes after clearing them", () => {
+    const state = createCareer("market-clear-chips");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const playerId = state.teams[state.userTeamId].playerIds[5];
+    const quoted = generateTradeOffers(state, playerId, false);
+    const cleared = executeTradeCommand(quoted, {
+      commandId: "clear-market-chips", type: "SET_TRADE_ASSETS", payload: { playerIds: [], pickIds: [] },
+    });
+    const markup = renderToStaticMarkup(createElement(TradeDesk, { state: cleared, busy: false, onTradeCommand: async () => {} }));
+    expect(markup).toContain("选择我方交易筹码");
+    expect(markup).toContain("0 个方案");
+    expect(markup).not.toContain('class="trade-console-offer-card"');
   });
 
   it("names the pick assets and statuses that can appear in generated offers", () => {

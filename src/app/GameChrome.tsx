@@ -8,6 +8,7 @@ import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import { humanizeUiText, phaseLabel } from "./uiText";
 import { UserFeedbackDialog } from "./UserFeedbackDialog";
 import { BasketballSeamLoader } from "./BasketballSeamLoader";
+import { formatBeijingSaveTime } from "./saveTime";
 
 export type SeasonTab = "home" | "manage" | "market" | "league" | "career";
 
@@ -138,13 +139,14 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
               <span className="save-slot-badge">最近存档</span>
               <b>{latestSave ? `槽位 0${latestSave.slotId} · ${latestSave.teamName}` : "还没有可读取的存档"}</b>
               <small>{latestSave ? `${summaryText(latestSave)} · ${phaseLabel(latestSave.phase)}` : "进行一次操作后会自动保存，或手动保存到槽位。"}</small>
+              {latestSave && <time className="save-slot-time" dateTime={latestSave.updatedAt}>最后保存：{formatBeijingSaveTime(latestSave.updatedAt)}（北京时间）</time>}
               {drawerTab === "load" && latestSave && <button className="save-drawer-primary" disabled={busy || loadingSlot !== null} onClick={() => void readSave("latest")}>{loadingSlot === "latest" ? "正在读取…" : "继续最近进度"}</button>}
             </article>
             {([1, 2, 3] as const).map((slot) => {
               const summary = summaryFor(slot);
               return <article className={`save-slot-card ${slot === activeSlot ? "featured" : ""}`} key={slot}>
               <div className="save-slot-card-heading"><b>▮ 槽位 0{slot}</b>{slot === activeSlot && <span>当前槽位</span>}</div>
-              <div className="save-slot-summary"><b>{summary?.teamName ?? "空存档"}</b><small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存，可将当前进度写入此位置"}</small></div>
+              <div className="save-slot-summary"><b>{summary?.teamName ?? "空存档"}</b><small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存，可将当前进度写入此位置"}</small>{summary && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}</div>
               {drawerTab === "save"
                 ? <button className="save-drawer-primary" disabled={busy} onClick={() => { onSlotChange?.(slot); void onSave?.(slot).then(() => setDrawerOpen(false)); }}>{slot === activeSlot ? "覆盖保存" : "存入此位置"}</button>
                 : <button className="save-drawer-dark" disabled={busy || loadingSlot !== null} onClick={() => { onSlotChange?.(slot); void readSave(slot); }}>{loadingSlot === slot ? "正在读取…" : "读取此存档"}</button>}

@@ -13,7 +13,7 @@ export function careerPostDraft(state: GameState, overview: CareerOverview, reco
   return {
     title: `${teamName}生涯战报：王朝积分${overview.dynastyScore}，${record}，${overview.championships}座总冠军`,
     content: [
-      `我在《篮球经理：扩军时代》执掌${teamName}，目前是${overview.level}，王朝积分${overview.dynastyScore}。`,
+      `我在《篮球经理：联盟扩军时代》执掌${teamName}，目前是${overview.level}，王朝积分${overview.dynastyScore}。`,
       `生涯常规赛：${record}；已完成${overview.seasons}个赛季。`,
       `球队荣誉：${overview.championships}座总冠军、${overview.conferenceTitles}次分区冠军；附加赛及季后赛累计${overview.playoffWins}胜。`,
       `最佳赛季：${bestSeason}。${latestMilestone ? `最新里程碑：${latestMilestone}。` : ""}`,

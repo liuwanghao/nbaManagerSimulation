@@ -16,13 +16,26 @@ import { lockOpeningRoster } from "../game/roster/RosterService";
 import App from "./App";
 import { BasketballSeamLoader } from "./BasketballSeamLoader";
 import { ExpansionCinematic } from "./ExpansionCinematic";
+import { GameChrome } from "./GameChrome";
 import { createBrowserPlatform } from "../platform/PlatformAdapter";
 import { SaveService, type SaveSlotSummary } from "../storage/SaveService";
 import { phaseLabel } from "./uiText";
+import { formatBeijingSaveTime } from "./saveTime";
 
 const CAREER_SEED = "expansion-era-demo";
 const launcherSaveService = typeof window === "undefined" ? null : new SaveService(createBrowserPlatform().storage);
 type LauncherLoading = "latest" | "slots" | `slot-${1 | 2 | 3}`;
+const SAVE_SLOT_PREVIEW: SaveSlotSummary = {
+  slotId: 1,
+  teamName: "西雅图海潮",
+  seasonId: "2026-27",
+  currentDate: "2026-10-18",
+  phase: "PRESEASON",
+  wins: 0,
+  losses: 0,
+  updatedAt: "2026-09-28T00:05:59.000Z",
+  revision: 3,
+};
 
 const fixtureMode = (): string | null => new URLSearchParams(window.location.search).get("fixture");
 
@@ -188,7 +201,9 @@ function createFixturePreview(): GameState {
 }
 
 export default function Bootstrap() {
-  const qaFixture = fixtureMode() !== null;
+  const loadingFixture = import.meta.env.DEV && fixtureMode() === "loading";
+  const saveSlotsFixture = import.meta.env.DEV && fixtureMode() === "save-slots";
+  const qaFixture = fixtureMode() !== null && !loadingFixture && !saveSlotsFixture;
   const introFixture = import.meta.env.DEV && fixtureMode() === "intro";
   const [screen, setScreen] = useState<"home" | "intro" | "game">(introFixture ? "intro" : qaFixture ? "game" : "home");
   const [initialState, setInitialState] = useState<GameState>(() => createFixturePreview());
@@ -200,7 +215,7 @@ export default function Bootstrap() {
   const [newGameMenuOpen, setNewGameMenuOpen] = useState(false);
   const [pendingOverwriteSlot, setPendingOverwriteSlot] = useState<1 | 2 | 3 | null>(null);
   const [homeSaveSlots, setHomeSaveSlots] = useState<SaveSlotSummary[]>([]);
-  const [launcherLoading, setLauncherLoading] = useState<LauncherLoading | null>(null);
+  const [launcherLoading, setLauncherLoading] = useState<LauncherLoading | null>(loadingFixture ? "latest" : null);
   const launcherLoadInFlight = useRef(false);
 
   const runLauncherLoad = async (kind: LauncherLoading, action: () => Promise<void>) => {
@@ -269,6 +284,10 @@ export default function Bootstrap() {
     setScreen("intro");
   };
 
+  if (saveSlotsFixture) {
+    return <main className="app-shell"><GameChrome phase="PRESEASON" initialDrawerTab="load" activeSlot={1} saveSlots={[SAVE_SLOT_PREVIEW]} onHome={() => undefined} /></main>;
+  }
+
   if (screen === "home") {
     const loadingLabel = launcherLoading === "latest" ? "正在继续上次进度…"
       : launcherLoading === "slots" ? "正在读取存档列表…"
@@ -300,6 +319,7 @@ export default function Bootstrap() {
               return <article key={slotId} className={summary ? "has-save" : "empty-save"}>
                 <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
                 <small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存任何生涯"}</small>
+                {summary && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}
                 <button disabled={!summary || Boolean(launcherLoading)} onClick={() => void loadFromHome(slotId)}>{summary ? "读取并继续" : "暂无存档"}</button>
               </article>;
             })}
@@ -316,6 +336,7 @@ export default function Bootstrap() {
               return <article key={slotId} className={`${summary ? "has-save" : "empty-save"}${needsConfirm ? " pending-overwrite" : ""}`}>
                 <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
                 <small className={needsConfirm ? "home-load-warning" : undefined}>{needsConfirm ? `将覆盖「${summary?.teamName}」的现有进度，确认后无法恢复。` : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "在此位置创建新的扩军生涯"}</small>
+                {summary && !needsConfirm && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}
                 {needsConfirm ? <div className="home-load-confirm-actions"><button className="home-load-cancel" onClick={() => setPendingOverwriteSlot(null)}>取消</button><button onClick={() => startNewGame(slotId)}>确认覆盖</button></div> : <button onClick={() => summary ? setPendingOverwriteSlot(slotId) : startNewGame(slotId)}>{summary ? "覆盖并开始" : "使用此槽位"}</button>}
               </article>;
             })}

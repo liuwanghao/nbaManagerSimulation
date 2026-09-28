@@ -607,9 +607,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const runManagerCommand = async (command: TradeCommand | RosterCommand) => {
     if (!saveService) return;
     const targetSlot = activeSlot;
-    setBusy(true); setStatus(command.type === "SET_ROTATION_PLAN" ? "正在校验并保存首发与轮换…" : "正在校验交易、名单与工资帽…");
+    setBusy(true); setStatus(command.type === "SET_ROTATION_PLAN" ? "正在校验并保存首发与轮换…" : command.type === "SET_TRADE_ASSETS" ? "正在保存交易筹码…" : "正在校验交易、名单与工资帽…");
     try {
-      let next = command.type === "GENERATE_TRADE_OFFERS" || command.type === "ACCEPT_TRADE_OFFER" ? executeTradeCommand(state, command) : executeRosterCommand(state, command);
+      let next = command.type === "SET_TRADE_ASSETS" || command.type === "GENERATE_TRADE_OFFERS" || command.type === "ACCEPT_TRADE_OFFER" ? executeTradeCommand(state, command) : executeRosterCommand(state, command);
       const manualEvent = command.type === "SET_ROTATION_PLAN" && manualInjuryEventId
         ? next.eventState.queue.find((event) => event.eventInstanceId === manualInjuryEventId && event.category === "INJURY") : undefined;
       if (manualEvent) next = executeEventCommand(next, {
@@ -618,10 +618,10 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       });
       await persistState(next, targetSlot); setState(next);
       if (manualEvent) setManualInjuryEventId(null);
-      setStatus(manualEvent ? "轮换已保存 · 可继续模拟" : command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "GENERATE_TRADE_OFFERS" ? `已生成 ${next.tradeDesk.offers.length} 个动态报价 · 适配度变化已计算` : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : command.type === "SET_ROTATION_PLAN" ? command.payload.plan.selectionMode === "AUTO" ? "已自动匹配并保存首发与轮换" : "已保存首发、替补顺位与目标分钟" : "经理事务已原子提交并自动保存");
+      setStatus(manualEvent ? "轮换已保存 · 可继续模拟" : command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "SET_TRADE_ASSETS" ? "交易筹码已保存" : command.type === "GENERATE_TRADE_OFFERS" ? `已生成 ${next.tradeDesk.offers.length} 个动态报价 · 适配度变化已计算` : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : command.type === "SET_ROTATION_PLAN" ? command.payload.plan.selectionMode === "AUTO" ? "已自动匹配并保存首发与轮换" : "已保存首发、替补顺位与目标分钟" : "经理事务已原子提交并自动保存");
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "操作失败，状态未改变");
-      if (command.type === "GENERATE_TRADE_OFFERS") throw error;
+      if (command.type === "SET_TRADE_ASSETS" || command.type === "GENERATE_TRADE_OFFERS") throw error;
     } finally { setBusy(false); }
   };
 

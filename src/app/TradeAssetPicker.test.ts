@@ -35,4 +35,14 @@ describe("shared trade asset picker", () => {
     expect(preDraft).toContain(`${state.league.seasonYear} 年次轮`);
     expect(preDraft).toContain(`${futurePick.year} 年`);
   });
+
+  it("allows confirming an empty selection so all chips can be removed", () => {
+    const state = createCareer("clear-trade-picker");
+    const roster = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
+    const markup = renderToStaticMarkup(createElement(TradeAssetPicker, {
+      state, roster, selectedPlayerIds: [], selectedPickIds: [], positionFilter: "ALL",
+      onPositionFilter: () => {}, onTogglePlayer: () => {}, onTogglePick: () => {}, onClose: () => {},
+    }));
+    expect(markup).toContain('class="trade-inquiry-submit" type="button">确认筹码</button>');
+  });
 });

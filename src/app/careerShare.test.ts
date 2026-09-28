@@ -16,6 +16,7 @@ describe("career post sharing", () => {
     expect(draft.title).toContain("3胜2负");
     expect(draft.title).toContain(`王朝积分${state.gmCareer.dynastyScore}`);
     expect(draft.content).toContain(`王朝积分${state.gmCareer.dynastyScore}`);
+    expect(draft.content).toContain("《篮球经理：联盟扩军时代》");
     expect(draft.content).toContain("最新里程碑：队史首胜");
     expect(draft.content).toContain(state.teams[state.userTeamId].fullName);
   });

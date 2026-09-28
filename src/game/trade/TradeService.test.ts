@@ -62,6 +62,21 @@ describe("TradeService", () => {
     expect(generateTradeOffers(first, playerId, true).tradeDesk.offers[0].inquiryCount).toBe(1);
   });
 
+  it("persists an empty asset selection and discards quotes tied to the removed chips", () => {
+    const state = tradeState();
+    const playerId = state.teams[state.userTeamId].playerIds[5];
+    const quoted = generateTradeOffers(state, playerId, false);
+    const cleared = executeTradeCommand(quoted, {
+      commandId: "clear-trade-assets", type: "SET_TRADE_ASSETS", payload: { playerIds: [], pickIds: [] },
+    });
+    expect(cleared.tradeDesk).toMatchObject({ selectedPlayerIds: [], selectedPickIds: [], offers: [] });
+    expect(quoted.tradeDesk.offers.length).toBeGreaterThan(0);
+    expect(executeTradeCommand(cleared, {
+      commandId: "clear-trade-assets", type: "SET_TRADE_ASSETS", payload: { playerIds: [], pickIds: [] },
+    })).toBe(cleared);
+    expect(() => generateTradeOffers(cleared, { playerIds: [], pickIds: [] }, false)).toThrow("TRADE_ASSET_REQUIRED");
+  });
+
   it("keeps legal quotes available across 20 fixed seeds after core-player protection", () => {
     for (let index = 0; index < 20; index += 1) {
       const state = createCareer(`core-quote-balance-${index}`);

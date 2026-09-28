@@ -8,6 +8,7 @@ import { validateSalaryMatch } from "./SalaryMatchValidator";
 import { reconcileRotationAfterRosterChange } from "../roster/RotationPlanService";
 
 export type TradeCommand =
+  | { commandId: string; type: "SET_TRADE_ASSETS"; payload: TradeSelection }
   | { commandId: string; type: "GENERATE_TRADE_OFFERS"; payload: ({ playerId: string; refresh: boolean } | { playerIds: string[]; pickIds: string[]; refresh: boolean }) }
   | { commandId: string; type: "ACCEPT_TRADE_OFFER"; payload: { offerId: string } };
 
@@ -68,6 +69,29 @@ function validatePickRule(state: GameState, movingPickIds: string[], fromTeamId:
 }
 
 function hasDuplicate(ids: string[]): boolean { return new Set(ids).size !== ids.length; }
+
+function validatedTradeSelection(input: GameState, selection: TradeSelection, requireAssets: boolean): TradeSelection {
+  const playerIds = [...selection.playerIds].sort();
+  const pickIds = [...selection.pickIds].sort();
+  if (requireAssets && !playerIds.length && !pickIds.length) throw new Error("TRADE_ASSET_REQUIRED");
+  if (hasDuplicate(playerIds) || hasDuplicate(pickIds)) throw new Error("DUPLICATE_TRADE_ASSET");
+  for (const id of playerIds) {
+    const player = input.players[id];
+    if (!player || !input.teams[input.userTeamId].playerIds.includes(id) || player.teamId !== input.userTeamId) throw new Error("PLAYER_NOT_OWNED");
+    if (player.contract.status !== "STANDARD" || player.contract.yearsRemaining <= 0 || player.contract.contractType === "EMERGENCY") throw new Error("PLAYER_NOT_TRADEABLE");
+  }
+  validatePickRule(input, pickIds, input.userTeamId);
+  return { playerIds, pickIds };
+}
+
+export function setTradeAssets(input: GameState, selection: TradeSelection): GameState {
+  assertPhaseAllowed(input, "Set trade assets", TRADE_PHASES);
+  if (!isTradeWindowOpen(input)) throw new Error("TRADE_PHASE_CLOSED");
+  const { playerIds, pickIds } = validatedTradeSelection(input, selection, false);
+  const state = structuredClone(input);
+  state.tradeDesk = { selectedPlayerId: playerIds[0], selectedPlayerIds: playerIds, selectedPickIds: pickIds, offers: [] };
+  return state;
+}
 
 function ownedPicksAfterTrade(state: GameState, trade: TradePackage, teamId: string): DraftPickAsset[] {
   const outgoing = new Set(teamId === trade.leftTeamId ? trade.leftPickIds : trade.rightPickIds);
@@ -163,18 +187,9 @@ function candidatePlayerBundles(players: Player[], maxSize: number): string[][] 
 export function generateTradeOffers(input: GameState, selectionOrPlayerId: string | TradeSelection, refresh: boolean): GameState {
   assertPhaseAllowed(input, "Generate trade offers", TRADE_PHASES);
   if (!isTradeWindowOpen(input)) throw new Error("TRADE_PHASE_CLOSED");
-  const selection = typeof selectionOrPlayerId === "string"
+  const proposedSelection = typeof selectionOrPlayerId === "string"
     ? { playerIds: [selectionOrPlayerId], pickIds: [] } : selectionOrPlayerId;
-  const playerIds = [...selection.playerIds].sort();
-  const pickIds = [...selection.pickIds].sort();
-  if (!playerIds.length && !pickIds.length) throw new Error("TRADE_ASSET_REQUIRED");
-  if (hasDuplicate(playerIds) || hasDuplicate(pickIds)) throw new Error("DUPLICATE_TRADE_ASSET");
-  for (const id of playerIds) {
-    const player = input.players[id];
-    if (!player || !input.teams[input.userTeamId].playerIds.includes(id) || player.teamId !== input.userTeamId) throw new Error("PLAYER_NOT_OWNED");
-    if (player.contract.status !== "STANDARD" || player.contract.yearsRemaining <= 0 || player.contract.contractType === "EMERGENCY") throw new Error("PLAYER_NOT_TRADEABLE");
-  }
-  validatePickRule(input, pickIds, input.userTeamId);
+  const { playerIds, pickIds } = validatedTradeSelection(input, proposedSelection, true);
   const state = structuredClone(input);
   const pickValues = new Map<string, number>();
   const pickValue = (id: string): number => {
@@ -369,9 +384,11 @@ export function executeTradeCommand(state: GameState, command: TradeCommand): Ga
   const payloadHash = stableHash(command.type, command.payload);
   const receipt = state.commandReceipts[command.commandId];
   if (receipt) { if (receipt.payloadHash !== payloadHash) throw new Error("Command ID 已被不同 Payload 使用"); return state; }
-  const next = command.type === "GENERATE_TRADE_OFFERS"
-    ? generateTradeOffers(state, "playerId" in command.payload ? command.payload.playerId : command.payload, command.payload.refresh)
-    : acceptTradeOffer(state, command.payload.offerId);
+  const next = command.type === "SET_TRADE_ASSETS"
+    ? setTradeAssets(state, command.payload)
+    : command.type === "GENERATE_TRADE_OFFERS"
+      ? generateTradeOffers(state, "playerId" in command.payload ? command.payload.playerId : command.payload, command.payload.refresh)
+      : acceptTradeOffer(state, command.payload.offerId);
   next.commandReceipts[command.commandId] = { payloadHash };
   return next;
 }

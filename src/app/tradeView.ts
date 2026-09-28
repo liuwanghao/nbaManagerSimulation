@@ -20,6 +20,11 @@ export function tradeInquiryCommandId(state: GameState, playerIdOrIds: string | 
   return `trade-query-${state.league.seasonId}-${assetKey}-${Object.keys(state.commandReceipts).length}`;
 }
 
+export function tradeSelectionCommandId(state: GameState, playerIds: string[], pickIds: string[]): string {
+  const assetKey = [...playerIds.map((id) => `p:${id}`), ...pickIds.map((id) => `d:${id}`)].sort().join("-") || "none";
+  return `trade-select-${state.league.seasonId}-${assetKey}-${Object.keys(state.commandReceipts).length}`;
+}
+
 export function tradePickLabel(state: GameState, pickId: string): string {
   const pick = state.draftPicks[pickId];
   if (!pick) return `选秀权 ${pickId}`;

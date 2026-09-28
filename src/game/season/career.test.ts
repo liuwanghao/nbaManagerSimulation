@@ -45,6 +45,27 @@ describe("season loop", () => {
     expect(nextSeason.history.seasons[0].regularSeasonResults).toHaveLength(1312);
     expect(Object.keys(nextSeason.history.seasons[0].userRegularGameDetails)).toHaveLength(82);
     expect(Object.keys(nextSeason.history.seasons[0].postseasonGameDetails).length).toBeGreaterThan(50);
+    const playoffGames = Object.values(nextSeason.history.seasons[0].postseasonGameDetails)
+      .filter((game) => Number(game.date.slice(5)) >= 10);
+    const seriesByPair = new Map<string, typeof playoffGames>();
+    for (const game of playoffGames) {
+      const pair = [game.homeTeamId, game.awayTeamId].sort().join(":");
+      const series = seriesByPair.get(pair) ?? [];
+      series.push(game);
+      seriesByPair.set(pair, series);
+    }
+    expect(seriesByPair.size).toBe(15);
+    for (const series of seriesByPair.values()) {
+      const ordered = series.sort((left, right) => Number(left.date.slice(5)) - Number(right.date.slice(5)));
+      expect(ordered.length).toBeGreaterThanOrEqual(4);
+      expect(ordered.length).toBeLessThanOrEqual(7);
+      const wins = new Map<string, number>();
+      for (const [index, game] of ordered.entries()) {
+        expect(Math.max(...wins.values(), 0), `series continued after four wins at game ${index + 1}`).toBeLessThan(4);
+        wins.set(game.winnerTeamId, (wins.get(game.winnerTeamId) ?? 0) + 1);
+      }
+      expect([...wins.values()].filter((count) => count === 4)).toHaveLength(1);
+    }
     expect(nextSeason.history.seasons[0].regularSeasonResults.every((game) => !game.homeBoxScore && !game.awayBoxScore)).toBe(true);
     expect(Object.values(nextSeason.players).some((player) => (player.career?.lastSeasonStats?.games ?? 0) === 82)).toBe(true);
     expect(Object.values(nextSeason.players).every((player) => player.postseasonStats?.games === 0)).toBe(true);

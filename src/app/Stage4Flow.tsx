@@ -24,7 +24,7 @@ import { TeamRosterPanel } from "./TeamRosterPanel";
 import type { SaveSlotSummary } from "../storage/SaveService";
 import { EXPANSION_POSITION_FILTERS, getCurrentRosterPositionCounts, getCurrentRosterPositionSummary, getCurrentTeamId, getCurrentTeamRoster, getExpansionDraftRecap, matchesExpansionPosition, type ExpansionPositionFilter } from "./expansionDraftView";
 import { PlayerListFilters, type PlayerFilterSortOption } from "./PlayerListFilters";
-import { tradeInquiryCommandId, tradePickLabel, type TradeAssetPosition } from "./tradeView";
+import { tradeInquiryCommandId, tradePickLabel, tradeSelectionCommandId, type TradeAssetPosition } from "./tradeView";
 import { TradeAssetPicker } from "./TradeAssetPicker";
 import { getRewardVideoBridge, runRewardedAction, watchRewardVideo } from "./rewardVideo";
 import { FreeAgentOfferDialog } from "./FreeAgentOfferDialog";
@@ -454,6 +454,9 @@ export function TradeDesk({ state, busy, onTradeCommand, closeMarketDisabled = f
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const refreshInProgress = useRef(false);
+  const assetSaveInProgress = useRef(false);
+  const [assetSaving, setAssetSaving] = useState(false);
+  const [assetSaveError, setAssetSaveError] = useState<string | null>(null);
   const [draftPlayerIds, setDraftPlayerIds] = useState<string[]>(() => state.tradeDesk.selectedPlayerIds ?? (state.tradeDesk.selectedPlayerId ? [state.tradeDesk.selectedPlayerId] : []));
   const [draftPickIds, setDraftPickIds] = useState<string[]>(() => state.tradeDesk.selectedPickIds ?? []);
   useEffect(() => {
@@ -467,6 +470,24 @@ export function TradeDesk({ state, busy, onTradeCommand, closeMarketDisabled = f
   const selectedAvailable = selectedPlayerIds.some((id) => roster.some((player) => player.id === id)) || selectedPickIds.some((id) => state.draftPicks[id]?.ownerTeamId === state.userTeamId);
   const displayedPlayer = inquiryPlayerId ? state.players[inquiryPlayerId] : state.players[draftPlayerIds[0]];
   const selectionChanged = [...draftPlayerIds].sort().join("|") !== [...selectedPlayerIds].sort().join("|") || [...draftPickIds].sort().join("|") !== [...selectedPickIds].sort().join("|");
+  const closeAssetPicker = async () => {
+    if (assetSaveInProgress.current || busy) return;
+    if (selectionChanged) {
+      assetSaveInProgress.current = true;
+      setAssetSaving(true);
+      setAssetSaveError(null);
+      try {
+        await onTradeCommand({ commandId: tradeSelectionCommandId(state, draftPlayerIds, draftPickIds), type: "SET_TRADE_ASSETS", payload: { playerIds: draftPlayerIds, pickIds: draftPickIds } });
+      } catch (error) {
+        setAssetSaveError(error instanceof Error ? humanizeUiText(error.message) : "交易筹码保存失败，请重试。");
+        return;
+      } finally {
+        assetSaveInProgress.current = false;
+        setAssetSaving(false);
+      }
+    }
+    setAssetDrawerOpen(false);
+  };
   const requestOffers = (playerIds: string[], pickIds: string[], refresh: boolean) => onTradeCommand({ commandId: tradeInquiryCommandId(state, playerIds, pickIds), type: "GENERATE_TRADE_OFFERS", payload: { playerIds, pickIds, refresh } });
   const selectAssets = async () => {
     if (inquiryInProgress.current || busy) return;
@@ -526,10 +547,11 @@ export function TradeDesk({ state, busy, onTradeCommand, closeMarketDisabled = f
     </div>
     {assetDrawerOpen && <TradeAssetPicker
       state={state} roster={roster} selectedPlayerIds={draftPlayerIds} selectedPickIds={draftPickIds}
+      busy={assetSaving} error={assetSaveError}
       positionFilter={assetPositionFilter} onPositionFilter={setAssetPositionFilter}
       onTogglePlayer={(id) => setDraftPlayerIds((ids) => ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id])}
       onTogglePick={(id) => setDraftPickIds((ids) => ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id])}
-      onClose={() => setAssetDrawerOpen(false)}
+      onClose={() => void closeAssetPicker()}
     />}
     {detail && <TradeOfferDetail
       state={state} offer={detail.offer} evaluation={detail.evaluation} busy={busy}
