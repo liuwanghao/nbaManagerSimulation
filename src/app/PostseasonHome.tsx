@@ -1,88 +1,102 @@
+import { useEffect, useRef, useState } from "react";
 import type { GameState, ScheduleGame } from "../game/state/types";
-import { conferenceLabel } from "./uiText";
-import { postseasonBracket, type PostseasonSeriesView } from "./seasonResultsView";
+import { isUserPostseasonEliminated } from "../game/season/career";
+import { calculateTeamOverall } from "../game/team/TeamRatingService";
+import { nextPlayoffUserGame, regularCoachingView, type RegularPregameSelection } from "../game/coaching/CoachingService";
+import { RegularCoachingPanel } from "./CoachingPanels";
+import { coachingPregameRewardKey, hasConfirmedCoachingReward } from "./coachingReward";
+import { PostseasonBracketView } from "./SeasonResultsPanel";
+import { SeasonMatchupTeamButton, TeamLogo } from "./SeasonMatchupTeamButton";
 
 const roundName = { PLAY_IN: "附加赛", R1: "首轮", SF: "分区半决赛", CF: "分区决赛", FINALS: "总决赛" } as const;
 
-function SeriesCard({ state, series }: { state: GameState; series: PostseasonSeriesView }) {
-  const line = (teamId: string | undefined, placeholder: string | undefined, wins: number | undefined) =>
-    <span className={teamId && series.winner === teamId ? "winner" : undefined}>
-      <b>{teamId ? state.teams[teamId]?.name ?? teamId : placeholder ?? "待定"}</b>
-      {wins !== undefined && <strong>{wins}</strong>}
-    </span>;
-  return <div className="postseason-bracket-series">{line(series.teamA, series.placeholderA, series.winsA)}{line(series.teamB, series.placeholderB, series.winsB)}</div>;
-}
-
 function gameRound(state: GameState, game: ScheduleGame): string {
-  const series = state.postseason?.series.find((entry) =>
-    [entry.teamAId, entry.teamBId].includes(game.homeTeamId)
-    && [entry.teamAId, entry.teamBId].includes(game.awayTeamId));
+  const series = state.postseason?.series.find((entry) => entry.gameIds.includes(game.id));
   return series ? roundName[series.round] : "季后赛";
 }
 
-export function PostseasonHome({ state, busy, onAdvance, onAdvanceFive, onSettle, onOpenGame }: {
+export function PostseasonHome({ state, busy, onAdvance, onAdvanceRound, onSettle, onOpenGame, onOpenTeam, onOpenStarters, onUnlockVideo, coachingMessage }: {
   state: GameState;
   busy: boolean;
-  onAdvance: () => void;
-  onAdvanceFive: () => void;
+  onAdvance: (selection: RegularPregameSelection | null) => void;
+  onAdvanceRound: (selection: RegularPregameSelection | null) => void;
   onSettle: () => void;
   onOpenGame: (gameId: string) => void;
+  onOpenTeam: (teamId: string) => void;
+  onOpenStarters: () => void;
+  onUnlockVideo: (gameId: string) => Promise<void>;
+  coachingMessage?: string | null;
 }) {
+  const [pregameSelection, setPregameSelection] = useState<RegularPregameSelection | null>(null);
+  const attemptedAdvance = useRef<GameState | null>(null);
   const postseason = state.postseason;
+  const nextUserGame = nextPlayoffUserGame(state)?.game;
+  const userEliminated = isUserPostseasonEliminated(state);
+  useEffect(() => {
+    if (!postseason || nextUserGame || userEliminated || busy || attemptedAdvance.current === state) return;
+    attemptedAdvance.current = state;
+    onAdvance(null);
+  }, [state, postseason, nextUserGame, userEliminated, busy, onAdvance]);
   if (!postseason) return null;
-  const games = [...postseason.schedule].sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id));
-  const upcoming = games.filter((game) => game.status === "SCHEDULED");
-  const visibleGames = [...upcoming, ...games.filter((game) => game.status === "FINAL").reverse()];
-  const nextUserGame = upcoming.find((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId);
-  const nextGame = nextUserGame ?? upcoming[0];
-  const bracket = postseasonBracket(state);
-  const played = games.filter((game) => game.status === "FINAL").length;
-  const userPlayed = games.filter((game) => game.status === "FINAL" && (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId));
+  const completed = [...postseason.schedule]
+    .filter((game) => game.status === "FINAL")
+    .sort((left, right) => right.dateIndex - left.dateIndex || right.id.localeCompare(left.id));
+  const userPlayed = completed.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId);
   const userWins = userPlayed.filter((game) => game.winnerTeamId === state.userTeamId).length;
-  const userEliminated = postseason.series.some((series) =>
-    series.winnerTeamId && series.winnerTeamId !== state.userTeamId
-    && (series.teamAId === state.userTeamId || series.teamBId === state.userTeamId)
-    && series.id !== `${state.teams[state.userTeamId].conference}-PLAYIN-A`);
-  const nextOpponentId = nextGame && (nextGame.homeTeamId === state.userTeamId || nextGame.awayTeamId === state.userTeamId)
-    ? nextGame.homeTeamId === state.userTeamId ? nextGame.awayTeamId : nextGame.homeTeamId
-    : undefined;
+  const pregameView = regularCoachingView(state);
+  const currentSelection = pregameSelection?.gameId === nextUserGame?.id ? pregameSelection : null;
+  const pregameFocus = currentSelection?.choice === "NONE" ? null : currentSelection?.choice ?? pregameView?.selected?.focus ?? null;
+  const pregameNeedsVideo = Boolean(nextUserGame && pregameFocus && !pregameView?.videoUnlocked);
+  const pregameSummary = currentSelection?.choice === "NONE" ? "不备战 · 普通模拟"
+    : pregameFocus ? `${pregameFocus === "OFFENSE" ? "进攻" : "防守"}${pregameNeedsVideo ? "未解锁 · 普通模拟" : "已解锁 · 开赛生效"}`
+    : pregameView?.videoUnlocked ? "视频已解锁 · 可选方向" : "攻防备战 · 点击展开";
+  const rewardKey = nextUserGame ? coachingPregameRewardKey(state, nextUserGame.id) : null;
+  const postseasonRecord = (teamId: string) => {
+    const played = completed.filter((game) => game.homeTeamId === teamId || game.awayTeamId === teamId);
+    const wins = played.filter((game) => game.winnerTeamId === teamId).length;
+    return `季后赛 ${wins}胜${played.length - wins}负`;
+  };
 
   return <section className="postseason-home" aria-label="季后赛赛季中心">
     <article className="season-command-summary">
-      <div><small>{state.league.currentPhase === "PLAY_IN" ? "附加赛" : "季后赛"} · {state.league.seasonId}</small><b>{state.teams[state.userTeamId].fullName}</b><span>本队季后赛 {userWins} 胜 {userPlayed.length - userWins} 负 · 联盟已完成 {played} 场</span></div>
+      <div><small>{state.league.seasonId} · {state.league.currentPhase === "PLAY_IN" ? "附加赛" : "季后赛"}</small><b>{state.teams[state.userTeamId].fullName}</b><span>季后赛战况</span></div>
+      <div className="postseason-record"><strong>{userWins}<i>胜</i> {userPlayed.length - userWins}<i>负</i></strong><small>联盟已赛 {completed.length} 场</small></div>
     </article>
 
     <article className="season-command-matchup postseason-next-game">
-      <header><div><small>下一场对阵</small><b>{nextGame ? `${gameRound(state, nextGame)} · ${nextGame.date}` : "等待下一轮赛程"}</b></div><span>{state.league.currentPhase === "PLAY_IN" ? "PLAY-IN" : "PLAYOFFS"}</span></header>
-      {nextGame ? <>
-        <div className="postseason-next-matchup"><span>{state.teams[nextGame.awayTeamId]?.fullName}</span><strong>VS</strong><span>{state.teams[nextGame.homeTeamId]?.fullName}</span></div>
-        <p>{nextOpponentId ? `本队对阵 ${state.teams[nextOpponentId]?.fullName} · ${nextGame.homeTeamId === state.userTeamId ? "主场" : "客场"}` : userEliminated ? "本队已结束季后赛征程，可继续观看其余比赛。" : "先推进其他球队的比赛，确定本队下一场对手。"}</p>
-        <button type="button" className="season-command-primary" data-testid="simulate-postseason-next" disabled={busy} onClick={onAdvance}>{userEliminated ? "推进下一场比赛" : "模拟下一场比赛"}</button>
-        <div className="season-command-secondary-actions"><button type="button" disabled={busy} onClick={onAdvanceFive}>连续模拟 5 场</button></div>
-      </> : <div className="season-command-complete"><b>本轮赛程已完成</b><p>继续推进可确定下一轮对阵。</p><button type="button" disabled={busy} onClick={onAdvance}>生成下一轮赛程</button></div>}
+      <header><div><small>{nextUserGame ? "本队下一场对阵" : userEliminated ? "本队季后赛" : "赛程推进中"}</small><b>{nextUserGame ? `${gameRound(state, nextUserGame)} · ${nextUserGame.date} · ${nextUserGame.homeTeamId === state.userTeamId ? "主场" : "客场"}` : userEliminated ? "本队赛程结束" : "正在安排本队赛程"}</b></div><span>{state.league.currentPhase === "PLAY_IN" ? "PLAY-IN" : "PLAYOFFS"}</span></header>
+      {nextUserGame ? <>
+        <div className="season-command-versus">
+          <SeasonMatchupTeamButton team={state.teams[nextUserGame.awayTeamId]} venue="away" meta={postseasonRecord(nextUserGame.awayTeamId)} overall={calculateTeamOverall(state, nextUserGame.awayTeamId).overall} onOpen={() => onOpenTeam(nextUserGame.awayTeamId)} />
+          <div><strong>VS</strong><small>客场 · 主场</small><button type="button" className="season-command-starters-trigger" onClick={onOpenStarters}>首发对位</button></div>
+          <SeasonMatchupTeamButton team={state.teams[nextUserGame.homeTeamId]} venue="home" meta={postseasonRecord(nextUserGame.homeTeamId)} overall={calculateTeamOverall(state, nextUserGame.homeTeamId).overall} onOpen={() => onOpenTeam(nextUserGame.homeTeamId)} />
+        </div>
+        <p>本队下一场比赛 · 备战仅对这一场生效。</p>
+        <details className="season-command-pregame postseason-preparation" key={nextUserGame.id}>
+          <summary><span>赛前专项备战</span><small>{pregameSummary}</small><b aria-hidden="true">⌄</b></summary>
+          <RegularCoachingPanel state={state} busy={busy} selection={currentSelection} onSelectionChange={setPregameSelection} onUnlockVideo={onUnlockVideo} rewardConfirmed={rewardKey ? hasConfirmedCoachingReward(rewardKey) : false} message={coachingMessage} />
+        </details>
+        <button type="button" className="season-command-primary" data-testid="simulate-postseason-next" disabled={busy} onClick={() => onAdvance(currentSelection)}>{pregameNeedsVideo ? "普通模拟下一场比赛" : "模拟下一场比赛"}</button>
+        <div className="season-command-secondary-actions"><button type="button" disabled={busy} onClick={() => onAdvanceRound(currentSelection)}>模拟整轮比赛</button></div>
+      </> : userEliminated ? <div className="postseason-finished-team"><TeamLogo team={state.teams[state.userTeamId]} /><div><b>{state.teams[state.userTeamId].fullName}</b><small>本队季后赛 {userWins} 胜 {userPlayed.length - userWins} 负 · 已结束</small></div></div>
+        : <div className="postseason-seeking-next" role="status"><span className="pulse-dot active" /><div><b>正在推进其他球队比赛</b><small>排出本队下一场后即可逐场备战</small></div></div>}
       {userEliminated && <button type="button" className="postseason-settle-action" disabled={busy} onClick={onSettle}>结算剩余季后赛</button>}
     </article>
 
-    <section className="postseason-schedule" aria-label="季后赛对阵赛程">
-      <header><div><small>PLAYOFF SCHEDULE</small><h2>季后赛对阵赛程</h2></div><span>{played} / {games.length} 场</span></header>
-      <ol>{visibleGames.map((game) => {
-        const mine = game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId;
-        return <li key={game.id} className={mine ? "mine" : undefined}>
-          <div><small>{gameRound(state, game)} · {game.date}</small><b>{state.teams[game.awayTeamId]?.name} <i>vs</i> {state.teams[game.homeTeamId]?.name}</b></div>
-          {game.status === "FINAL" ? <><strong>{game.awayScore} : {game.homeScore}</strong>{mine && <button type="button" onClick={() => onOpenGame(game.id)}>查看详情</button>}</> : <span>未开赛</span>}
-        </li>;
-      })}</ol>
+    <section className="postseason-results" aria-label="本队季后赛比赛结果">
+      <header><div><small>MY RESULTS</small><h2>本队比赛结果</h2></div><span>已赛 {userPlayed.length} 场</span></header>
+      {userPlayed.length > 0 ? <ol>{userPlayed.map((game) =>
+        <li key={game.id}>
+          <div className="postseason-results-game"><small>{gameRound(state, game)} · {game.date}</small><b>{state.teams[game.awayTeamId]?.name} <i>vs</i> {state.teams[game.homeTeamId]?.name}</b></div>
+          <strong className={game.winnerTeamId === state.userTeamId ? "win" : "loss"}>{game.winnerTeamId === state.userTeamId ? "胜" : "负"} · {game.awayScore} : {game.homeScore}</strong>
+          <button type="button" onClick={() => onOpenGame(game.id)}>查看详情</button>
+        </li>
+      )}</ol> : <p className="postseason-results-empty">本队尚无比赛结果</p>}
     </section>
 
-    <section className="postseason-bracket" aria-label="季后赛对阵图">
-      <header><div><small>PLAYOFF BRACKET</small><h2>季后赛对阵图</h2></div><span>实时更新</span></header>
-      {bracket.conferences.map((conference) => <div className="postseason-bracket-conference" key={conference.conference}>
-        <h3>{conferenceLabel(conference.conference)}</h3>
-        <div className="postseason-bracket-rounds">{([
-          ["附加赛", conference.playIn], ["首轮", conference.firstRound], ["半决赛", conference.semifinals], ["分区决赛", conference.final],
-        ] as const).map(([label, series]) => <div key={label}><h4>{label}</h4>{series.map((entry, index) => <SeriesCard key={index} state={state} series={entry} />)}</div>)}</div>
-      </div>)}
-      <div className="postseason-bracket-finals"><h3>总决赛</h3><SeriesCard state={state} series={bracket.finals[0] ?? { placeholderA: "东部冠军", placeholderB: "西部冠军" }} /></div>
-    </section>
+    <details className="postseason-bracket-disclosure">
+      <summary><span><small>PLAYOFF BRACKET</small><b>季后赛对阵图</b></span><em>展开查看</em><i aria-hidden="true">⌄</i></summary>
+      <PostseasonBracketView state={state} />
+    </details>
   </section>;
 }

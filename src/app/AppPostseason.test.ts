@@ -1,7 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { createCareer, enterPostseason } from "../game/season/career";
+import { createCareer, enterPostseason, simulatePostseasonRound, simulatePostseasonToNextUserGame } from "../game/season/career";
+import { executeCoachingCommand, nextPlayoffUserGame, nextRegularUserGame } from "../game/coaching/CoachingService";
 import { rolloverLeagueYear } from "../game/contracts/ContractLifecycleService";
 import { stableHash } from "../game/random/hash";
 import { createRng } from "../game/random/xoshiro";
@@ -9,6 +10,27 @@ import { playerNameZh } from "./playerNameZh";
 import App from "./App";
 
 describe("season home after postseason", () => {
+  it("keeps optional pregame preparation inside the next matchup without a one-day action", () => {
+    const markup = renderToStaticMarkup(createElement(App, { initialState: createCareer("pregame-matchup-layout") }));
+    const matchup = markup.indexOf('class="season-command-matchup"');
+    const preparation = markup.indexOf('class="season-command-pregame"', matchup);
+    const nextGame = markup.indexOf('data-testid="simulate-next-game"', preparation);
+    expect(matchup).toBeGreaterThanOrEqual(0);
+    expect(preparation).toBeGreaterThan(matchup);
+    expect(nextGame).toBeGreaterThan(preparation);
+    expect(markup).toContain("攻防备战 · 点击展开");
+    expect(markup).not.toContain("推进 1 天");
+  });
+
+  it("labels an unconfirmed preparation as an ordinary next-game simulation", () => {
+    const state = createCareer("pregame-unconfirmed-simulation-label");
+    const game = nextRegularUserGame(state)!;
+    const planned = executeCoachingCommand(state, { type: "SET_REGULAR_PLAN", gameId: game.id, focus: "OFFENSE" });
+    const markup = renderToStaticMarkup(createElement(App, { initialState: planned }));
+    expect(markup).toContain("进攻未解锁 · 普通模拟");
+    expect(markup).toContain("普通模拟下一场比赛");
+  });
+
   it("offers postseason settlement when regular-season games are complete", () => {
     const state = createCareer("postseason-home-ready");
     state.schedule.forEach((game) => { game.status = "FINAL"; });
@@ -30,7 +52,7 @@ describe("season home after postseason", () => {
     expect(markup).not.toContain("class=\"season-results-bracket\"");
   });
 
-  it("offers entry and shows a live postseason schedule and bracket for a qualified team", () => {
+  it("offers entry and shows only the user's postseason results alongside the bracket", () => {
     const state = createCareer("postseason-home-qualified");
     state.schedule.forEach((game) => { game.status = "FINAL"; });
     state.standings[state.userTeamId].wins = 82;
@@ -44,10 +66,93 @@ describe("season home after postseason", () => {
     expect(entered.history.seasonAwards.some((entry) => entry.seasonId === entered.league.seasonId)).toBe(true);
     const markup = renderToStaticMarkup(createElement(App, { initialState: entered }));
     expect(markup).toContain('aria-label="季后赛赛季中心"');
-    expect(markup).toContain('aria-label="季后赛对阵赛程"');
+    expect(markup).toContain('aria-label="本队季后赛比赛结果"');
+    expect(markup).toContain("本队尚无比赛结果");
+    expect(markup).not.toContain("季后赛对阵赛程");
     expect(markup).toContain('aria-label="季后赛对阵图"');
-    expect(markup).toContain("模拟下一场比赛");
+    expect(markup).toContain('class="postseason-bracket-disclosure"');
+    expect(markup).toContain('role="tablist" aria-label="筛选季后赛对阵"');
+    expect(markup).not.toContain("季后赛针对性布置");
+    expect(markup).toContain("正在推进其他球队比赛");
+    expect(markup).not.toContain("对手待定");
     expect(markup).not.toContain("结算剩余季后赛");
+    const matchup = markup.match(/<article class="season-command-matchup postseason-next-game">[\s\S]*?<\/article>/u)?.[0];
+    const otherGame = entered.postseason!.schedule[0];
+    expect(matchup).not.toContain(entered.teams[otherGame.homeTeamId].fullName);
+    expect(matchup).not.toContain(entered.teams[otherGame.awayTeamId].fullName);
+    const ready = simulatePostseasonToNextUserGame(entered);
+    const readyMarkup = renderToStaticMarkup(createElement(App, { initialState: ready }));
+    expect(readyMarkup).toContain("模拟整轮比赛");
+    expect(readyMarkup).toContain(ready.teams[ready.userTeamId].fullName);
+    expect(readyMarkup).not.toContain("对手待定");
+
+    const played = simulatePostseasonToNextUserGame(ready);
+    const playedMarkup = renderToStaticMarkup(createElement(App, { initialState: played }));
+    const results = playedMarkup.match(/<section class="postseason-results"[\s\S]*?<\/section>/u)?.[0] ?? "";
+    const userGames = played.postseason!.schedule.filter((game) => game.status === "FINAL" && (game.homeTeamId === played.userTeamId || game.awayTeamId === played.userTeamId));
+    expect(results.match(/<li>/gu)).toHaveLength(userGames.length);
+    expect(results).toContain("查看详情");
+    expect(results).not.toContain("未开赛");
+    expect(results).not.toContain("本队尚无比赛结果");
+  });
+
+  it("stops whole-round simulation before the next playoff round", () => {
+    const state = createCareer("postseason-whole-round");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].wins = 82;
+    const entered = enterPostseason(state);
+    const afterPlayIn = simulatePostseasonRound(entered);
+    expect(afterPlayIn.postseason?.schedule.some((game) => game.status === "FINAL")).toBe(true);
+    expect(afterPlayIn.postseason?.series.filter((series) => series.round === "R1").every((series) => series.winsA === 0 && series.winsB === 0)).toBe(true);
+    expect(afterPlayIn.postseason?.schedule.some((game) => game.status === "SCHEDULED")).toBe(true);
+  });
+
+  it("waits for the user's next matchup before simulating it", () => {
+    const state = createCareer("postseason-next-user-decision");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].wins = 82;
+    const entered = enterPostseason(state);
+    expect(nextPlayoffUserGame(entered)).toBeUndefined();
+    const ready = simulatePostseasonToNextUserGame(entered);
+    const target = nextPlayoffUserGame(ready)?.game;
+    expect(target?.status).toBe("SCHEDULED");
+    const played = simulatePostseasonToNextUserGame(ready);
+    expect(played.postseason?.schedule.find((game) => game.id === target?.id)?.status).toBe("FINAL");
+    expect(nextPlayoffUserGame(played)?.game.status).toBe("SCHEDULED");
+  });
+
+  it("shows per-game preparation when the next postseason matchup is the user's", () => {
+    const state = createCareer("postseason-user-pregame");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].wins = 82;
+    const entered = enterPostseason(state);
+    const later = entered.postseason!.schedule.at(-1)!;
+    const series = entered.postseason!.series.find((entry) => entry.gameIds.includes(later.id))!;
+    later.homeTeamId = entered.userTeamId;
+    series.teamAId = entered.userTeamId;
+    const markup = renderToStaticMarkup(createElement(App, { initialState: entered }));
+    const matchup = markup.match(/<article class="season-command-matchup postseason-next-game">[\s\S]*?<\/article>/u)?.[0];
+    expect(matchup).toContain(entered.teams[entered.userTeamId].fullName);
+    expect(matchup).toContain(entered.teams[later.awayTeamId].fullName);
+    expect(markup).toContain('class="season-command-pregame postseason-preparation"');
+    expect(markup).toContain('aria-label="逐场专项备战"');
+    expect(markup).toContain("季后赛 0胜0负");
+    expect(markup).not.toContain("季后赛针对性布置");
+  });
+
+  it("shows the user's finished journey instead of another team's next game", () => {
+    const state = createCareer("postseason-user-eliminated-home");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].wins = 82;
+    const entered = enterPostseason(state);
+    const opponent = Object.values(entered.teams).find((team) => team.id !== entered.userTeamId && team.conference === entered.teams[entered.userTeamId].conference)!;
+    entered.postseason!.series.push({ id: "USER-OUT", conference: opponent.conference, round: "R1", teamAId: entered.userTeamId, teamBId: opponent.id, winsA: 0, winsB: 4, bestOf: 7, winnerTeamId: opponent.id, gameIds: [] });
+    const markup = renderToStaticMarkup(createElement(App, { initialState: entered }));
+    const matchup = markup.match(/<article class="season-command-matchup postseason-next-game">[\s\S]*?<\/article>/u)?.[0];
+    expect(matchup).toContain("本队赛程结束");
+    expect(matchup).toContain("结算剩余季后赛");
+    expect(matchup).not.toContain("正在推进其他球队比赛");
+    expect(matchup).not.toContain(entered.teams[entered.postseason!.schedule[0].homeTeamId].fullName);
   });
 
   it("shows the championship and next-year action after settlement", () => {

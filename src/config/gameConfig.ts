@@ -7,7 +7,7 @@ import { LEAGUE_FINANCE_CONFIG } from "./leagueFinance";
  * 工具、测试和后续配置面板只需要读取 GAME_CONFIG。
  */
 export const GAME_CONFIG = {
-  version: "game-config.v14",
+  version: "game-config.v20",
   balance: BALANCE_CONFIG,
   simulation: SIMULATION_CONFIG,
   finance: LEAGUE_FINANCE_CONFIG,

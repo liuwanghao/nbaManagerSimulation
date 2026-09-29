@@ -824,7 +824,6 @@ footer span { width: 100%; }
   box-shadow: 0 15px 30px rgba(232,106,56,.28);
   font-size: 32px;
 }
-.launcher-mark svg { width: 36px; height: 36px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .launcher-center h1 { margin: 0; font-size: 25px; line-height: 1.2; letter-spacing: -.04em; }
 .launcher-center p { margin: 11px 0 0; color: #8c857b; font-size: 12px; }
 .launcher-guide { width: 100%; margin-top: 24px; padding: 13px 14px; color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--card-radius); background: rgba(6, 9, 17, .84); box-shadow: 0 0 14px rgba(0,242,254,.06); }
@@ -3789,7 +3788,7 @@ input:focus-visible {
 .success { background-color: var(--accent-green-bg) !important; }
 
 .home-screen {
-  padding: 72px 28px 30px;
+  padding: clamp(28px, 5vh, 56px) 28px 30px;
   color: var(--text-main);
   border: 1px solid var(--border-color);
   border-radius: var(--card-radius);
@@ -3803,14 +3802,19 @@ input:focus-visible {
 .home-screen .launcher-guide,
 .home-screen .launcher-version { position: relative; z-index: 1; }
 .home-screen .launcher-mark {
-  color: #000;
-  border: 1px solid var(--accent-primary);
-  border-radius: var(--card-radius);
-  background: var(--accent-primary);
-  box-shadow: 0 0 22px rgba(0,242,254,.62);
+  width: min(56vw, 220px);
+  height: auto;
+  aspect-ratio: 1;
+  margin-bottom: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
-.home-screen .launcher-center h1 { color: #fff; text-shadow: 0 2px 18px #000; }
-.home-screen .launcher-center p { color: #a9c4da; text-shadow: 0 1px 8px #000; }
+.home-screen .launcher-mark img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 12px 18px rgba(0, 4, 13, .78)); }
+.home-screen .launcher-center h1 { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.home-screen .launcher-center p { margin-top: 4px; color: #a9c4da; text-shadow: 0 1px 8px #000; }
 .home-screen .launcher-actions { margin-top: 26px; }
 .home-screen .launcher-actions button {
   color: var(--text-main);
@@ -3832,8 +3836,7 @@ input:focus-visible {
 .home-screen .launcher-version { color: var(--text-sub); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .pulse-dot.active,
-  .home-screen .launcher-mark { animation: terminal-pulse 2.2s ease-in-out infinite; }
+  .pulse-dot.active { animation: terminal-pulse 2.2s ease-in-out infinite; }
 }
 @keyframes terminal-pulse {
   50% { box-shadow: 0 0 24px rgba(0,242,254,.82); }
@@ -6836,7 +6839,7 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .team-inbox-item.unread { border-color: rgba(0,240,255,.55); }
 .team-inbox-item.pending { border-color: rgba(255,209,102,.6); background: #29210f; }
 .team-inbox-item.read { opacity: .7; }
-.team-inbox-item > div { display: flex; justify-content: space-between; gap: 8px; }
+.team-inbox-item > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
 .team-inbox-item small { color: #90a9c4; font-size: 9px; }
 .team-inbox-item em { color: #00f0ff; font-size: 9px; font-style: normal; }
 .team-inbox-item.pending em { color: #ffd166; }
@@ -6844,6 +6847,9 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .team-inbox-item p,.team-inbox-empty { margin: 0; color: #b9c9dc; font-size: 11px; line-height: 1.5; }
 .team-inbox-item button,.team-inbox-panel > footer button { min-height: 30px; margin-top: 9px; padding: 4px 10px; color: #050811; border: 0; border-radius: 6px; background: #00f0ff; font-size: 10px; font-weight: 700; cursor: pointer; }
 .team-inbox-item button:disabled,.team-inbox-panel > footer button:disabled { cursor: default; opacity: .5; }
+.team-inbox-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.team-inbox-actions button { margin-top: 0; border-radius: 0; }
+.team-inbox-actions button.secondary { color: #bdd1e3; border: 1px solid #3b526b; background: #17283e; }
 .team-inbox-panel > footer { display: flex; padding: 0 12px 12px; justify-content: flex-end; }
 .team-inbox-panel > footer button { margin-top: 0; }
 @media (max-width: 360px) { .team-inbox-trigger span { display: none; } .team-inbox-trigger { padding: 0 6px; } }
@@ -7436,7 +7442,43 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .season-command-standing b { color: #f4f8ff; font-size: 11px; line-height: 1.1; white-space: nowrap; }
 .season-command-standing span { color: #00e7f4; font-size: 10px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
 
-.season-command-matchup { padding: 10px 11px; border-top: 2px solid var(--team-color); }
+.season-command-matchup { padding: 10px 11px; border-top: 2px solid #00f0ff; }
+.season-command-pregame { margin: 0 0 8px; border: 1px solid rgba(0,231,244,.32); background: #0a1a2a; }
+.season-command-pregame summary { display: flex; min-height: 34px; padding: 7px 10px; align-items: center; gap: 8px; color: #dff9fb; list-style: none; cursor: pointer; }
+.season-command-pregame summary::-webkit-details-marker { display: none; }
+.season-command-pregame summary span { font-size: 10px; font-weight: 900; }
+.season-command-pregame summary small { margin-left: auto; color: #83e8d4; font-size: 9px; }
+.season-command-pregame summary b { color: #00e7f4; font-size: 15px; line-height: 1; transition: transform .18s ease; }
+.season-command-pregame[open] summary b { transform: rotate(180deg); }
+.season-command-pregame summary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.season-command-pregame .coaching-panel { border: 0; border-top: 1px solid rgba(0,231,244,.2); }
+.coaching-panel { display: grid; min-width: 0; margin: 0; padding: 10px; gap: 8px; border: 1px solid rgba(0,240,255,.25); background: #0a1a2a; }
+.coaching-panel > header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.coaching-panel > header small { color: #00e7f4; font-size: 9px; font-weight: 900; letter-spacing: .04em; }
+.coaching-panel > header h3 { margin: 3px 0 0; color: #f2f8fc; font-size: 12px; }
+.coaching-panel > header > span { color: #90a8bd; font-size: 9px; white-space: nowrap; }
+.coaching-panel p { margin: 0; color: #9fb4c7; font-size: 10px; line-height: 1.45; }
+.coaching-focus-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.coaching-focus-options.with-skip { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.coaching-focus-options button { min-height: 34px; padding: 6px 8px; color: #bed0df; border: 1px solid #38546a; border-radius: 0; background: #10253a; font-size: 10px; font-weight: 800; cursor: pointer; }
+.coaching-focus-options button.selected { color: #00e7f4; border-color: #00e7f4; background: rgba(0,231,244,.12); }
+.coaching-player-choices { display: grid; max-height: 150px; overflow-y: auto; gap: 4px; }
+.coaching-player-choices label { display: flex; min-height: 30px; padding: 3px 7px; align-items: center; gap: 7px; color: #e5f2f8; border: 1px solid #263c50; background: #0f2133; font-size: 10px; cursor: pointer; }
+.coaching-player-choices input { accent-color: #00e7f4; }
+.coaching-player-choices label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coaching-player-choices label b { margin-left: auto; color: #f7bd80; white-space: nowrap; }
+.coaching-confirm { min-height: 36px; padding: 6px 12px; color: #03161c; border: 0; border-radius: 0; background: #00e7f4; font-size: 11px; font-weight: 900; cursor: pointer; }
+.coaching-confirm:disabled { cursor: not-allowed; opacity: .45; }
+.coaching-panel button:focus-visible, .coaching-player-choices input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.coaching-panel .coaching-selected { color: #69e3be; font-weight: 800; }
+.coaching-panel .coaching-pending-video { color: #e9c77b; }
+.coaching-panel .coaching-message { color: #ffae9d; }
+.coaching-review-panel { margin: 0; border-color: rgba(255,182,93,.45); }
+.coaching-review-panel .coaching-focus-options button { display: grid; min-height: 48px; align-content: center; justify-items: center; gap: 3px; line-height: 1.25; text-align: center; }
+.coaching-review-panel .coaching-focus-options button small { color: #9fb4c7; font-size: 9px; font-weight: 600; }
+.coaching-review-panel .coaching-focus-options button.selected small { color: #9cecf1; }
+.coaching-review-panel .coaching-focus-options button.review-full-width { grid-column: 1 / -1; }
+.postgame-coaching-note { margin: 0 0 10px; padding: 8px 10px; color: #72e7c8; border-left: 2px solid #72e7c8; background: #102a30; font-size: 10px; font-weight: 800; }
 .season-command-matchup > header,
 .season-command-calendar > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 9px; border-bottom: 1px solid rgba(100,116,139,.26); }
 .season-command-matchup > header > div,
@@ -7461,7 +7503,7 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .season-command-starters-trigger:focus-visible { color: #06141c; background: #00e7f4; outline: none; }
 .season-command-primary { display: flex; width: 100%; min-height: 42px; padding: 0 14px; align-items: center; justify-content: center; color: #031216; border: 1px solid #00f0ff; border-radius: 2px; background: #00e7f4; box-shadow: 0 0 18px rgba(0,240,255,.16); font-size: 12px; font-weight: 950; text-align: center; cursor: pointer; }
 .season-command-primary:disabled { cursor: not-allowed; opacity: .42; box-shadow: none; }
-.season-command-secondary-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; margin-top: 6px; }
+.season-command-secondary-actions { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; }
 .season-command-secondary-actions > button,
 .season-command-secondary-actions summary,
 .season-command-secondary-actions details button { min-height: 34px; padding: 0 9px; color: #9eacc0; border: 1px solid rgba(100,116,139,.34); border-radius: 2px; background: rgba(12,23,38,.82); font-size: 9px; font-weight: 800; cursor: pointer; }
@@ -7483,41 +7525,51 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .season-command-complete button { min-width: 154px; min-height: 40px; padding: 0 18px; color: #041318; border: 0; background: #00f0ff; font-weight: 900; }
 .season-command-complete.postseason-settled button { min-height: 0; padding: 0 12px; font-size: 11px; white-space: nowrap; }
 .season-command-complete .season-transition-error { color: #ff9b9b; font-size: 11px; }
-.postseason-home { display: grid; min-width: 0; gap: 8px; }
-.postseason-next-matchup { display: grid; grid-template-columns: minmax(0,1fr) 38px minmax(0,1fr); align-items: center; gap: 7px; margin: 13px 0 5px; text-align: center; }
-.postseason-next-matchup span { min-width: 0; padding: 13px 5px; overflow: hidden; color: #f1f8ff; border: 1px solid rgba(0,240,255,.23); background: rgba(13,31,48,.75); font-size: 12px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
-.postseason-next-matchup strong { color: #00e7f4; font: 900 16px/1 Chakra Petch,Inter,sans-serif; }
-.postseason-next-game > p { margin: 0 0 10px; color: #93a8ba; font-size: 10px; }
+.postseason-home { display: grid; min-width: 0; gap: 10px; }
+.postseason-home > .season-command-summary { align-items: center; }
+.postseason-home > .season-command-summary > div:first-child span { color: #9fb1c6; font-size: 9px; }
+.postseason-record { display: grid; min-width: 112px; padding-left: 12px; justify-items: end; gap: 3px; border-left: 1px solid rgba(100,116,139,.3); }
+.postseason-record strong { color: #f4f8ff; font: 900 20px/1 Chakra Petch,Inter,sans-serif; white-space: nowrap; }
+.postseason-record i { color: #8ea6b9; font: 800 9px/1 Inter,sans-serif; font-style: normal; }
+.postseason-record small { color: #91a4b9; font-size: 9px; white-space: nowrap; }
+.postseason-seeking-next, .postseason-finished-team { display: flex; min-height: 84px; padding: 12px 6px; align-items: center; gap: 12px; }
+.postseason-seeking-next > div, .postseason-finished-team > div { display: grid; min-width: 0; gap: 5px; }
+.postseason-seeking-next b, .postseason-finished-team b { color: #eef8ff; font-size: 12px; }
+.postseason-seeking-next small, .postseason-finished-team small { color: #91a4b9; font-size: 10px; }
+.postseason-finished-team .logo-disc { flex: 0 0 auto; margin: 0; }
+.postseason-next-game > p { margin: 0 0 10px; color: #a0b3c4; font-size: 10px; line-height: 1.4; }
+.postseason-preparation { margin-bottom: 10px; }
 .postseason-next-game .season-command-secondary-actions { grid-template-columns: 1fr; }
 .postseason-settle-action { width: 100%; min-height: 32px; margin-top: 7px; color: #97aabc; border: 1px solid rgba(100,116,139,.35); background: transparent; font-size: 10px; font-weight: 800; cursor: pointer; }
 .postseason-home button:disabled { cursor: not-allowed; opacity: .5; }
-.postseason-schedule, .postseason-bracket { min-width: 0; padding: 12px; color: #e8f1fa; border: 1px solid rgba(0,240,255,.28); border-radius: 4px; background: linear-gradient(145deg,rgba(10,20,34,.96),rgba(5,10,18,.97)); }
-.postseason-schedule > header, .postseason-bracket > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid rgba(100,116,139,.27); }
-.postseason-schedule > header small, .postseason-bracket > header small { color: #00e7f4; font: 800 8px/1 ui-monospace,monospace; letter-spacing: .12em; }
-.postseason-schedule h2, .postseason-bracket h2 { margin: 3px 0 0; font-size: 14px; }
-.postseason-schedule > header > span, .postseason-bracket > header > span { color: #91a4b9; font-size: 9px; white-space: nowrap; }
-.postseason-schedule ol { display: grid; max-height: 360px; margin: 0; padding: 7px 0 0; gap: 5px; overflow-y: auto; list-style: none; }
-.postseason-schedule li { display: flex; min-width: 0; min-height: 47px; padding: 7px 9px; align-items: center; gap: 9px; border: 1px solid rgba(100,116,139,.28); background: #101e30; }
-.postseason-schedule li.mine { border-color: #317789; background: #153343; }
-.postseason-schedule li > div { display: grid; min-width: 0; flex: 1; gap: 3px; }
-.postseason-schedule li small { color: #8ea6b9; font-size: 8px; }
-.postseason-schedule li b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.postseason-schedule li i { color: #6a7e91; font-style: normal; }
-.postseason-schedule li strong { color: #e8f9fd; font: 900 11px/1 Chakra Petch,Inter,sans-serif; white-space: nowrap; }
-.postseason-schedule li > span { color: #8193a9; font-size: 9px; white-space: nowrap; }
-.postseason-schedule li button { min-height: 28px; padding: 0 7px; color: #00e7f4; border: 1px solid rgba(0,231,244,.42); background: transparent; font-size: 9px; font-weight: 800; cursor: pointer; }
-.postseason-bracket-conference { margin-top: 14px; }
-.postseason-bracket h3 { margin: 0 0 6px; color: #00e7f4; font-size: 12px; }
-.postseason-bracket-rounds { display: grid; grid-template-columns: repeat(4,minmax(130px,1fr)); gap: 7px; overflow-x: auto; }
-.postseason-bracket-rounds > div { display: grid; min-width: 0; align-content: start; gap: 6px; }
-.postseason-bracket h4 { margin: 0; color: #91a4b9; font-size: 9px; }
-.postseason-bracket-series { display: grid; min-width: 0; padding: 5px 7px; gap: 3px; border: 1px solid rgba(100,116,139,.32); background: #0e1b2b; }
-.postseason-bracket-series > span { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 4px; color: #a8b8c7; font-size: 9px; }
-.postseason-bracket-series > span.winner { color: #00e7f4; }
-.postseason-bracket-series b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.postseason-bracket-series strong { font-variant-numeric: tabular-nums; }
-.postseason-bracket-finals { max-width: 220px; margin: 14px auto 0; }
-@media (max-width: 640px) { .postseason-schedule li { gap: 5px; } .postseason-bracket-rounds { grid-template-columns: repeat(4,130px); } }
+.postseason-results { min-width: 0; padding: 12px; color: #e8f1fa; border: 1px solid rgba(0,240,255,.28); border-radius: 4px; background: linear-gradient(145deg,rgba(10,20,34,.96),rgba(5,10,18,.97)); }
+.postseason-results > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid rgba(100,116,139,.27); }
+.postseason-results > header small { color: #00e7f4; font: 800 8px/1 ui-monospace,monospace; letter-spacing: .12em; }
+.postseason-results h2 { margin: 3px 0 0; font-size: 14px; }
+.postseason-results > header > span { color: #91a4b9; font-size: 9px; white-space: nowrap; }
+.postseason-results ol { display: grid; max-height: 430px; margin: 0; padding: 7px 0 0; gap: 5px; overflow-y: auto; list-style: none; }
+.postseason-results li { display: grid; min-width: 0; min-height: 48px; padding: 7px 9px; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 6px; border: 1px solid rgba(100,116,139,.28); background: #101e30; }
+.postseason-results-game { display: grid; min-width: 0; gap: 4px; }
+.postseason-results li small { color: #8ea6b9; font-size: 8px; }
+.postseason-results li b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.postseason-results li i { color: #6a7e91; font-style: normal; }
+.postseason-results li strong { font: 900 11px/1 Chakra Petch,Inter,sans-serif; white-space: nowrap; }
+.postseason-results li strong.win { color: #4de2b0; }
+.postseason-results li strong.loss { color: #ffadad; }
+.postseason-results li button { min-height: 28px; padding: 0 7px; color: #00e7f4; border: 1px solid rgba(0,231,244,.42); background: transparent; font-size: 9px; font-weight: 800; cursor: pointer; }
+.postseason-results li button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.postseason-results-empty { margin: 0; padding: 18px 0 6px; color: #91a4b9; font-size: 11px; text-align: center; }
+.postseason-bracket-disclosure { min-width: 0; color: #e8f1fa; border: 1px solid rgba(0,240,255,.28); border-radius: 4px; background: linear-gradient(145deg,rgba(10,20,34,.96),rgba(5,10,18,.97)); }
+.postseason-bracket-disclosure > summary { display: flex; min-height: 54px; padding: 10px 12px; align-items: center; gap: 10px; list-style: none; cursor: pointer; }
+.postseason-bracket-disclosure > summary::-webkit-details-marker { display: none; }
+.postseason-bracket-disclosure > summary span { display: grid; gap: 4px; }
+.postseason-bracket-disclosure > summary small { color: #00e7f4; font: 800 8px/1 ui-monospace,monospace; letter-spacing: .12em; }
+.postseason-bracket-disclosure > summary b { font-size: 14px; }
+.postseason-bracket-disclosure > summary em { margin-left: auto; color: #91a4b9; font-size: 9px; font-style: normal; }
+.postseason-bracket-disclosure > summary i { color: #00e7f4; font-size: 15px; font-style: normal; transition: transform .18s ease; }
+.postseason-bracket-disclosure[open] > summary i { transform: rotate(180deg); }
+.postseason-bracket-disclosure > summary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.postseason-bracket-disclosure .season-results-bracket { padding: 12px; border-top: 1px solid rgba(100,116,139,.27); }
 
 .season-results { display: grid; gap: 12px; color: #e8f1fa; }
 .season-results-actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
@@ -8685,6 +8737,21 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .career-share-strip button:hover { background: #5ceaf4; }
 .career-share-strip button:disabled { opacity: .6; cursor: wait; }
 .career-share-status { grid-column: 1 / -1; margin: 0; color: #a6ced5; font-size: 10px; }
+.career-leaderboard-link { display: grid; min-height: 154px; padding: 15px 18px; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; border-color: #4e6072; border-top: 2px solid #d5ac5c; background: radial-gradient(circle at 85% 15%, rgba(213,172,92,.13), transparent 37%), linear-gradient(115deg, #14283a, #0b1728); text-decoration: none; }
+.career-leaderboard-link span { display: grid; min-width: 0; gap: 4px; }
+.career-leaderboard-link small { color: #d9ad64; font: 900 9px ui-monospace, monospace; letter-spacing: .08em; }
+.career-leaderboard-heading b { color: #f5faff; font-size: 15px; }
+.career-leaderboard-position { grid-column: 1 / -1; justify-items: center; padding: 8px 0; }
+.career-leaderboard-position b { color: #f4cc79; font: 900 clamp(25px, 5vw, 36px)/1 Chakra Petch, Inter, sans-serif; font-variant-numeric: tabular-nums; }
+.career-leaderboard-meta { align-self: end; }
+.career-leaderboard-meta em { color: #a9b8c5; font-size: 10px; font-style: normal; line-height: 1.4; }
+.career-leaderboard-link > strong { align-self: end; color: #f6d28a; font-size: 11px; white-space: nowrap; }
+.career-leaderboard-link > strong i { font-style: normal; }
+.career-leaderboard-link:focus-visible { outline: 2px solid #00e7f4; outline-offset: 2px; }
+.leaderboard-overlay { position: fixed; z-index: 10000; inset: 0; background: #070e19; }
+.leaderboard-overlay iframe { display: block; width: 100%; height: 100%; border: 0; }
+.leaderboard-overlay-close { position: absolute; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); padding: 8px 12px; border: 1px solid #426174; background: #102537; color: #b9dce7; font-size: 11px; font-weight: 800; cursor: pointer; }
+.leaderboard-overlay-close:focus-visible { outline: 2px solid #00e7f4; outline-offset: 2px; }
 .career-overview-secondary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0; }
 .career-overview-secondary > div { display: flex; min-width: 0; min-height: 69px; padding: 12px 15px; align-items: center; justify-content: space-between; gap: 10px; }
 .career-overview-secondary > div + div { border-left: 1px solid #26394b; }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Import the reviewed Commons files listed in retiredLegendPortraits.json.
+// Import the reviewed Commons files and index user-provided portraits listed in retiredLegendPortraits.json.
 // The script never searches by player name: an explicit file choice prevents a
 // future search result or Wikipedia page image change from silently replacing a face.
 import { createHash } from "node:crypto";
@@ -117,11 +117,29 @@ async function writeIdModule(entries) {
   await rename(temporary, idModulePath);
 }
 
+async function writeAttribution(entries) {
+  const rows = entries.map((entry) => {
+    const source = entry.source === "user-provided"
+      ? escapeHtml("用户提供的图片")
+      : entry.source === "nba-official-cdn" || entry.source === "nba-china"
+        ? `<a href="${escapeHtml(entry.sourceUrl)}">NBA 官方球员头像</a>`
+      : `<a href="${escapeHtml(entry.commonsPage)}">${escapeHtml(entry.file)}</a>`;
+    const artist = entry.source === "user-provided" ? "用户提供" : entry.source?.startsWith("nba-") ? "NBA" : entry.artist;
+    const license = entry.source === "user-provided"
+      ? "未提供独立版权许可信息"
+      : entry.source?.startsWith("nba-") ? "项目方确认已取得使用授权"
+      : entry.licenseUrl ? `<a href="${escapeHtml(entry.licenseUrl)}">${escapeHtml(entry.license)}</a>` : escapeHtml(entry.license);
+    return `<tr><td>${escapeHtml(entry.name)}</td><td>${source}</td><td>${escapeHtml(artist)}</td><td>${license}</td><td>${escapeHtml(entry.modified)}</td><td>${escapeHtml(entry.rightsReview)}</td></tr>`;
+  }).join("\n");
+  const attribution = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>退役球员头像来源与署名</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#222}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:.5rem;text-align:left;vertical-align:top}tr:nth-child(even){background:#f5f5f5}a{color:#0645ad}@media(max-width:700px){table{display:block;overflow-x:auto;white-space:nowrap}}</style></head><body><h1>退役球员头像来源与署名</h1><p>头像来源包括 NBA 官方资源、Wikimedia Commons 文件及用户提供的图片。下表逐张列出来源、许可记录与处理方式。NBA 图片的使用授权由项目方确认；Commons 图片的署名和摄影版权许可列在下表。人物肖像及球队标识的权利需与照片版权分别确认。</p><table><thead><tr><th>球员</th><th>来源</th><th>作者</th><th>摄影版权许可</th><th>修改</th><th>权利复核</th></tr></thead><tbody>${rows}</tbody></table></body></html>\n`;
+  await writeFile(attributionPath, attribution);
+}
+
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const entries = manifest.portraits;
-if (!Array.isArray(entries) || entries.length !== 90) throw new Error("Expected exactly 90 curated retired-player portrait records");
-if (new Set(entries.map((entry) => entry.nbaPlayerId)).size !== 90) throw new Error("Duplicate NBA portrait ID");
-if (new Set(entries.map((entry) => entry.file)).size !== 90) throw new Error("Duplicate Commons file selection");
+if (!Array.isArray(entries) || !entries.length) throw new Error("Expected curated retired-player portrait records");
+if (new Set(entries.map((entry) => entry.nbaPlayerId)).size !== entries.length) throw new Error("Duplicate NBA portrait ID");
+if (new Set(entries.map((entry) => entry.file)).size !== entries.length) throw new Error("Duplicate Commons file selection");
 if (entries.some((entry) => !/^\d+$/u.test(entry.nbaPlayerId) || !entry.name || !entry.file)) throw new Error("Incomplete portrait identity");
 if (entries.some((entry) => entry.cropY !== undefined && (typeof entry.cropY !== "number" || entry.cropY < 0 || entry.cropY > 1))) throw new Error("cropY must be a number from 0 (top) to 1 (bottom)");
 if (entries.some((entry) => entry.cropX !== undefined && (typeof entry.cropX !== "number" || entry.cropX < 0 || entry.cropX > 1))) throw new Error("cropX must be a number from 0 (left) to 1 (right)");
@@ -131,12 +149,14 @@ if (entries.some((entry) => !["approved", "needs_review", "needs_recrop", "pendi
 if (offlineIndex) {
   await saveManifest(manifest);
   await writeIdModule(entries);
+  await writeAttribution(entries);
   process.stdout.write("Rebuilt approved retired portrait ID list without network requests.\n");
   process.exit(0);
 }
 
-const metadata = await commonsMetadata(entries.map((entry) => entry.file));
+const metadata = await commonsMetadata(entries.filter((entry) => !entry.source || entry.source === "commons").map((entry) => entry.file));
 for (const entry of entries) {
+  if (entry.source && entry.source !== "commons") continue;
   const info = metadata.get(entry.file.replaceAll("_", " "));
   if (!info) throw new Error(`Commons file missing: ${entry.file}`);
   const external = info.extmetadata ?? {};
@@ -148,7 +168,9 @@ for (const entry of entries) {
   entry.license = license;
   entry.licenseUrl = licenseUrl;
   entry.artist = plainText(external.Artist?.value) || "Unknown author";
-  entry.modified = `${entry.cropY === 0 ? "Top-aligned" : entry.cropY === 1 ? "Bottom-aligned" : "Centered"} square crop${entry.zoom && entry.zoom > 1 ? ` with ${entry.zoom}× zoom` : ""}, resized to 256 × 256 pixels, converted to WebP.`;
+  const horizontalCrop = entry.cropX !== undefined && entry.cropX !== 0.5
+    ? ` at ${Math.round(entry.cropX * 100)}% horizontal position` : "";
+  entry.modified = `${entry.cropY === 0 ? "Top-aligned" : entry.cropY === 1 ? "Bottom-aligned" : "Centered"} square crop${horizontalCrop}${entry.zoom && entry.zoom > 1 ? ` with ${entry.zoom}× zoom` : ""}, resized to 256 × 256 pixels, converted to WebP.`;
   entry.rightsReview = license === "Public domain"
     ? "Commons public-domain claim; validity outside the United States and personality rights require review."
     : "Photograph copyright license recorded; personality rights require separate review.";
@@ -156,11 +178,9 @@ for (const entry of entries) {
 await saveManifest(manifest);
 await writeIdModule(entries);
 
-const rows = entries.map((entry) => `<tr><td>${escapeHtml(entry.name)}</td><td><a href="${escapeHtml(entry.commonsPage)}">${escapeHtml(entry.file)}</a></td><td>${escapeHtml(entry.artist)}</td><td>${entry.licenseUrl ? `<a href="${escapeHtml(entry.licenseUrl)}">${escapeHtml(entry.license)}</a>` : escapeHtml(entry.license)}</td><td>${escapeHtml(entry.modified)}</td><td>${escapeHtml(entry.rightsReview)}</td></tr>`).join("\n");
-const attribution = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>退役球员头像来源与署名</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#222}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:.5rem;text-align:left;vertical-align:top}tr:nth-child(even){background:#f5f5f5}a{color:#0645ad}@media(max-width:700px){table{display:block;overflow-x:auto;white-space:nowrap}}</style></head><body><h1>退役球员头像来源与署名</h1><p>下列图片从 Wikimedia Commons 所列文件制作。逐张列出作者、摄影版权许可与处理方式。标注 CC BY-SA 的裁切、缩放和格式转换后单张头像仍按对应原许可提供；每张图的改动列在下表。人物姓名、肖像及球队标识的使用权与照片版权相互独立；Commons 许可不代表球员或 NBA 对本游戏的认可。标注公有领域的图片可能只在特定法域成立。</p><table><thead><tr><th>球员</th><th>来源</th><th>作者</th><th>摄影版权许可</th><th>修改</th><th>权利复核</th></tr></thead><tbody>${rows}</tbody></table></body></html>\n`;
-await writeFile(attributionPath, attribution);
+await writeAttribution(entries);
 if (metadataOnly) {
-  process.stdout.write("Updated metadata and attribution for 90 Commons portrait candidates.\n");
+  process.stdout.write(`Updated metadata and attribution for ${entries.length} portrait candidates.\n`);
   process.exit(0);
 }
 
@@ -170,7 +190,9 @@ try {
   await mapLimited(entries, 1, async (entry, index) => {
     const info = metadata.get(entry.file.replaceAll("_", " "));
     const output = join(imageDirectory, `nba-${entry.nbaPlayerId}.webp`);
-    let portraitBytes = force || refreshIds.has(entry.nbaPlayerId) ? null : await readFile(output).catch(() => null);
+    let portraitBytes = entry.source && entry.source !== "commons" || !(force || refreshIds.has(entry.nbaPlayerId))
+      ? await readFile(output).catch(() => null) : null;
+    if (entry.source && entry.source !== "commons" && !portraitBytes) throw new Error(`Missing independently sourced portrait for ${entry.name}`);
     if (portraitBytes && (portraitBytes.toString("ascii", 0, 4) !== "RIFF" || portraitBytes.toString("ascii", 8, 12) !== "WEBP")) throw new Error(`Invalid existing WebP for ${entry.name}`);
     if (portraitBytes && entry.sha256 && createHash("sha256").update(portraitBytes).digest("hex") !== entry.sha256) throw new Error(`Existing portrait changed for ${entry.name}`);
     if (!portraitBytes) {
@@ -191,7 +213,7 @@ try {
     entry.sha256 = createHash("sha256").update(portraitBytes).digest("hex");
     await saveManifest(manifest);
     await writeIdModule(entries);
-    process.stderr.write(`${index + 1}/90 ${entry.name} (${entry.license})\n`);
+    process.stderr.write(`${index + 1}/${entries.length} ${entry.name} (${entry.source && entry.source !== "commons" ? entry.source : entry.license})\n`);
   });
 } finally {
   await rm(tempDirectory, { recursive: true, force: true });

@@ -215,6 +215,7 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
   state.standings = Object.fromEntries(Object.keys(state.teams).map((teamId) => [teamId, emptyStanding(teamId)]));
   state.lightweightResults = [];
   state.userGameDetails = {};
+  for (const player of Object.values(state.players)) player.fatigue = 0;
   state.calendar.currentDateIndex = 0;
   state.league.currentPhase = "REGULAR_PRE_DEADLINE";
   ensureExpansionWelcomeNotification(state);

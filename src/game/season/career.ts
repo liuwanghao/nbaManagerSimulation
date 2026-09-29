@@ -14,6 +14,7 @@ import { publicPlayerValue } from "../ai/AIValueService";
 import { finalizeFinalsAwards, finalizeRegularSeasonAwards } from "../awards/AwardsService";
 import { generateSchedule, validateSchedule } from "../schedule/schedule";
 import { simulateGame } from "../simulation/simulateGame";
+import { consumePlayoffCoachingForGame, consumeRegularCoachingForGame, nextPlayoffUserGame } from "../coaching/CoachingService";
 import { advanceInjuriesByDays, applyInjuryEvents, availablePlayerCount, recordInjuryMissedGames } from "../simulation/injuries";
 import {
   chargeEmergencySalariesAtRosterLock,
@@ -78,6 +79,7 @@ export function createCareer(careerSeed: string, userTeamId = "SEA"): GameState 
     standings: Object.fromEntries(Object.keys(fixture.teams).map((teamId) => [teamId, emptyStanding(teamId)])),
     lightweightResults: [],
     userGameDetails: {},
+    coaching: { seasonId, usedPlayoffRounds: [] },
     franchiseStats: createFranchiseStatsState(),
     history: { champions: [], retiredPlayerIds: [], rebornHistoricalSourceIds: [], seasonAwards: [], seasons: [] },
     achievements: createAchievementState(),
@@ -200,12 +202,15 @@ export function simulateLeagueDay(
   chargeEmergencySalariesAtRosterLock(state, participatingTeamIds, dateIndex);
   const injuryEvents: InjuryEvent[] = [];
   for (const game of games) {
+    const coaching = consumeRegularCoachingForGame(state, game);
     const result = simulateGame(
       game,
       state.teams[game.homeTeamId],
       state.teams[game.awayTeamId],
       state.players,
       state.seeds.seasonSeed,
+      false,
+      coaching,
     );
     applyPlayerStatusAfterGame(state, [result.homeBoxScore, result.awayBoxScore], backToBackTeamIds);
     commitGameResult(state, game, result);
@@ -293,7 +298,8 @@ function postseasonGame(
   }
   chargeEmergencySalariesAtRosterLock(state, [homeTeamId, awayTeamId], game.dateIndex);
   recoverFatigueForRestDays(state, [homeTeamId, awayTeamId], 1);
-  const result = simulateGame(game, state.teams[homeTeamId], state.teams[awayTeamId], state.players, state.seeds.seasonSeed, true);
+  const coaching = consumeRegularCoachingForGame(state, game) ?? consumePlayoffCoachingForGame(state, game);
+  const result = simulateGame(game, state.teams[homeTeamId], state.teams[awayTeamId], state.players, state.seeds.seasonSeed, true, coaching);
   applyPlayerStatusAfterGame(state, [result.homeBoxScore, result.awayBoxScore], new Set());
   applyFanSupportAfterGame(state, result);
   result.homeBoxScore?.playerStats.forEach((stat) => aggregatePlayerPostseasonGame(state, stat));
@@ -501,6 +507,13 @@ export function isUserPostseasonQualified(state: GameState): boolean {
     .slice(0, 10).some((record) => record.teamId === state.userTeamId);
 }
 
+export function isUserPostseasonEliminated(state: GameState): boolean {
+  const conference = state.teams[state.userTeamId]?.conference;
+  return Boolean(state.postseason?.series.some((series) => series.winnerTeamId && series.winnerTeamId !== state.userTeamId
+    && (series.teamAId === state.userTeamId || series.teamBId === state.userTeamId)
+    && series.id !== `${conference}-PLAYIN-A`));
+}
+
 export function enterPostseason(input: GameState): GameState {
   assertPhaseAllowed(input, "Enter postseason", ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"]);
   if (input.schedule.some((game) => game.status !== "FINAL")) throw new Error("REGULAR_SEASON_NOT_COMPLETE");
@@ -594,6 +607,36 @@ function simulatePostseasonGameInternal(input: GameState, mutate: boolean): Game
 
 export function simulatePostseasonGame(input: GameState): GameState {
   return simulatePostseasonGameInternal(input, false);
+}
+
+export function simulatePostseasonToNextUserGame(input: GameState): GameState {
+  const targetId = nextPlayoffUserGame(input)?.game.id;
+  let next = input;
+  for (let index = 0; index < 120 && ["PLAY_IN", "PLAYOFFS"].includes(next.league.currentPhase); index += 1) {
+    const targetPlayed = !targetId || next.postseason?.schedule.find((game) => game.id === targetId)?.status === "FINAL";
+    if (targetPlayed && (nextPlayoffUserGame(next) || isUserPostseasonEliminated(next))) break;
+    const advanced = simulatePostseasonGame(next);
+    if (advanced === next) break;
+    next = advanced;
+  }
+  return next;
+}
+
+export function simulatePostseasonRound(input: GameState): GameState {
+  const nextScheduled = (state: GameState) => state.postseason?.schedule.filter((game) => game.status === "SCHEDULED")
+    .sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id))[0];
+  const first = nextScheduled(input);
+  const round = input.postseason?.series.find((series) => series.gameIds.includes(first?.id ?? ""))?.round;
+  if (!round) return input;
+  let next = input;
+  for (let index = 0; index < 120 && ["PLAY_IN", "PLAYOFFS"].includes(next.league.currentPhase); index += 1) {
+    const game = nextScheduled(next);
+    if (next.postseason?.series.find((series) => series.gameIds.includes(game?.id ?? ""))?.round !== round) break;
+    const advanced = simulatePostseasonGame(next);
+    if (advanced === next) break;
+    next = advanced;
+  }
+  return next;
 }
 
 export function simulatePostseason(input: GameState): GameState {

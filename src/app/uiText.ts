@@ -225,7 +225,7 @@ export function freeAgencyTransactionLabel(value: string): string {
 }
 
 const EVENT_CATEGORY_LABELS: Record<string, string> = {
-  INJURY: "伤病", MORALE: "士气", ROLE: "角色", BREAKOUT: "爆发", SLUMP: "低迷",
+  INJURY: "伤病", FATIGUE: "体能", MORALE: "士气", ROLE: "角色", BREAKOUT: "爆发", SLUMP: "低迷",
   TRADE: "交易", STREAK: "连胜", ROOKIE: "新秀", EXPANSION: "扩军", PLAYOFFS: "季后赛",
   FRANCHISE: "球队", DRAFT: "选秀", FREE_AGENCY: "自由市场", RFA: "受限自由球员", AI_GM: "电脑经理",
 };

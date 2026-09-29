@@ -1,4 +1,5 @@
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
+import { RETIRED_LEGEND_TEMPLATES } from "../../data/retiredLegendTemplates";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
 import {
@@ -15,6 +16,7 @@ import { calculatePlayerOverall } from "../player/PlayerRatingService";
 
 const cfg = BALANCE_CONFIG.playerLifecycle;
 const ATTRIBUTE_KEYS = Object.keys(cfg.regressionMultipliers) as Array<keyof PlayerAttributes>;
+const HISTORICAL_PEAK_BY_ID = new Map(RETIRED_LEGEND_TEMPLATES.map((template) => [template.sourcePlayerId, template.peakOverall]));
 
 export function playerOverall(player: Player): number {
   return calculatePlayerOverall(player);
@@ -113,6 +115,7 @@ function hiddenDevelopmentFields(state: GameState, player: Player, currentOveral
 
 function evolveAttributes(state: GameState, player: Player, trainingFocus?: TrainingFocus): { before: number; after: number } {
   const before = playerOverall(player);
+  const previousAttributes = { ...player.attributes };
   const hidden = hiddenDevelopmentFields(state, player, before);
   const curve = ageCurve(player.age);
   const healthFactor = cfg.development.healthBase + player.injuryRating / cfg.development.injuryRatingDivisor;
@@ -130,6 +133,32 @@ function evolveAttributes(state: GameState, player: Player, trainingFocus?: Trai
     const base = positiveBase > 0 ? positiveBase * trainingWeight : negativeBase * cfg.regressionMultipliers[key];
     const delta = Math.max(cfg.maximumAnnualRegression, Math.min(cfg.maximumAnnualGrowth, Math.round(base + noise)));
     player.attributes[key] = Math.max(cfg.attributeMinimum, Math.min(cfg.attributeMaximum, player.attributes[key] + delta));
+  }
+  const historicalPeak = HISTORICAL_PEAK_BY_ID.get(player.historicalSourcePlayerId ?? "");
+  if (player.profileSource === "HISTORICAL_ARCHETYPE" && historicalPeak !== undefined) {
+    const rebirth = BALANCE_CONFIG.draft.historicalRebirth;
+    const targetOverall = Math.max(rebirth.superstarOverall, historicalPeak);
+    player.truePotential = Math.max(player.truePotential ?? targetOverall, targetOverall);
+    if ((player.career?.peakOverall ?? before) >= targetOverall) return { before, after: playerOverall(player) };
+    const seasonsLeft = Math.max(1, rebirth.superstarAge - player.age);
+    const minimumThisSeason = player.age >= rebirth.superstarAge
+      ? targetOverall
+      : before + Math.max(0, targetOverall - before) / seasonsLeft;
+    // Regular drafts keep the normal development curve. Retired stars receive a
+    // gradual floor so their promised 90+ ceiling is reached by their prime.
+    while (playerOverall(player) < minimumThisSeason) {
+      let raised = false;
+      for (const key of ATTRIBUTE_KEYS) {
+        const annualLimit = player.age >= rebirth.superstarAge
+          ? cfg.attributeMaximum
+          : previousAttributes[key] + cfg.maximumAnnualGrowth;
+        if (player.attributes[key] >= Math.min(cfg.attributeMaximum, annualLimit)) continue;
+        player.attributes[key] += 1;
+        raised = true;
+        if (playerOverall(player) >= minimumThisSeason) break;
+      }
+      if (!raised) break;
+    }
   }
   return { before, after: playerOverall(player) };
 }
@@ -223,6 +252,8 @@ function retirePlayer(state: GameState, player: Player): boolean {
 
 function shouldRetire(state: GameState, player: Player): boolean {
   if (player.contract.status === "RETIRED") return false;
+  if (player.profileSource === "HISTORICAL_ARCHETYPE" && HISTORICAL_PEAK_BY_ID.has(player.historicalSourcePlayerId ?? "")
+    && player.age < BALANCE_CONFIG.draft.historicalRebirth.superstarAge) return false;
   const rng = createRng(stableHash(state.seeds.seasonSeed, "retirement", player.id));
   return rng.nextFloat() < retirementProbability(player);
 }

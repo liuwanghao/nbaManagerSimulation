@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "source": "Game design values; not sourced from NBA 2K",
+  "players": [
+    {
+      "sourcePlayerId": "nba:787",
+      "sourceName": "Charles Barkley",
+      "peakOverall": 97,
+      "requestedRange": [96, 97]
+    },
+    {
+      "sourcePlayerId": "nba:397",
+      "sourceName": "Reggie Miller",
+      "peakOverall": 92,
+      "requestedRange": [91, 93]
+    },
+    {
+      "sourcePlayerId": "nba:201146",
+      "sourceName": "Yi Jianlian",
+      "peakOverall": 90,
+      "note": "Fantasy rebirth target under the existing 90+ retired-star rule"
+    }
+  ]
+}

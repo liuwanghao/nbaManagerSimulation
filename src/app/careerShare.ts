@@ -2,7 +2,21 @@ import type { GameState } from "../game/state/types";
 import type { CareerOverview, FranchiseRecords } from "../game/career/CareerRecords";
 
 type PostEditorResponse = { code: number; message?: string };
-type PostEditorBridge = { openPostEditor: (params: { title: string; content: string }) => Promise<PostEditorResponse> };
+type PostEditorBridge = { openPostEditor: (params: {
+  topicId: string;
+  tagId: string;
+  topicName: string;
+  tagName: string;
+  title: string;
+  content: string;
+}) => Promise<PostEditorResponse> };
+
+const CAREER_POST_DESTINATION = {
+  topicId: "871",
+  tagId: "157696",
+  topicName: "AI工坊",
+  tagName: "篮球经理：联盟扩军时代",
+};
 
 export function careerPostDraft(state: GameState, overview: CareerOverview, records: FranchiseRecords, latestMilestone?: string) {
   const teamName = state.teams[state.userTeamId]?.fullName ?? "我的球队";
@@ -25,6 +39,6 @@ export function careerPostDraft(state: GameState, overview: CareerOverview, reco
 export async function openCareerPostEditor(draft: ReturnType<typeof careerPostDraft>): Promise<void> {
   const bridge = (window as Window & { ColorboxAI?: { request?: { bbs?: PostEditorBridge } } }).ColorboxAI?.request?.bbs;
   if (!bridge?.openPostEditor) throw new Error("请在虎扑 App 内打开游戏后使用发帖分享。");
-  const response = await bridge.openPostEditor(draft);
+  const response = await bridge.openPostEditor({ ...CAREER_POST_DESTINATION, ...draft });
   if (response.code !== 200) throw new Error(response.message || "发帖编辑器暂时无法打开，请稍后重试。");
 }

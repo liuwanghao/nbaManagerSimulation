@@ -43,16 +43,8 @@ function Series({ state, series, seedRanks, note }: { state: GameState; series: 
   </div>;
 }
 
-export function SeasonResultsPanel({ state, onOpenPlayer }: { state: GameState; onOpenPlayer: (playerId: string) => void }) {
-  const [showBracket, setShowBracket] = useState(false);
+export function PostseasonBracketView({ state }: { state: GameState }) {
   const [bracketTab, setBracketTab] = useState<BracketTab>("EAST");
-  const dialogRef = useRef<HTMLElement>(null);
-  const storedAwardRecord = state.history.seasonAwards.find((entry) => entry.seasonId === state.league.seasonId);
-  const awardRecord = useMemo(() => {
-    return storedAwardRecord?.winners.MVP ? storedAwardRecord
-      : finalizeRegularSeasonAwards(state).history.seasonAwards.find((entry) => entry.seasonId === state.league.seasonId);
-  }, [state, storedAwardRecord]);
-  const settledAwards = Boolean(storedAwardRecord?.winners.MVP);
   const bracket = postseasonBracket(state);
   const selectedConference = bracket.conferences.find((conference) => conference.conference === bracketTab);
   const seedRanks = useMemo(() => {
@@ -62,6 +54,42 @@ export function SeasonResultsPanel({ state, onOpenPlayer }: { state: GameState; 
     }
     return ranks;
   }, [state]);
+
+  return <section className="season-results-bracket" aria-label="季后赛对阵图">
+    <header><h3>{bracket.settled ? "季后赛最终结果" : "季后赛对阵席位"}</h3><small>{bracket.settled ? "系列赛比分" : bracketTab === "FINALS" ? "东西部冠军产生后确定对阵" : "附加赛胜者产生后确定最终首轮对阵"}</small></header>
+    <div className="season-bracket-tabs" role="tablist" aria-label="筛选季后赛对阵" onKeyDown={(event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const current = BRACKET_TABS.findIndex((tab) => tab.id === bracketTab);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? BRACKET_TABS.length - 1
+        : (current + (event.key === "ArrowRight" ? 1 : -1) + BRACKET_TABS.length) % BRACKET_TABS.length;
+      setBracketTab(BRACKET_TABS[next].id);
+      (event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")[next])?.focus();
+    }}>{BRACKET_TABS.map((tab) => <button type="button" key={tab.id} role="tab" id={`season-bracket-tab-${tab.id}`} aria-controls="season-bracket-tab-panel" aria-selected={bracketTab === tab.id} tabIndex={bracketTab === tab.id ? 0 : -1} onClick={() => setBracketTab(tab.id)}>{tab.label}</button>)}</div>
+    {selectedConference ? <div className="season-bracket-conferences" role="tabpanel" id="season-bracket-tab-panel" aria-labelledby={`season-bracket-tab-${bracketTab}`}><div className="season-bracket-conference">
+      <h4>{conferenceLabel(selectedConference.conference)}</h4>
+      <div className="season-bracket-rounds">
+        {([
+          ["play-in", "附加赛", selectedConference.playIn],
+          ["first-round", "首轮", selectedConference.firstRound],
+          ["semifinals", "半决赛", selectedConference.semifinals],
+          ["conference-final", `${conferenceLabel(selectedConference.conference)}决赛`, selectedConference.final],
+        ] as const).map(([round, label, series]) => <div className="season-bracket-round" data-round={round} key={round}><h5>{label}</h5><div>{series.map((item, index) => <Series key={index} state={state} series={item} seedRanks={seedRanks} note={round === "play-in" ? ["第 8 席决胜", "9/10 淘汰赛", "第 7 席争夺"][index] : undefined} />)}</div></div>)}
+      </div>
+    </div></div> : <div className="season-bracket-finals" role="tabpanel" id="season-bracket-tab-panel" aria-labelledby="season-bracket-tab-FINALS"><h4>总决赛</h4><Series state={state} series={bracket.finals[0] ?? { placeholderA: "东部冠军", placeholderB: "西部冠军" }} seedRanks={seedRanks} /></div>}
+  </section>;
+}
+
+export function SeasonResultsPanel({ state, onOpenPlayer }: { state: GameState; onOpenPlayer: (playerId: string) => void }) {
+  const [showBracket, setShowBracket] = useState(false);
+  const dialogRef = useRef<HTMLElement>(null);
+  const storedAwardRecord = state.history.seasonAwards.find((entry) => entry.seasonId === state.league.seasonId);
+  const awardRecord = useMemo(() => {
+    return storedAwardRecord?.winners.MVP ? storedAwardRecord
+      : finalizeRegularSeasonAwards(state).history.seasonAwards.find((entry) => entry.seasonId === state.league.seasonId);
+  }, [state, storedAwardRecord]);
+  const settledAwards = Boolean(storedAwardRecord?.winners.MVP);
+  const bracket = postseasonBracket(state);
   useEffect(() => {
     if (!showBracket) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -76,7 +104,7 @@ export function SeasonResultsPanel({ state, onOpenPlayer }: { state: GameState; 
       <div className="season-results-home-award-list">{REGULAR_AWARDS.map((type) => <AwardCard key={type} state={state} type={type} playerId={awardRecord?.winners[type]} emptyLabel={type === "MIP" ? hasOpeningMipBaselines(state) ? "模拟基线候选待评选" : state.history.seasons.length === 0 ? "首季缺少历史数据" : "暂无合格候选" : "待评选"} onOpen={onOpenPlayer} />)}</div>
     </section>
     <div className="season-results-actions" aria-label="查看赛季详情">
-      <button type="button" onClick={() => { setBracketTab("EAST"); setShowBracket(true); }}><span><small>{bracket.settled ? "最终赛果" : "对阵席位"}</small><b>查看季后赛对阵图</b></span><i aria-hidden="true">→</i></button>
+      <button type="button" onClick={() => setShowBracket(true)}><span><small>{bracket.settled ? "最终赛果" : "对阵席位"}</small><b>查看季后赛对阵图</b></span><i aria-hidden="true">→</i></button>
     </div>
     {showBracket && typeof document !== "undefined" && createPortal(<div className="season-results-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowBracket(false); }}>
       <section ref={dialogRef} className="season-results-dialog" role="dialog" aria-modal="true" aria-labelledby="season-results-dialog-title" onKeyDown={(event) => {
@@ -89,29 +117,7 @@ export function SeasonResultsPanel({ state, onOpenPlayer }: { state: GameState; 
         else if (!event.shiftKey && index === buttons.length - 1) { event.preventDefault(); buttons[0]?.focus(); }
       }}>
         <header className="season-results-dialog-heading"><div><span className="section-kicker">{state.league.seasonId} · SEASON REVIEW</span><h2 id="season-results-dialog-title">季后赛对阵图</h2></div><button type="button" className="season-results-dialog-close" aria-label="关闭赛季详情" onClick={() => setShowBracket(false)}>×</button></header>
-        <section className="season-results-bracket" aria-label="季后赛对阵图">
-          <header><h3>{bracket.settled ? "季后赛最终结果" : "季后赛对阵席位"}</h3><small>{bracket.settled ? "系列赛比分" : bracketTab === "FINALS" ? "东西部冠军产生后确定对阵" : "附加赛胜者产生后确定最终首轮对阵"}</small></header>
-          <div className="season-bracket-tabs" role="tablist" aria-label="筛选季后赛对阵" onKeyDown={(event) => {
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-            event.preventDefault();
-            const current = BRACKET_TABS.findIndex((tab) => tab.id === bracketTab);
-            const next = event.key === "Home" ? 0 : event.key === "End" ? BRACKET_TABS.length - 1
-              : (current + (event.key === "ArrowRight" ? 1 : -1) + BRACKET_TABS.length) % BRACKET_TABS.length;
-            setBracketTab(BRACKET_TABS[next].id);
-            (event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")[next])?.focus();
-          }}>{BRACKET_TABS.map((tab) => <button type="button" key={tab.id} role="tab" id={`season-bracket-tab-${tab.id}`} aria-controls="season-bracket-tab-panel" aria-selected={bracketTab === tab.id} tabIndex={bracketTab === tab.id ? 0 : -1} onClick={() => setBracketTab(tab.id)}>{tab.label}</button>)}</div>
-          {selectedConference ? <div className="season-bracket-conferences" role="tabpanel" id="season-bracket-tab-panel" aria-labelledby={`season-bracket-tab-${bracketTab}`}><div className="season-bracket-conference">
-            <h4>{conferenceLabel(selectedConference.conference)}</h4>
-            <div className="season-bracket-rounds">
-              {([
-                ["play-in", "附加赛", selectedConference.playIn],
-                ["first-round", "首轮", selectedConference.firstRound],
-                ["semifinals", "半决赛", selectedConference.semifinals],
-                ["conference-final", `${conferenceLabel(selectedConference.conference)}决赛`, selectedConference.final],
-              ] as const).map(([round, label, series]) => <div className="season-bracket-round" data-round={round} key={round}><h5>{label}</h5><div>{series.map((item, index) => <Series key={index} state={state} series={item} seedRanks={seedRanks} note={round === "play-in" ? ["第 8 席决胜", "9/10 淘汰赛", "第 7 席争夺"][index] : undefined} />)}</div></div>)}
-            </div>
-          </div></div> : <div className="season-bracket-finals" role="tabpanel" id="season-bracket-tab-panel" aria-labelledby="season-bracket-tab-FINALS"><h4>总决赛</h4><Series state={state} series={bracket.finals[0] ?? { placeholderA: "东部冠军", placeholderB: "西部冠军" }} seedRanks={seedRanks} /></div>}
-        </section>
+        <PostseasonBracketView state={state} />
       </section>
     </div>, document.body)}
   </section>;

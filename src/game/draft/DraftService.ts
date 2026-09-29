@@ -46,6 +46,22 @@ function gradeFor(value: number): NonNullable<Player["scoutedPotentialGrade"]> {
     ?? BALANCE_CONFIG.draft.potentialGrades.at(-1) as typeof BALANCE_CONFIG.draft.potentialGrades[number]).grade;
 }
 
+function ensureRookieOverallAtLeast(attributes: PlayerAttributes, position: Position, minimum: number): PlayerAttributes {
+  const adjusted = { ...attributes };
+  const keys = Object.keys(adjusted) as Array<keyof PlayerAttributes>;
+  while (calculateAttributeOverall(adjusted, position) < minimum) {
+    let changed = false;
+    for (const key of keys) {
+      if (adjusted[key] >= BALANCE_CONFIG.playerLifecycle.attributeMaximum) continue;
+      adjusted[key] += 1;
+      changed = true;
+      if (calculateAttributeOverall(adjusted, position) >= minimum) break;
+    }
+    if (!changed) break;
+  }
+  return adjusted;
+}
+
 function weightedChoice<T extends string>(values: readonly T[], weights: Record<T, number>, roll: number): T {
   const total = values.reduce((sum, value) => sum + Math.max(0, weights[value]), 0);
   let target = roll * total;
@@ -80,7 +96,15 @@ function draftFictionalName(state: GameState, rank: number): string {
   return fictionalNameAt(state.seeds.careerSeed, seasonIndex * BALANCE_CONFIG.draft.classSize + rank);
 }
 
-function generateProspect(state: GameState, rank: number, draftSeed: string): Player {
+function lateSleeperRank(draftSeed: string): number | null {
+  const config = BALANCE_CONFIG.draft.potentialDistribution;
+  const rng = createRng(stableHash(draftSeed, "late-sleeper"));
+  return rng.nextFloat() < config.lateSleeperChance
+    ? rng.int(config.lateSleeperMinimumRank, BALANCE_CONFIG.draft.classSize - 1)
+    : null;
+}
+
+function generateProspect(state: GameState, rank: number, draftSeed: string, sleeperRank?: number | null): Player {
   const id = `DRAFT-${state.league.seasonYear}-${String(rank + 1).padStart(3, "0")}`;
   const seed = stableHash(draftSeed, id, "prospect");
   const rng = createRng(seed);
@@ -91,10 +115,13 @@ function generateProspect(state: GameState, rank: number, draftSeed: string): Pl
   const attributes = prospectAttributes(seed, rank, position);
   const readiness = calculateAttributeOverall(attributes, position);
   const potential = BALANCE_CONFIG.draft.potentialDistribution;
+  const topTier = rank < BALANCE_CONFIG.draft.readinessTiers[0].rankExclusive;
+  const ordinaryRookie = sleeperRank !== undefined && !topTier && rank !== sleeperRank;
   const truePotential = clamp(
-    Math.max(readiness + potential.readinessGapMinimum, potential.base - rank * potential.rankSlope + rng.normalLike(potential.noise)),
+    Math.max(readiness + potential.readinessGapMinimum, potential.base - rank * potential.rankSlope + rng.normalLike(potential.noise),
+      topTier ? potential.topTierMinimum : rank === sleeperRank ? potential.lateSleeperMinimum : potential.minimum),
     potential.minimum,
-    potential.maximum,
+    ordinaryRookie ? potential.ordinaryMaximum : potential.maximum,
   );
   const developmentTier = BALANCE_CONFIG.draft.developmentRateTiers.find((entry) => rank < entry.rankExclusive)
     ?? BALANCE_CONFIG.draft.developmentRateTiers.at(-1) as typeof BALANCE_CONFIG.draft.developmentRateTiers[number];
@@ -105,7 +132,9 @@ function generateProspect(state: GameState, rank: number, draftSeed: string): Pl
     ?? scouting.errorByConfidence.at(-1)?.error
     ?? 0;
   const scoutingRng = createRng(stableHash(draftSeed, id, "scouting"));
-  const scoutedValue = clamp(truePotential + scoutingRng.int(-errorRange, errorRange), BALANCE_CONFIG.draft.scoutingPotentialMinimum, BALANCE_CONFIG.playerLifecycle.attributeMaximum);
+  const scoutedValue = clamp(truePotential + scoutingRng.int(-errorRange, errorRange),
+    topTier ? potential.topTierMinimum : BALANCE_CONFIG.draft.scoutingPotentialMinimum,
+    ordinaryRookie ? potential.ordinaryMaximum : BALANCE_CONFIG.playerLifecycle.attributeMaximum);
   return {
     id,
     teamId: "FREE_AGENT",
@@ -228,13 +257,14 @@ function historicalProspect(
   const profile = createFictionalPlayerProfile(draftSeed, rank, id, template.position, age);
   const rebirth = BALANCE_CONFIG.draft.historicalRebirth;
   const jitter = rebirth.rookieAttributeJitter;
-  const attributes = Object.fromEntries(Object.entries(template.rookieAttributes).map(([key, value]) => [
+  const rawAttributes = Object.fromEntries(Object.entries(template.rookieAttributes).map(([key, value]) => [
     key,
     clamp(value + rebirth.rookieAttributeOffset + rng.int(-jitter, jitter)),
   ])) as unknown as PlayerAttributes;
+  const attributes = ensureRookieOverallAtLeast(rawAttributes, template.position, rebirth.rookieOverallMinimum);
   const readiness = calculateAttributeOverall(attributes, template.position);
   const truePotential = clamp(
-    Math.max(readiness + BALANCE_CONFIG.draft.potentialDistribution.readinessGapMinimum, BALANCE_CONFIG.draft.historicalRebirth.potentialFloor, template.peakOverall + rng.int(
+    Math.max(readiness + BALANCE_CONFIG.draft.potentialDistribution.readinessGapMinimum, BALANCE_CONFIG.draft.historicalRebirth.potentialFloor, template.peakOverall, template.peakOverall + rng.int(
       -BALANCE_CONFIG.draft.historicalRebirth.potentialJitter,
       BALANCE_CONFIG.draft.historicalRebirth.potentialJitter,
     )),
@@ -243,14 +273,6 @@ function historicalProspect(
   );
   const scouting = BALANCE_CONFIG.draft.scouting;
   const scoutingConfidence = clamp(scouting.confidenceBase - rank * scouting.rankSlope + rng.normalLike(scouting.confidenceNoise), scouting.confidenceMin, scouting.confidenceMax);
-  const errorRange = scouting.errorByConfidence.find((band) => scoutingConfidence >= band.minimumConfidence)?.error
-    ?? scouting.errorByConfidence.at(-1)?.error
-    ?? 0;
-  const scoutedValue = clamp(
-    truePotential + createRng(stableHash(draftSeed, id, "scouting")).int(-errorRange, errorRange),
-    BALANCE_CONFIG.draft.scoutingPotentialMinimum,
-    BALANCE_CONFIG.playerLifecycle.attributeMaximum,
-  );
   const sourceNbaId = template.sourcePlayerId.match(/^nba:(\d+)$/u)?.[1];
   return {
     id,
@@ -267,7 +289,7 @@ function historicalProspect(
     position: template.position,
     profileSource: "HISTORICAL_ARCHETYPE",
     projectionSource: "HISTORICAL_REBIRTH_V1",
-    projectionDataVersion: `${NBA_PLAYER_DATASET.datasetVersion}+retired-legends-90-v1`,
+    projectionDataVersion: `${NBA_PLAYER_DATASET.datasetVersion}+retired-legends-90-v3`,
     historicalSourcePlayerId: template.sourcePlayerId,
     portraitPath: sourceNbaId && bundledRetiredPortraitIds.has(sourceNbaId)
       ? `./retired-portraits/nba-${sourceNbaId}.webp`
@@ -289,7 +311,7 @@ function historicalProspect(
     truePotential,
     developmentRate: Math.max(0.75, Math.min(1.3, 0.9 + (truePotential - readiness) / 80 + rng.normalLike(0.05))),
     developmentVolatility: BALANCE_CONFIG.draft.developmentVolatility.minimum + rng.nextFloat() * BALANCE_CONFIG.draft.developmentVolatility.range,
-    scoutedPotentialGrade: gradeFor(scoutedValue),
+    scoutedPotentialGrade: "S",
     scoutingConfidence,
     serviceRosterDays: 0,
     birdTeamId: null,
@@ -332,6 +354,22 @@ export function replaceIneligibleUnpickedHistoricalProspects(state: GameState): 
   }
 }
 
+export function upgradeUnpickedHistoricalProspects(state: GameState): void {
+  const draft = state.rookieDraft;
+  if (state.league.currentPhase !== "DRAFT" || draft?.source !== "MIXED_FUTURE") return;
+  for (const id of draft.classPlayerIds) {
+    const player = state.players[id];
+    if (!player || player.teamId !== "FREE_AGENT") continue;
+    const template = HISTORICAL_TEMPLATE_BY_ID.get(player.historicalSourcePlayerId ?? "");
+    if (player.profileSource === "HISTORICAL_ARCHETYPE" && template) {
+      player.attributes = ensureRookieOverallAtLeast(player.attributes, player.position, BALANCE_CONFIG.draft.historicalRebirth.rookieOverallMinimum);
+      player.truePotential = Math.max(player.truePotential ?? 0, BALANCE_CONFIG.draft.historicalRebirth.potentialFloor,
+        template.peakOverall);
+      player.scoutedPotentialGrade = "S";
+    }
+  }
+}
+
 function historicalTemplatesForClass(state: GameState, draftSeed: string): Map<number, HistoricalPlayerTemplate> {
   const config = BALANCE_CONFIG.draft.historicalRebirth;
   if (!config.enabled || config.mode !== "LEGEND_ARCHETYPE" || state.league.seasonYear < config.firstEligibleSeasonYear) return new Map();
@@ -341,11 +379,7 @@ function historicalTemplatesForClass(state: GameState, draftSeed: string): Map<n
       || stableHash(draftSeed, left.sourcePlayerId).localeCompare(stableHash(draftSeed, right.sourcePlayerId)));
   const count = Math.min(config.maximumPerClass, Math.round(BALANCE_CONFIG.draft.classSize * config.classShare), eligible.length);
   const selected = eligible.slice(0, count).sort((left, right) => right.peakOverall - left.peakOverall || left.sourcePlayerId.localeCompare(right.sourcePlayerId));
-  const rankSlots = createRng(stableHash(draftSeed, "historical-rank-slots"))
-    .shuffle(Array.from({ length: BALANCE_CONFIG.draft.classSize }, (_, index) => index))
-    .slice(0, count)
-    .sort((left, right) => left - right);
-  return new Map(selected.map((template, index) => [rankSlots[index], template]));
+  return new Map(selected.map((template, index) => [index, template]));
 }
 
 function expansionPackageOwner(state: GameState, packageId: "A" | "B"): ExpansionCityId {
@@ -493,7 +527,9 @@ function publicDraftScore(player: Player, teamId: string, state: GameState): num
     ? preference.futureFirstPotentialWeight
     : preference.potentialWeight;
   return readiness * (1 - potentialWeight) + gradeValue(player.scoutedPotentialGrade) * potentialWeight
-    + need * preference.rosterNeedWeight - player.age * preference.agePenalty;
+    + need * preference.rosterNeedWeight - player.age * preference.agePenalty
+    + (player.profileSource === "HISTORICAL_ARCHETYPE" && HISTORICAL_TEMPLATE_BY_ID.has(player.historicalSourcePlayerId ?? "")
+      ? BALANCE_CONFIG.draft.historicalRebirth.draftPriorityBonus : 0);
 }
 
 function signRookie(state: GameState, player: Player, pick: RookieDraftPick): void {
@@ -663,6 +699,7 @@ export function prepareRookieDraft(input: GameState): GameState {
   const classPlayerIds: string[] = [];
   const isCurated2026 = state.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear;
   const curatedClass = isCurated2026 ? curated2026Class(state, draftSeed) : null;
+  const sleeperRank = isCurated2026 ? undefined : lateSleeperRank(draftSeed);
   if (isCurated2026) {
     for (const playerId of REAL_2026_DRAFT_PLAYER_IDS) {
       const existing = state.players[playerId];
@@ -681,7 +718,7 @@ export function prepareRookieDraft(input: GameState): GameState {
   }
   for (let rank = 0; rank < BALANCE_CONFIG.draft.classSize; rank += 1) {
     const template = historicalByRank.get(rank);
-    const prospect = curatedClass?.[rank] ?? (template ? historicalProspect(state, rank, draftSeed, template) : generateProspect(state, rank, draftSeed));
+    const prospect = curatedClass?.[rank] ?? (template ? historicalProspect(state, rank, draftSeed, template) : generateProspect(state, rank, draftSeed, sleeperRank));
     state.players[prospect.id] = prospect;
     classPlayerIds.push(prospect.id);
   }

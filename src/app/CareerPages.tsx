@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { ACHIEVEMENT_IDS } from "../game/career/AchievementService";
 import {
@@ -10,6 +10,8 @@ import {
 import { getFranchiseLeaders } from "../game/career/FranchiseStats";
 import type { AchievementId, GameResult, GameState } from "../game/state/types";
 import { careerPostDraft, openCareerPostEditor } from "./careerShare";
+import { loadCareerRank, type ManagerRank } from "./leaderboardClient";
+import { rememberLeaderboardReturn, type LeaderboardSaveSlot } from "./leaderboardReturn";
 import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import { awardLabel } from "./uiText";
 
@@ -118,16 +120,22 @@ function SeasonGameButton({ game, state, label, onOpenGame }: { game: GameResult
   </button>;
 }
 
-export function CareerPages({ state, activeTab, onOpenPlayer, onOpenGame }: {
+export function CareerPages({ state, activeTab, activeSlot, onPrepareLeaderboard, onOpenLeaderboard, onOpenPlayer, onOpenGame }: {
   state: GameState;
   activeTab: CareerTab;
+  activeSlot: LeaderboardSaveSlot;
+  onPrepareLeaderboard: () => Promise<void>;
+  onOpenLeaderboard: () => void;
   onOpenPlayer: (id: string) => void;
   onOpenGame: (game: GameResult) => void;
 }) {
   const [achievementFilter, setAchievementFilter] = useState<"all" | "unlocked" | "locked">("all");
   const [shareStatus, setShareStatus] = useState("");
   const [isOpeningPost, setIsOpeningPost] = useState(false);
+  const [leaderboardStatus, setLeaderboardStatus] = useState("");
+  const [rankSnapshot, setRankSnapshot] = useState<{ mine: ManagerRank | null; notice: string; loading: boolean; error: boolean }>({ mine: null, notice: "", loading: true, error: false });
   const openingPostRef = useRef(false);
+  const openingLeaderboardRef = useRef(false);
   const overview = useMemo(() => getCareerOverview(state), [state]);
   const seasons = useMemo(() => getCareerSeasonSummaries(state), [state]);
   const milestones = useMemo(() => getCareerMilestones(state), [state]);
@@ -139,6 +147,18 @@ export function CareerPages({ state, activeTab, onOpenPlayer, onOpenGame }: {
   const visibleAchievements = ACHIEVEMENT_IDS.filter((id) => achievementFilter === "all" || Boolean(state.achievements[id]?.unlocked) === (achievementFilter === "unlocked"));
   const awardSeasons = [...state.history.seasonAwards].reverse().filter((entry) => Object.keys(entry.winners).length > 0);
   const bestSeasonWins = Math.max(0, ...seasons.map((season) => season.wins));
+
+  useEffect(() => {
+    if (activeTab !== "overview") return;
+    let current = true;
+    setRankSnapshot((previous) => ({ ...previous, loading: true }));
+    void loadCareerRank(state).then(({ mine, notice }) => {
+      if (current) setRankSnapshot({ mine, notice, loading: false, error: false });
+    }).catch((error) => {
+      if (current) setRankSnapshot({ mine: null, notice: error instanceof Error ? error.message : "排名暂时无法加载", loading: false, error: true });
+    });
+    return () => { current = false; };
+  }, [activeTab, activeSlot, state.gmCareer.dynastyScore]);
 
   async function handleShareCareer() {
     if (openingPostRef.current) return;
@@ -170,6 +190,31 @@ export function CareerPages({ state, activeTab, onOpenPlayer, onOpenGame }: {
           <div><small>完整赛季</small><strong>{overview.seasons}<i> 季</i></strong><span>持续书写中</span></div>
         </div>
       </div>
+      <a className="career-leaderboard-link league-section-card" href={`./leaderboard/index.html?careerSlot=${activeSlot}`} onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        if (openingLeaderboardRef.current) return;
+        openingLeaderboardRef.current = true;
+        setLeaderboardStatus("正在保存生涯进度…");
+        void (async () => {
+          try {
+            await onPrepareLeaderboard();
+            rememberLeaderboardReturn(activeSlot);
+            setLeaderboardStatus("");
+            onOpenLeaderboard();
+            openingLeaderboardRef.current = false;
+          } catch (error) {
+            setLeaderboardStatus(error instanceof Error ? `无法打开排行榜：${error.message}` : "无法打开排行榜，请重试。");
+            openingLeaderboardRef.current = false;
+          }
+        })();
+      }}>
+        <span className="career-leaderboard-heading"><small>GLOBAL RANK · 全服总榜</small><b>经理排行榜</b></span>
+        <span className="career-leaderboard-position"><small>我的排名</small><b aria-live="polite">{rankSnapshot.loading ? "正在读取…" : rankSnapshot.error ? "排名暂不可用" : rankSnapshot.mine ? `第 ${rankSnapshot.mine.rank.toLocaleString("zh-CN")} 名` : "暂未上榜"}</b></span>
+        <span className="career-leaderboard-meta"><em>当前存档 {overview.dynastyScore.toLocaleString("zh-CN")} 分 · 总冠军 {overview.championships} 座</em><em>{rankSnapshot.notice || "按账号最高王朝积分排名"}</em></span>
+        <strong>查看完整榜单 <i aria-hidden="true">↗</i></strong>
+      </a>
+      {leaderboardStatus && <p className="career-share-status" role="status" aria-live="polite">{leaderboardStatus}</p>}
       <div className="career-share-strip league-section-card">
         <div><small>生涯战报</small><b>把这段执教故事分享给 JRs</b><span>自动带上王朝积分 {overview.dynastyScore}、战绩与荣誉，发帖前可编辑</span></div>
         <button type="button" onClick={handleShareCareer} disabled={isOpeningPost}>{isOpeningPost ? "正在打开…" : "一键发帖分享 ↗"}</button>

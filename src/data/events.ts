@@ -10,6 +10,9 @@ const seedGroups: Record<string, EventSeed[]> = {
     ["injury_emergency_roster_001", "紧急名单", "可用球员不足，球队启用紧急名单。", 95, true],
     ["injury_depth_test_001", "轮换球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。请选择如何调整首发与轮换。", 55, true],
   ],
+  FATIGUE: [
+    ["fatigue_management_001", "体能预警", "{{fatigue_summary}}。你可以调整轮换分担出场时间，或观看激励视频将当前高疲劳球员恢复到 60。", 68, true],
+  ],
   MORALE: [
     ["morale_role_unhappy_001", "角色不满", "经理，我想在轮换里承担更多责任。能多给我一些上场时间吗？", 70, true],
     ["morale_team_first_001", "团队至上", "经理，我愿意为球队打无私篮球，也希望能有稳定的出场时间。", 38],
@@ -98,6 +101,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
   const seasonOpening = id === "franchise_season_opening_001";
   const expansionComplete = id === "expansion_complete_001";
   const injuryRotationDecision = ["injury_core_major_001", "injury_depth_test_001", "injury_recovery_001"].includes(id);
+  const fatigueDecision = id === "fatigue_management_001";
   const choiceEffects: EventEffectDefinition[] = seasonOpening ? [] : category === "MORALE" || category === "ROLE"
     ? [{ effectId: "morale_response", type: "PLAYER_MORALE", target: "{{player_id}}", value: category === "MORALE" ? 6 : 4, executionPhase: "ON_CHOICE" }]
     : category === "BREAKOUT"
@@ -107,7 +111,12 @@ function definition(category: string, seed: EventSeed): EventDefinition {
         : category === "STREAK" || category === "FRANCHISE" || category === "EXPANSION" || category === "PLAYOFFS"
           ? [{ effectId: "fan_response", type: "TEAM_FAN_SUPPORT", value: id.includes("losing") ? -1 : 1, executionPhase: "ON_CHOICE" }]
           : [{ effectId: "event_log", type: "LEAGUE_LOG", value: title, executionPhase: "ON_CHOICE" }];
-  const choices = injuryRotationDecision
+  const choices = fatigueDecision
+    ? [
+      { id: "manual_adjust", label: "手动调整轮换", effects: [] },
+      { id: "watch_video", label: "观看激励视频", effects: [] },
+    ]
+    : injuryRotationDecision
     ? [
       { id: "auto_adjust", label: "一键自动调整轮换", effects: [] },
       { id: "manual_adjust", label: "手动调整轮换", effects: [] },
@@ -140,7 +149,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     trigger: { mode: seasonOpening ? "MANUAL" : "CONDITION", checkPoint: category === "FREE_AGENCY" || category === "DRAFT" ? "OFFSEASON" : "AFTER_GAME" },
     conditions: {},
     weight: (BALANCE_CONFIG.randomEvents.categoryWeights as Record<string, number>)[category] ?? BALANCE_CONFIG.randomEvents.defaultWeight,
-    cooldownGames: seasonOpening ? 0 : BALANCE_CONFIG.randomEvents.defaultCooldownGames,
+    cooldownGames: seasonOpening || fatigueDecision ? 0 : BALANCE_CONFIG.randomEvents.defaultCooldownGames,
     oncePerSeason: category === "FRANCHISE" || id.includes("first_") || id.includes("award") || id.includes("champion") || id.includes("complete"),
     oncePerCareer: !seasonOpening && (category === "FRANCHISE" || category === "EXPANSION" || id.includes("first_") || id.includes("complete_001") || id.includes("dynasty")),
     pauseSimulation: expansionComplete ? false : pauseSimulation,
