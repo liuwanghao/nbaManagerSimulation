@@ -29,7 +29,65 @@ function recentRookieGames(state: GameState, rookieId: string, rookiePoints: num
   });
 }
 
+function setNextUserGameAfterRest(state: GameState, restDays: number): void {
+  const games = state.schedule.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId);
+  for (const game of games) { game.status = "FINAL"; game.dateIndex = 0; }
+  games[0].status = "SCHEDULED";
+  games[0].dateIndex = restDays + 1;
+}
+
 describe("data-driven event engine", () => {
+  it("interrupts at high rotation fatigue and caps only high-fatigue players after a rewarded choice", () => {
+    const state = createCareer("fatigue-warning-video");
+    const [leadId, secondId, freshId] = state.teams[state.userTeamId].playerIds;
+    state.teams[state.userTeamId].rotationPlan!.targetMinutes[leadId] = 32;
+    state.teams[state.userTeamId].rotationPlan!.targetMinutes[secondId] = 22;
+    state.players[leadId].fatigue = 78;
+    state.players[secondId].fatigue = 65;
+    state.players[freshId].fatigue = 42;
+    setNextUserGameAfterRest(state, 0);
+    state.lightweightResults = recentRookieGames(state, leadId, [16]).map(({ homeBoxScore: _box, ...game }) => game);
+    enqueueAfterUserGameEvents(state);
+    const event = state.eventState.queue.find((item) => item.definitionId === "fatigue_management_001");
+    expect(event?.choices.map((choice) => choice.id)).toEqual(["manual_adjust", "watch_video"]);
+    expect(event?.description).toContain("2 名轮换球员");
+    expect(blockingEvent(state)?.eventInstanceId).toBe(event?.eventInstanceId);
+    const command = { commandId: "fatigue-video-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "watch_video" } } as const;
+    const recovered = executeEventCommand(state, command);
+    expect(recovered.players[leadId].fatigue).toBe(60);
+    expect(recovered.players[secondId].fatigue).toBe(60);
+    expect(recovered.players[freshId].fatigue).toBe(42);
+    expect(executeEventCommand(recovered, command)).toBe(recovered);
+    const manual = executeEventCommand(state, { commandId: "fatigue-manual-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "manual_adjust" } });
+    expect(manual.players[leadId].fatigue).toBe(78);
+  });
+
+  it("alerts from projected next-game fatigue after rest, rather than on a five-game timer", () => {
+    const state = createCareer("fatigue-warning-projection");
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    state.teams[state.userTeamId].rotationPlan!.targetMinutes[player.id] = 30;
+    player.fatigue = 70;
+    setNextUserGameAfterRest(state, 1);
+    const games = recentRookieGames(state, player.id, [12, 12]);
+    state.lightweightResults = games.slice(0, 1).map(({ homeBoxScore: _box, ...game }) => game);
+    enqueueAfterUserGameEvents(state);
+    expect(state.eventState.queue.some((item) => item.definitionId === "fatigue_management_001")).toBe(false);
+    player.fatigue = 90;
+    enqueueAfterUserGameEvents(state);
+    const event = state.eventState.queue.find((item) => item.definitionId === "fatigue_management_001");
+    expect(event?.description).toContain("预计疲劳 75");
+    const resolved = executeEventCommand(state, { commandId: "fatigue-projection-manual", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "manual_adjust" } });
+    resolved.lightweightResults = games.map(({ homeBoxScore: _box, ...game }) => game);
+    enqueueAfterUserGameEvents(resolved);
+    expect(resolved.eventState.queue.some((item) => item.definitionId === "fatigue_management_001")).toBe(true);
+    state.eventState.queue = [];
+    state.schedule.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId)
+      .forEach((game) => { game.status = "FINAL"; });
+    state.eventState.lastOccurrenceByDefinition.fatigue_management_001 = { seasonId: state.league.seasonId, careerGame: 0 };
+    enqueueAfterUserGameEvents(state);
+    expect(state.eventState.queue.some((item) => item.definitionId === "fatigue_management_001")).toBe(false);
+  });
+
   it("names the actual rookie and snapshots recent box-score numbers in a breakout notice", () => {
     const state = createCareer("rookie-breakout-stats");
     const rookie = state.players[state.teams[state.userTeamId].playerIds[0]];

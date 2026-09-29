@@ -164,7 +164,7 @@ export function RotationEditor({ players, plan, postseason, busy, onSave }: Rota
 
   return <section className="rotation-editor" aria-label="首发与轮换管理">
     <header className="rotation-editor-heading">
-      <div><h2>阵容轮换</h2><p>点两名球员互换；轮换外球员接替时会对调目标时间</p></div>
+      <div><h2>阵容轮换</h2><p>点两名球员互换；非首发设为 0 分钟可轮休并恢复体能</p></div>
       <button type="button" className="rotation-auto" data-testid="auto-save-rotation-plan" disabled={busy} onClick={() => { setSelectedPlayerId(null); setSwapMessage(""); onSave(buildDefaultRotationPlan(players)); }}>一键自动匹配</button>
     </header>
 

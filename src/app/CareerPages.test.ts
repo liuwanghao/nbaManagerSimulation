@@ -7,6 +7,22 @@ import type { GameResult } from "../game/state/types";
 import { CareerPages } from "./CareerPages";
 
 describe("career pages", () => {
+  it("links the career overview to the standalone leaderboard", () => {
+    const html = renderToStaticMarkup(createElement(CareerPages, {
+      state: createCareer("career-leaderboard-link"),
+      activeTab: "overview",
+      activeSlot: 2,
+      onPrepareLeaderboard: async () => {},
+      onOpenLeaderboard: () => {},
+      onOpenPlayer: () => {},
+      onOpenGame: () => {},
+    }));
+    expect(html).toContain('href="./leaderboard/index.html?careerSlot=2"');
+    expect(html).toContain("经理排行榜");
+    expect(html).toContain("我的排名");
+    expect(html).toContain("当前存档");
+  });
+
   it("shows live progress toward win-based achievements", () => {
     const state = createCareer("career-page-progress");
     state.standings[state.userTeamId].wins = 3;
@@ -14,6 +30,9 @@ describe("career pages", () => {
     const html = renderToStaticMarkup(createElement(CareerPages, {
       state,
       activeTab: "achievements",
+      activeSlot: 1,
+      onPrepareLeaderboard: async () => {},
+      onOpenLeaderboard: () => {},
       onOpenPlayer: () => {},
       onOpenGame: () => {},
     }));
@@ -39,6 +58,9 @@ describe("career pages", () => {
     const html = renderToStaticMarkup(createElement(CareerPages, {
       state,
       activeTab: "milestones",
+      activeSlot: 1,
+      onPrepareLeaderboard: async () => {},
+      onOpenLeaderboard: () => {},
       onOpenPlayer: () => {},
       onOpenGame: () => {},
     }));
@@ -86,6 +108,9 @@ describe("career pages", () => {
     const html = renderToStaticMarkup(createElement(CareerPages, {
       state,
       activeTab: "history",
+      activeSlot: 1,
+      onPrepareLeaderboard: async () => {},
+      onOpenLeaderboard: () => {},
       onOpenPlayer: () => {},
       onOpenGame: () => {},
     }));

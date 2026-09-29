@@ -25,7 +25,10 @@ export function applyFanSupportAfterGame(state: GameState, result: GameResult): 
     team.fanSupport = clamp(team.fanSupport + (won ? config.gameFanSupport.win : config.gameFanSupport.loss) + streakDelta);
     const box = teamId === result.homeTeamId ? result.homeBoxScore : result.awayBoxScore;
     const participants = new Set(box?.playerStats.map((stat) => stat.playerId) ?? []);
-    const moraleDelta = (won ? config.morale.win : config.morale.loss) + streakDelta;
+    const moraleStreakDelta = team.currentStreak >= config.gameFanSupport.winningStreakThreshold
+      ? config.morale.winningStreakBonus
+      : team.currentStreak <= -config.gameFanSupport.losingStreakThreshold ? config.morale.losingStreakPenalty : 0;
+    const moraleDelta = (won ? config.morale.win : config.morale.loss) + moraleStreakDelta;
     for (const playerId of team.playerIds) {
       const player = state.players[playerId];
       if (!player) continue;

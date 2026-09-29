@@ -32,12 +32,44 @@ describe("SaveService", () => {
     player.profileSource = "HISTORICAL_ARCHETYPE";
     player.historicalSourcePlayerId = "nba:977";
     player.name = "Old Fictional Name";
+    player.truePotential = 90;
+    player.scoutedPotentialGrade = "A+";
     await service.save(1, state);
 
     const loaded = await service.load(1);
     expect(loaded?.players[player.id].name).toBe("Kobe Bryant");
+    expect(loaded?.players[player.id].truePotential).toBeGreaterThanOrEqual(94);
+    expect(loaded?.players[player.id].scoutedPotentialGrade).toBe("S");
     expect(state.players[player.id].name).toBe("Old Fictional Name");
+    expect(state.players[player.id].scoutedPotentialGrade).toBe("A+");
     expect((await service.load(1))?.players[player.id].name).toBe("Kobe Bryant");
+  });
+
+  it("upgrades unpicked historical rookies without weakening other prospects in an existing draft save", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("older-future-draft-balance");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    const prepared = executeDraftCommand(state, { commandId: "prepare-older-future-draft", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const players = prepared.rookieDraft!.classPlayerIds.map((id) => prepared.players[id]);
+    const legend = players.find((player) => player.profileSource === "HISTORICAL_ARCHETYPE")!;
+    const procedural = players.find((player) => player.profileSource === "PROCEDURAL_DRAFT")!;
+    legend.attributes = Object.fromEntries(Object.keys(legend.attributes).map((key) => [key, 70])) as unknown as typeof legend.attributes;
+    legend.truePotential = 90;
+    legend.scoutedPotentialGrade = "A+";
+    procedural.attributes = Object.fromEntries(Object.keys(procedural.attributes).map((key) => [key, 86])) as unknown as typeof procedural.attributes;
+    procedural.truePotential = 99;
+    procedural.scoutedPotentialGrade = "S";
+    await service.save(1, prepared);
+
+    const loaded = await service.load(1);
+    expect(calculatePlayerOverall(loaded!.players[legend.id])).toBeGreaterThanOrEqual(80);
+    expect(loaded!.players[legend.id]).toMatchObject({ scoutedPotentialGrade: "S" });
+    expect(loaded!.players[legend.id].truePotential).toBeGreaterThanOrEqual(94);
+    expect(calculatePlayerOverall(loaded!.players[procedural.id])).toBe(calculatePlayerOverall(procedural));
+    expect(loaded!.players[procedural.id]).toMatchObject({ truePotential: 99, scoutedPotentialGrade: "S" });
+    expect(prepared.players[procedural.id].truePotential).toBe(99);
   });
 
   it("removes a false fifty-win milestone from an old save and restores it at the real threshold", async () => {

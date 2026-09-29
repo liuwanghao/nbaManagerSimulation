@@ -1,5 +1,5 @@
 export const SIMULATION_CONFIG = {
-  version: "simulation.v4",
+  version: "simulation.v9",
   ratings: {
     minimum: 25,
     maximum: 99,
@@ -38,7 +38,18 @@ export const SIMULATION_CONFIG = {
     backToBackLoad: 5,
     ageLoadAfter30: 0.32,
     athleticismRelief: 0.08,
-    recoveryPerRestDay: 18,
+    recoveryPerRestDay: 8,
+    recoveryPerFatiguePoint: 0.08,
+  },
+  coaching: {
+    regularEfficiencyPoints: 1,
+    playoffEfficiencyPoints: 1.5,
+    reviewFatigueRecovery: 18,
+    reviewTeamMoraleBoost: 1,
+    reviewTwoPlayerMoraleBoost: 1,
+    reviewTeamFatigueRecovery: 1,
+    highFatigueThreshold: 60,
+    lowMoraleThreshold: 50,
   },
   regulationTeamSeconds: 5 * 48 * 60,
   overtimeTeamSeconds: 5 * 5 * 60,

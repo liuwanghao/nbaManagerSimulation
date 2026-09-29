@@ -28,7 +28,13 @@ describe("career post sharing", () => {
     vi.stubGlobal("window", { ColorboxAI: { request: { bbs: { openPostEditor } } } });
 
     await expect(openCareerPostEditor(draft)).resolves.toBeUndefined();
-    expect(openPostEditor).toHaveBeenCalledWith(draft);
+    expect(openPostEditor).toHaveBeenCalledWith({
+      ...draft,
+      topicId: "871",
+      tagId: "157696",
+      topicName: "AI工坊",
+      tagName: "篮球经理：联盟扩军时代",
+    });
     await expect(openCareerPostEditor(draft)).rejects.toThrow("服务暂不可用");
   });
 

@@ -180,7 +180,10 @@ function TeamInboxDrawer({ notifications, players, attentionCount, unreadIds, bu
       <div className="team-inbox-list">{notifications.length ? notifications.map((item) => <article className={`team-inbox-item${item.pending ? " pending" : item.read ? " read" : " unread"}`} key={item.id}>
         <div><small>{item.category === "FREE_AGENCY" ? "自由市场" : item.category === "SEASON" ? "赛季" : "球队"} · {item.date ? <time dateTime={item.date}>{item.date}</time> : "日期未记录"}</small><em>{item.pending ? "待处理" : item.read ? "已读" : "未读"}</em></div>
         <h3>{localizePlayerNamesInText(item.title, players)}</h3><p>{item.playerName && item.playerId ? `${playerNameZh(item.playerName, item.playerId)} · ` : ""}{localizePlayerNamesInText(humanizeUiText(item.message), players)}</p>
-        {item.pending ? <button type="button" disabled={busy} onClick={() => onHandlePending(item)}>去处理</button> : !item.read && <button type="button" disabled={busy} onClick={() => void onMarkRead?.([item.id])}>标为已读</button>}
+        {(item.pending || !item.read) && <div className="team-inbox-actions">
+          {item.pending && <button type="button" disabled={busy} onClick={() => onHandlePending(item)}>去处理</button>}
+          {!item.pending && !item.read && <button type="button" className="secondary" disabled={busy} onClick={() => void onMarkRead?.([item.id])}>标为已读</button>}
+        </div>}
       </article>) : <p className="team-inbox-empty">暂无球队通知。自由市场报价结果和赛季待办会显示在这里。</p>}</div>
       {unreadIds.length > 0 && <footer><button type="button" disabled={busy} onClick={() => void onMarkRead?.(unreadIds)}>全部标为已读</button></footer>}
     </section>

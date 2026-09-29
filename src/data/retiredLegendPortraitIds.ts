@@ -90,5 +90,5 @@ export const BUNDLED_RETIRED_PORTRAIT_IDS = [
   "200746",
   "201188",
   "200765",
-  "201149"
+  "201146"
 ] as const;

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { EXPANSION_BRAND_PRESETS } from "../data/expansionBrands";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
@@ -21,6 +21,7 @@ import { createBrowserPlatform } from "../platform/PlatformAdapter";
 import { SaveService, type SaveSlotSummary } from "../storage/SaveService";
 import { phaseLabel } from "./uiText";
 import { formatBeijingSaveTime } from "./saveTime";
+import { clearLeaderboardReturn, leaderboardReturnSlot } from "./leaderboardReturn";
 
 const CAREER_SEED = "expansion-era-demo";
 const launcherSaveService = typeof window === "undefined" ? null : new SaveService(createBrowserPlatform().storage);
@@ -214,11 +215,13 @@ export default function Bootstrap() {
   const saveSlotsFixture = import.meta.env.DEV && fixtureMode() === "save-slots";
   const qaFixture = import.meta.env.DEV && fixtureMode() !== null && !loadingFixture && !saveSlotsFixture;
   const introFixture = import.meta.env.DEV && fixtureMode() === "intro";
-  const [screen, setScreen] = useState<"home" | "intro" | "game">(introFixture ? "intro" : qaFixture ? "game" : "home");
+  const [returnSlot] = useState(leaderboardReturnSlot);
+  const [screen, setScreen] = useState<"home" | "intro" | "game" | "restoring">(introFixture ? "intro" : qaFixture ? "game" : returnSlot ? "restoring" : "home");
   const [initialState, setInitialState] = useState<GameState>(() => createFixturePreview());
   const [openLoadOnStart, setOpenLoadOnStart] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
   const [initialActiveSlot, setInitialActiveSlot] = useState<1 | 2 | 3>(1);
+  const [restoredFromLeaderboard, setRestoredFromLeaderboard] = useState(false);
   const [launcherNotice, setLauncherNotice] = useState<string | null>(null);
   const [loadMenuOpen, setLoadMenuOpen] = useState(false);
   const [newGameMenuOpen, setNewGameMenuOpen] = useState(false);
@@ -226,6 +229,27 @@ export default function Bootstrap() {
   const [homeSaveSlots, setHomeSaveSlots] = useState<SaveSlotSummary[]>([]);
   const [launcherLoading, setLauncherLoading] = useState<LauncherLoading | null>(loadingFixture ? "latest" : null);
   const launcherLoadInFlight = useRef(false);
+  const restoreStarted = useRef(false);
+
+  useEffect(() => {
+    if (screen !== "restoring" || !returnSlot || restoreStarted.current) return;
+    restoreStarted.current = true;
+    void (async () => {
+      try {
+        const loaded = await launcherSaveService?.load(returnSlot);
+        if (!loaded) throw new Error(`槽位 0${returnSlot} 暂无可读取的存档。`);
+        setInitialState(loaded);
+        setInitialActiveSlot(returnSlot);
+        setRestoredFromLeaderboard(true);
+        setSessionKey((value) => value + 1);
+        setScreen("game");
+      } catch (error) {
+        clearLeaderboardReturn();
+        setLauncherNotice(error instanceof Error ? `恢复生涯失败：${error.message}` : "恢复生涯失败，请手动读取存档。");
+        setScreen("home");
+      }
+    })();
+  }, [returnSlot, screen]);
 
   const runLauncherLoad = async (kind: LauncherLoading, action: () => Promise<void>) => {
     if (launcherLoadInFlight.current) return;
@@ -303,7 +327,7 @@ export default function Bootstrap() {
         : launcherLoading ? `正在读取槽位 0${launcherLoading.slice(-1)}…` : "";
     return <main className="launcher-shell home-screen" style={{ backgroundImage: 'linear-gradient(180deg, rgba(2, 6, 16, .28) 0%, rgba(2, 6, 16, .7) 47%, rgba(2, 6, 16, .96) 100%), url("./story/opening-arena.jpg")' }}>
       <section className="launcher-center">
-        <div className="launcher-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4a4 4 0 0 1-8 0V4Z"/><path d="M8 6H4v1a4 4 0 0 0 4 4M16 6h4v1a4 4 0 0 1-4 4M12 12v5M8 21h8M10 17h4v4"/></svg></div>
+        <div className="launcher-mark"><img src="./branding/home-logo-cutout.png" alt="" /></div>
         <h1>篮球经理：联盟扩军时代</h1>
         <p>管理扩军新星，改写职业篮球历史版图</p>
       </section>
@@ -359,5 +383,7 @@ export default function Bootstrap() {
 
   if (screen === "intro") return <ExpansionCinematic state={initialState} onComplete={() => setScreen("game")} />;
 
-  return <App key={sessionKey} initialState={initialState} initialActiveSlot={initialActiveSlot} openSaveOnStart={openLoadOnStart} onExitToHome={() => setScreen("home")} />;
+  if (screen === "restoring") return <main className="launcher-shell home-screen" role="status" aria-live="polite"><div className="launcher-loading-backdrop"><div className="launcher-loading-card"><BasketballSeamLoader /><b>正在返回生涯总览…</b><small>正在恢复刚才的存档</small></div></div></main>;
+
+  return <App key={sessionKey} initialState={initialState} initialActiveSlot={initialActiveSlot} initialActiveTab={restoredFromLeaderboard ? "career" : "home"} openSaveOnStart={openLoadOnStart} onExitToHome={() => { clearLeaderboardReturn(); setRestoredFromLeaderboard(false); setScreen("home"); }} />;
 }

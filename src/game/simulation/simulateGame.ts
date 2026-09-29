@@ -3,6 +3,7 @@ import { createRng } from "../random/xoshiro";
 import type { GameResult, Player, ScheduleGame, Team } from "../state/types";
 import { buildTeamBoxScore } from "./boxScore";
 import { SIMULATION_CONFIG } from "./config";
+import type { CoachingGameModifier } from "../coaching/CoachingService";
 import { addOvertimeSeconds, solveRotationSeconds } from "./minutes";
 import { clamp, teamTalents } from "./ratings";
 import { generateGameInjuries } from "./injuries";
@@ -72,6 +73,7 @@ export function simulateGame(
   players: Record<string, Player>,
   seasonSeed: string,
   postseason = false,
+  coaching?: CoachingGameModifier,
 ): GameResult {
   const gameSeed = stableHash(seasonSeed, "game", game.id);
   const homePlayers = playersForTeam(homeTeam, players);
@@ -113,6 +115,8 @@ export function simulateGame(
     + formModifier(homePlayers, regulationHomeSeconds)
     + moraleEfficiencyModifier(homePlayers, regulationHomeSeconds)
     + SIMULATION_CONFIG.homeOrtgModifier
+    + (coaching?.teamId === homeTeam.id && coaching.focus === "OFFENSE" ? coaching.efficiencyPoints ?? 0 : 0)
+    - (coaching?.teamId === awayTeam.id && coaching.focus === "DEFENSE" ? coaching.efficiencyPoints ?? 0 : 0)
     + homeEfficiencyRng.normalLike(SIMULATION_CONFIG.efficiencyNoiseSd * noiseScale);
   const awayOrtg = SIMULATION_CONFIG.leagueAverageOrtg
     + SIMULATION_CONFIG.talentOffenseScale * (awayTalent.offense - SIMULATION_CONFIG.talentBaseline)
@@ -122,6 +126,8 @@ export function simulateGame(
     + formModifier(awayPlayers, regulationAwaySeconds)
     + moraleEfficiencyModifier(awayPlayers, regulationAwaySeconds)
     + SIMULATION_CONFIG.awayOrtgModifier
+    + (coaching?.teamId === awayTeam.id && coaching.focus === "OFFENSE" ? coaching.efficiencyPoints ?? 0 : 0)
+    - (coaching?.teamId === homeTeam.id && coaching.focus === "DEFENSE" ? coaching.efficiencyPoints ?? 0 : 0)
     + awayEfficiencyRng.normalLike(SIMULATION_CONFIG.efficiencyNoiseSd * noiseScale);
 
   let homeScore = Math.max(SIMULATION_CONFIG.scoring.minimumTeamScore, Math.round(pace * homeOrtg / 100));
@@ -152,6 +158,7 @@ export function simulateGame(
     awayScore,
     winnerTeamId: homeScore > awayScore ? homeTeam.id : awayTeam.id,
     overtimePeriods,
+    ...(coaching ? { coaching } : {}),
     homePeriodScores,
     awayPeriodScores,
     homeBoxScore,

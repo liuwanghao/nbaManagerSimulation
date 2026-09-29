@@ -678,6 +678,19 @@ export interface PostseasonState {
   sevenEightLoserTeamIds: string[];
 }
 
+export type CoachingFocus = "OFFENSE" | "DEFENSE";
+
+export interface CoachingState {
+  seasonId: string;
+  // Old saves may contain recoveryPlayerIds; new seasons ignore that retired pregame option.
+  regularPlan?: { gameId: string; focus?: CoachingFocus; recoveryPlayerIds?: [string, string] };
+  regularVideoGameId?: string;
+  lastReviewAtGameCount?: number;
+  fiveGameReview?: { afterGameId: string };
+  playoffPlan?: { gameId: string; seriesId: string; focus: CoachingFocus };
+  usedPlayoffRounds: PostseasonSeries["round"][];
+}
+
 export interface StandingRecord {
   teamId: string;
   wins: number;
@@ -715,6 +728,7 @@ export interface GameResult {
   awayScore: number;
   winnerTeamId: string;
   overtimePeriods: number;
+  coaching?: { teamId: string; focus?: CoachingFocus; efficiencyPoints?: number; recoveryPlayerIds?: string[] };
   homePeriodScores?: number[];
   awayPeriodScores?: number[];
   homeBoxScore?: TeamBoxScore;
@@ -803,6 +817,7 @@ export interface GameState {
   lightweightResults: GameResult[];
   userGameDetails: Record<string, GameResult>;
   postseason?: PostseasonState;
+  coaching?: CoachingState;
   franchiseStats: FranchiseStatsState;
   history: {
     champions: Array<{ seasonId: string; teamId: string }>;

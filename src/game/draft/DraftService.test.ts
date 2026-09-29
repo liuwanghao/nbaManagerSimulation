@@ -91,6 +91,10 @@ describe("Stage 4 rookie draft", () => {
     const topEightRatings: number[] = [];
     const historicalRookieRatings: number[] = [];
     let immediateNinetyPlus = 0;
+    let topTierSuperstarPotential = 0;
+    let topTierAllStarPotential = 0;
+    let highReadinessProceduralRookies = 0;
+    let classesWithLateSleepers = 0;
     for (let seedIndex = 0; seedIndex < 20; seedIndex += 1) {
       const future = createCareer(`rookie-balance-${seedIndex}`);
       future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
@@ -107,7 +111,25 @@ describe("Stage 4 rookie draft", () => {
       topEightRatings.push(...prospects.slice(0, 8).map(playerOverall));
       const historicalRookies = prospects.filter((player) => player.profileSource === "HISTORICAL_ARCHETYPE");
       expect(historicalRookies).toHaveLength(3);
-      expect(historicalRookies.every((player) => (player.truePotential ?? 0) >= 90)).toBe(true);
+      expect(prospects.slice(0, 3)).toEqual(historicalRookies);
+      expect(getAvailableDraftProspects(prepared).slice(0, 3).every((player) => player.historicalArchetypeName)).toBe(true);
+      expect(historicalRookies.every((player) => (player.truePotential ?? 0) >= 94 && player.scoutedPotentialGrade === "S")).toBe(true);
+      const proceduralRookies = prospects.filter((player) => player.profileSource === "PROCEDURAL_DRAFT");
+      expect(proceduralRookies).toHaveLength(77);
+      const topFiveProcedural = prospects.slice(3, 8);
+      expect(topFiveProcedural.every((player) => player.profileSource === "PROCEDURAL_DRAFT"
+        && (player.truePotential ?? 0) >= 89 && ["S", "A+"].includes(player.scoutedPotentialGrade ?? ""))).toBe(true);
+      topTierSuperstarPotential += topFiveProcedural.filter((player) => (player.truePotential ?? 0) >= 94).length;
+      topTierAllStarPotential += topFiveProcedural.filter((player) => (player.truePotential ?? 0) < 94).length;
+      const lateRookies = prospects.slice(8);
+      const lateSleepers = lateRookies.filter((player) => (player.truePotential ?? 0) >= 94);
+      expect(lateSleepers.length).toBeLessThanOrEqual(1);
+      expect(lateRookies.every((player) => player.scoutedPotentialGrade !== "S" || lateSleepers.includes(player))).toBe(true);
+      if (lateSleepers.length) {
+        expect(prospects.indexOf(lateSleepers[0])).toBeGreaterThanOrEqual(18);
+        classesWithLateSleepers += 1;
+      }
+      highReadinessProceduralRookies += proceduralRookies.filter((player) => playerOverall(player) >= 80).length;
       historicalRookieRatings.push(...historicalRookies.map(playerOverall));
       immediateNinetyPlus += prospects.filter((player) => playerOverall(player) >= 90).length;
     }
@@ -115,9 +137,14 @@ describe("Stage 4 rookie draft", () => {
     expect(averageTopEight).toBeGreaterThan(77);
     expect(averageTopEight).toBeLessThan(82);
     expect(immediateNinetyPlus).toBe(0);
+    expect(topTierSuperstarPotential).toBeGreaterThan(0);
+    expect(topTierAllStarPotential).toBeGreaterThan(0);
+    expect(classesWithLateSleepers).toBeGreaterThan(0);
+    expect(classesWithLateSleepers).toBeLessThan(14);
+    expect(highReadinessProceduralRookies).toBeGreaterThan(0);
     const historicalAverage = historicalRookieRatings.reduce((sum, rating) => sum + rating, 0) / historicalRookieRatings.length;
-    expect(historicalAverage).toBeGreaterThan(72);
-    expect(historicalAverage).toBeLessThan(78);
+    expect(historicalAverage).toBeGreaterThanOrEqual(80);
+    expect(historicalAverage).toBeLessThan(81);
     expect(Math.max(...historicalRookieRatings)).toBeLessThan(81);
   });
 
@@ -548,7 +575,31 @@ describe("Stage 4 rookie draft", () => {
     expect(getAvailableDraftProspects(state).every((player) => !JSON.stringify(player).includes("historicalSourcePlayerId"))).toBe(true);
   });
 
-  it("draws a different reproducible set of three historical sources for different career seeds", () => {
+  it("lets AI teams choose the three S-grade historical rookies first", () => {
+    const future = createCareer("historical-first-three-picks");
+    future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    future.league.seasonYear = 2027;
+    future.league.seasonId = "2027-28";
+    future.seeds.seasonSeed = stableHash(future.seeds.careerSeed, "season", future.league.seasonId);
+    let state = executeDraftCommand(future, { commandId: "prepare-historical-top-three", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    state = executeDraftCommand(state, { commandId: "ack-historical-top-three", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} });
+    const aiTeamId = Object.keys(state.teams).find((id) => id !== state.userTeamId)!;
+    for (const pick of state.rookieDraft!.pickOrder.slice(0, 3)) pick.ownerTeamId = aiTeamId;
+
+    for (let index = 0; index < 3; index += 1) {
+      expect(getNextAiDraftProspect(state)?.historicalArchetypeName).toBeTruthy();
+      state = executeDraftCommand(state, {
+        commandId: `ai-historical-top-three-${index}`,
+        type: "ADVANCE_ROOKIE_DRAFT_AI_PICK",
+        payload: { expectedPickNumber: index + 1 },
+      });
+      const playerId = state.rookieDraft!.pickOrder[index].playerId!;
+      expect(state.players[playerId].profileSource).toBe("HISTORICAL_ARCHETYPE");
+      expect(state.players[playerId].scoutedPotentialGrade).toBe("S");
+    }
+  });
+
+  it("draws a different reproducible first class of historical sources for different career seeds", () => {
     const prepare = (seed: string): string[] => {
       const future = finishExpansion(seed);
       future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
@@ -612,12 +663,16 @@ describe("Stage 4 rookie draft", () => {
       const publicProspects = getAvailableDraftProspects(state);
       const archetypes = publicProspects.filter((player) => player.historicalArchetypeName);
       expect(draftPlayers).toHaveLength(80);
-      expect(archetypes.length).toBeGreaterThanOrEqual(2);
-      expect(archetypes.length).toBeLessThanOrEqual(3);
+      expect(archetypes).toHaveLength(3);
+      expect(draftPlayers.slice(0, 3).every((player) => player.profileSource === "HISTORICAL_ARCHETYPE")).toBe(true);
+      expect(draftPlayers.slice(3, 8).every((player) => player.profileSource === "PROCEDURAL_DRAFT"
+        && player.truePotential! >= 89 && ["S", "A+"].includes(player.scoutedPotentialGrade ?? ""))).toBe(true);
+      expect(publicProspects.slice(0, 3).every((player) => player.historicalArchetypeName)).toBe(true);
       expect(new Set(archetypes.map((player) => player.historicalArchetypeName)).size).toBe(archetypes.length);
       expect(archetypes.every((player) => starNames.has(player.historicalArchetypeName as string))).toBe(true);
       expect(archetypes.every((player) => player.historicalArchetypeName === player.name)).toBe(true);
-      expect(archetypes.every((player) => state.players[player.id].truePotential! >= 90)).toBe(true);
+      expect(archetypes.every((player) => state.players[player.id].truePotential! >= 94 && player.scoutedPotentialGrade === "S")).toBe(true);
+      expect(draftPlayers.filter((player) => player.profileSource === "PROCEDURAL_DRAFT")).toHaveLength(77);
       expect(archetypes.every((player) => playerOverall(state.players[player.id]) < 82)).toBe(true);
       expect(publicProspects.every((player) => !/truePotential|developmentRate|historicalSourcePlayerId/u.test(JSON.stringify(player)))).toBe(true);
       archetypes.forEach((player) => seenArchetypes.add(player.historicalArchetypeName as string));

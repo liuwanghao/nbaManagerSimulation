@@ -17,7 +17,18 @@ describe("TeamSystemService", () => {
     applyFanSupportAfterGame(state, result("SEA"));
     expect(state.teams.SEA.fanSupport).toBe(initial + 0.85);
     expect(state.teams.SEA.currentStreak).toBe(3);
-    expect(player.morale).toBe(51.15);
+    expect(player.morale).toBe(53.35);
+    applyFanSupportAfterGame(state, result("LVG"));
+    expect(player.morale).toBe(52.35);
+  });
+
+  it("makes a five-loss streak materially affect morale without changing fan-support tuning", () => {
+    const state = createCareer("team-core-five-losses");
+    const player = state.players[state.teams.SEA.playerIds[0]];
+    const support = state.teams.SEA.fanSupport;
+    for (let game = 0; game < 5; game += 1) applyFanSupportAfterGame(state, result("LVG"));
+    expect(player.morale).toBe(44.65);
+    expect(state.teams.SEA.fanSupport).toBe(support - 0.85);
   });
 
   it("caps season reputation growth at twelve and derives attraction", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
+import { RETIRED_LEGEND_TEMPLATES } from "../../data/retiredLegendTemplates";
 import { stableHash, stableSerialize } from "../random/hash";
 import { createRng } from "../random/xoshiro";
 import { createCareer } from "../season/career";
@@ -31,6 +32,83 @@ function seasonSeedWithRetirementRoll(playerId: string, minimum: number, maximum
 }
 
 describe("PlayerDevelopmentService", () => {
+  it("takes every retired legend template to superstar OVR by age 27", () => {
+    let state = lifecycleState("all-retired-legends-grow");
+    const prototype = state.players[state.teams[state.userTeamId].playerIds[0]];
+    const legends = RETIRED_LEGEND_TEMPLATES.map((template, index) => {
+      const player = structuredClone(prototype);
+      player.id = `DRAFT-2027-${String(index + 1).padStart(3, "0")}`;
+      player.name = template.sourceName;
+      player.profileSource = "HISTORICAL_ARCHETYPE";
+      player.historicalSourcePlayerId = template.sourcePlayerId;
+      player.position = template.position;
+      player.attributes = Object.fromEntries(Object.entries(template.rookieAttributes).map(([key, value]) => [key, value - 3])) as unknown as typeof player.attributes;
+      player.birthDate = "2007-01-01";
+      player.ageSource = "GENERATED_BIRTH_DATE";
+      player.age = 20;
+      player.truePotential = Math.max(90, template.peakOverall);
+      player.seasonStats.games = 0;
+      player.seasonStats.seconds = 0;
+      return player;
+    });
+    state.players = Object.fromEntries(legends.map((player) => [player.id, player]));
+    state.teams[state.userTeamId].playerIds = legends.map((player) => player.id);
+
+    for (let year = 2027; year <= 2034; year += 1) {
+      state.league.seasonYear = year;
+      state.league.seasonId = `${year}-${String((year + 1) % 100).padStart(2, "0")}`;
+      state.seeds.seasonSeed = stableHash(state.seeds.careerSeed, "season", state.league.seasonId);
+      state = processOffseasonPlayerLifecycle(state);
+    }
+    for (const template of RETIRED_LEGEND_TEMPLATES) {
+      const player = Object.values(state.players).find((candidate) => candidate.historicalSourcePlayerId === template.sourcePlayerId);
+      expect(player, template.sourceName).toBeDefined();
+      expect(playerOverall(player!)).toBeGreaterThanOrEqual(Math.max(90, template.peakOverall));
+      expect(player?.contract.status).not.toBe("RETIRED");
+    }
+    const veteran = state.players[legends[0].id];
+    veteran.birthDate = "1989-01-01";
+    veteran.attributes = Object.fromEntries(Object.keys(veteran.attributes).map((key) => [key, 90])) as unknown as typeof veteran.attributes;
+    veteran.career!.peakOverall = Math.max(90, RETIRED_LEGEND_TEMPLATES[0].peakOverall);
+    state.league.seasonYear = 2027;
+    const afterPrime = processOffseasonPlayerLifecycle(state).players[veteran.id];
+    expect(playerOverall(afterPrime)).toBeLessThan(90);
+  });
+
+  it("grows a retired-star rookie into a 90+ player by prime age even with limited minutes", () => {
+    let state = lifecycleState("historical-superstar-growth");
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    player.id = "DRAFT-2027-001";
+    player.profileSource = "HISTORICAL_ARCHETYPE";
+    player.historicalSourcePlayerId = "nba:893";
+    player.birthDate = "2007-01-01";
+    player.ageSource = "GENERATED_BIRTH_DATE";
+    player.age = 20;
+    player.attributes = Object.fromEntries(Object.keys(player.attributes).map((key) => [key, 72])) as unknown as typeof player.attributes;
+    player.truePotential = 90;
+    player.developmentRate = 0.75;
+    player.developmentVolatility = 0.5;
+    player.rotationRole = "OUT";
+    player.teamRole = "DEVELOPMENT";
+    state.players = { [player.id]: player };
+    state.teams[state.userTeamId].playerIds = [player.id];
+
+    for (let year = 2027; year <= 2034; year += 1) {
+      state.league.seasonYear = year;
+      state.league.seasonId = `${year}-${String((year + 1) % 100).padStart(2, "0")}`;
+      state.seeds.seasonSeed = stableHash(state.seeds.careerSeed, "season", state.league.seasonId);
+      const previous = { ...state.players[player.id].attributes };
+      state = processOffseasonPlayerLifecycle(state);
+      const developed = state.players[player.id];
+      expect(developed.contract.status).not.toBe("RETIRED");
+      for (const key of Object.keys(previous) as Array<keyof typeof previous>) {
+        expect(developed.attributes[key] - previous[key]).toBeLessThanOrEqual(4);
+      }
+    }
+    expect(state.players[player.id].age).toBe(27);
+    expect(playerOverall(state.players[player.id])).toBeGreaterThanOrEqual(90);
+  });
+
   it("records the before and after OVR for every player on the user's rollover roster", () => {
     const state = lifecycleState("user-overall-changes");
     const startingRoster = [...state.teams[state.userTeamId].playerIds];

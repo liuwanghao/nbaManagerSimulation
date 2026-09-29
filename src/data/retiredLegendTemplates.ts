@@ -1,5 +1,8 @@
 import { NBA_PLAYER_DATASET, type HistoricalPlayerTemplate } from "./nbaPlayerDataset";
+import retiredLegend2kRatings from "./retiredLegend2kRatings.json";
+import retiredLegendDesignRatings from "./retiredLegendDesignRatings.json";
 import type { PlayerAttributes, PlayerTrait, Position } from "../game/state/types";
+import { calculateAttributeOverall } from "../game/player/PlayerRatingService";
 
 type Archetype = "CREATOR" | "SCORER" | "SHOOTER" | "SLASHER" | "DEFENDER" | "INTERIOR" | "REBOUNDER";
 type LegendEntry = readonly [nbaId: string, name: string, chineseName: string, position: Position, archetype: Archetype];
@@ -96,7 +99,7 @@ const ROSTER: readonly LegendEntry[] = [
   ["200746", "LaMarcus Aldridge", "拉马库斯·阿尔德里奇", "PF", "SCORER"],
   ["201188", "Marc Gasol", "马克·加索尔", "C", "CREATOR"],
   ["200765", "Rajon Rondo", "拉简·朗多", "PG", "CREATOR"],
-  ["201149", "Joakim Noah", "乔金·诺阿", "C", "DEFENDER"],
+  ["201146", "Yi Jianlian", "易建联", "PF", "SHOOTER"],
 ];
 
 const BASE_ATTRIBUTES: Record<Position, PlayerAttributes> = {
@@ -132,6 +135,12 @@ const BODY_BY_POSITION: Record<Position, readonly [heightCm: number, weightKg: n
 };
 
 const existingTemplates = new Map(NBA_PLAYER_DATASET.historicalTemplates.map((template) => [template.sourcePlayerId, template]));
+type SourcedPeak = { sourcePlayerId: string; peakOverall: number; peakAttributes: PlayerAttributes | null };
+const peakRatingsById = new Map(
+  (retiredLegend2kRatings.players as SourcedPeak[])
+    .map((entry) => [entry.sourcePlayerId, entry]),
+);
+const designPeaksById = new Map(retiredLegendDesignRatings.players.map((entry) => [entry.sourcePlayerId, entry.peakOverall]));
 
 function archetypeTemplate([nbaId, name, , position, archetype]: LegendEntry): HistoricalPlayerTemplate {
   const base = BASE_ATTRIBUTES[position];
@@ -173,5 +182,24 @@ export const RETIRED_LEGEND_NAMES_ZH: Record<string, string> = Object.fromEntrie
 
 export const RETIRED_LEGEND_TEMPLATES: HistoricalPlayerTemplate[] = ROSTER.map((entry) => {
   const existing = existingTemplates.get(`nba:${entry[0]}`);
-  return existing ? { ...existing, position: entry[3], eligible: true } : archetypeTemplate(entry);
+  const template = existing ? { ...existing, position: entry[3], eligible: true } : archetypeTemplate(entry);
+  const designPeak = designPeaksById.get(template.sourcePlayerId);
+  if (designPeak !== undefined) return { ...template, peakOverall: designPeak };
+  const sourcedPeak = peakRatingsById.get(template.sourcePlayerId);
+  if (!sourcedPeak || !Number.isInteger(sourcedPeak.peakOverall) || sourcedPeak.peakOverall < 25 || sourcedPeak.peakOverall > 99) return template;
+  if (!sourcedPeak.peakAttributes || Object.values(sourcedPeak.peakAttributes).some((value) => !Number.isInteger(value) || value < 25 || value > 99)) {
+    return { ...template, peakOverall: sourcedPeak.peakOverall };
+  }
+  // Historic rosters describe a mature player, not his debut year. Keep the
+  // existing rookie OVR and borrow only the sourced eight-attribute shape.
+  const rookieOverall = calculateAttributeOverall(template.rookieAttributes, template.position);
+  const peakOverall = calculateAttributeOverall(sourcedPeak.peakAttributes, template.position);
+  const adjustment = rookieOverall - peakOverall;
+  const rookieAttributes = Object.fromEntries(
+    (Object.keys(sourcedPeak.peakAttributes) as Array<keyof PlayerAttributes>).map((key) => [
+      key,
+      Math.max(25, Math.min(99, Math.round(sourcedPeak.peakAttributes![key] + adjustment))),
+    ]),
+  ) as unknown as PlayerAttributes;
+  return { ...template, peakOverall: sourcedPeak.peakOverall, rookieAttributes };
 });

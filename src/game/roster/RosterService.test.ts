@@ -35,6 +35,16 @@ describe("RosterService", () => {
     expect(locked.teamNotifications).toEqual([]);
   });
 
+  it("starts the new regular season with rested players", () => {
+    const state = createCareer("opening-fatigue-reset");
+    state.league.currentPhase = "PRESEASON";
+    const playerId = state.teams[state.userTeamId].playerIds[0];
+    state.players[playerId].fatigue = 75;
+    const opened = lockOpeningRoster(state, true);
+    expect(state.players[playerId].fatigue).toBe(75);
+    expect(Object.values(opened.players).every((player) => player.fatigue === 0)).toBe(true);
+  });
+
   it("transfers Bird rights on minimum-salary free-agent fills and keeps them for the original team", () => {
     for (const originalTeamIsUser of [false, true]) {
       let state = createCareer(`minimum-bird-${originalTeamIsUser}`);

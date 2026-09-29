@@ -1,0 +1,1582 @@
+{
+  "schemaVersion": 1,
+  "gameVersions": [
+    "2K27",
+    "2K26"
+  ],
+  "source": "nba2kapi highest available classic/all-time roster rating (community service; not affiliated with 2K)",
+  "capturedAt": "2026-09-29T07:08:31.084Z",
+  "players": [
+    {
+      "sourcePlayerId": "nba:76003",
+      "sourceName": "Kareem Abdul-Jabbar",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 73,
+        "finishing": 94,
+        "playmaking": 57,
+        "perimeterDefense": 76,
+        "interiorDefense": 94,
+        "rebounding": 98,
+        "athleticism": 85,
+        "basketballIq": 92
+      },
+      "gameVersion": "2K26",
+      "team": "All-Time Milwaukee Bucks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:951",
+      "sourceName": "Ray Allen",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 96,
+        "finishing": 76,
+        "playmaking": 85,
+        "perimeterDefense": 83,
+        "interiorDefense": 55,
+        "rebounding": 58,
+        "athleticism": 87,
+        "basketballIq": 90
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Oklahoma City Thunder",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:2546",
+      "sourceName": "Carmelo Anthony",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 92,
+        "finishing": 81,
+        "playmaking": 87,
+        "perimeterDefense": 78,
+        "interiorDefense": 74,
+        "rebounding": 83,
+        "athleticism": 87,
+        "basketballIq": 89
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Denver Nuggets",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76054",
+      "sourceName": "Nate Archibald",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 89,
+        "finishing": 67,
+        "playmaking": 94,
+        "perimeterDefense": 78,
+        "interiorDefense": 49,
+        "rebounding": 30,
+        "athleticism": 90,
+        "basketballIq": 89
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Sacramento Kings",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76056",
+      "sourceName": "Paul Arizin",
+      "peakOverall": 91,
+      "peakAttributes": {
+        "shooting": 92,
+        "finishing": 77,
+        "playmaking": 76,
+        "perimeterDefense": 91,
+        "interiorDefense": 65,
+        "rebounding": 88,
+        "athleticism": 86,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Golden State Warriors",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:600013",
+      "sourceName": "Rick Barry",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 91,
+        "finishing": 87,
+        "playmaking": 82,
+        "perimeterDefense": 83,
+        "interiorDefense": 81,
+        "rebounding": 85,
+        "athleticism": 86,
+        "basketballIq": 88
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Golden State Warriors",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76127",
+      "sourceName": "Elgin Baylor",
+      "peakOverall": 96,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 88,
+        "playmaking": 81,
+        "perimeterDefense": 89,
+        "interiorDefense": 84,
+        "rebounding": 95,
+        "athleticism": 91,
+        "basketballIq": 92
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Lakers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76166",
+      "sourceName": "Dave Bing",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 88,
+        "finishing": 67,
+        "playmaking": 90,
+        "perimeterDefense": 84,
+        "interiorDefense": 55,
+        "rebounding": 44,
+        "athleticism": 87,
+        "basketballIq": 89
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Detroit Pistons",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1449",
+      "sourceName": "Larry Bird",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 97,
+        "finishing": 74,
+        "playmaking": 85,
+        "perimeterDefense": 88,
+        "interiorDefense": 77,
+        "rebounding": 76,
+        "athleticism": 77,
+        "basketballIq": 98
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:977",
+      "sourceName": "Kobe Bryant",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 84,
+        "playmaking": 89,
+        "perimeterDefense": 91,
+        "interiorDefense": 71,
+        "rebounding": 51,
+        "athleticism": 90,
+        "basketballIq": 97
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Lakers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76375",
+      "sourceName": "Wilt Chamberlain",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 71,
+        "finishing": 92,
+        "playmaking": 60,
+        "perimeterDefense": 72,
+        "interiorDefense": 95,
+        "rebounding": 99,
+        "athleticism": 88,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K26",
+      "team": "All-Time Golden State Warriors",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:600003",
+      "sourceName": "Bob Cousy",
+      "peakOverall": 96,
+      "peakAttributes": {
+        "shooting": 94,
+        "finishing": 64,
+        "playmaking": 96,
+        "perimeterDefense": 91,
+        "interiorDefense": 50,
+        "rebounding": 75,
+        "athleticism": 86,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76462",
+      "sourceName": "Dave Cowens",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 88,
+        "finishing": 89,
+        "playmaking": 55,
+        "perimeterDefense": 76,
+        "interiorDefense": 97,
+        "rebounding": 96,
+        "athleticism": 82,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76487",
+      "sourceName": "Billy Cunningham",
+      "peakOverall": 93,
+      "peakAttributes": {
+        "shooting": 84,
+        "finishing": 92,
+        "playmaking": 75,
+        "perimeterDefense": 77,
+        "interiorDefense": 78,
+        "rebounding": 94,
+        "athleticism": 86,
+        "basketballIq": 86
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Philadelphia 76ers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76545",
+      "sourceName": "Dave DeBusschere",
+      "peakOverall": 92,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 88,
+        "playmaking": 69,
+        "perimeterDefense": 81,
+        "interiorDefense": 91,
+        "rebounding": 94,
+        "athleticism": 84,
+        "basketballIq": 88
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time New York Knicks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:17",
+      "sourceName": "Clyde Drexler",
+      "peakOverall": 96,
+      "peakAttributes": {
+        "shooting": 90,
+        "finishing": 87,
+        "playmaking": 79,
+        "perimeterDefense": 87,
+        "interiorDefense": 70,
+        "rebounding": 76,
+        "athleticism": 90,
+        "basketballIq": 90
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Portland Trail Blazers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1495",
+      "sourceName": "Tim Duncan",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 87,
+        "finishing": 85,
+        "playmaking": 62,
+        "perimeterDefense": 79,
+        "interiorDefense": 97,
+        "rebounding": 95,
+        "athleticism": 84,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time San Antonio Spurs",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76681",
+      "sourceName": "Julius Erving",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 90,
+        "finishing": 91,
+        "playmaking": 86,
+        "perimeterDefense": 88,
+        "interiorDefense": 80,
+        "rebounding": 76,
+        "athleticism": 93,
+        "basketballIq": 95
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Brooklyn Nets",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:121",
+      "sourceName": "Patrick Ewing",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 88,
+        "playmaking": 54,
+        "perimeterDefense": 65,
+        "interiorDefense": 94,
+        "rebounding": 94,
+        "athleticism": 74,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time New York Knicks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76750",
+      "sourceName": "Walt Frazier",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 89,
+        "finishing": 68,
+        "playmaking": 94,
+        "perimeterDefense": 94,
+        "interiorDefense": 63,
+        "rebounding": 54,
+        "athleticism": 89,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time New York Knicks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:708",
+      "sourceName": "Kevin Garnett",
+      "peakOverall": 98,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 92,
+        "playmaking": 74,
+        "perimeterDefense": 71,
+        "interiorDefense": 88,
+        "rebounding": 94,
+        "athleticism": 89,
+        "basketballIq": 92
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Minnesota Timberwolves",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76804",
+      "sourceName": "George Gervin",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 89,
+        "finishing": 89,
+        "playmaking": 76,
+        "perimeterDefense": 87,
+        "interiorDefense": 74,
+        "rebounding": 86,
+        "athleticism": 90,
+        "basketballIq": 89
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time San Antonio Spurs",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76882",
+      "sourceName": "Hal Greer",
+      "peakOverall": 92,
+      "peakAttributes": {
+        "shooting": 92,
+        "finishing": 62,
+        "playmaking": 87,
+        "perimeterDefense": 88,
+        "interiorDefense": 54,
+        "rebounding": 36,
+        "athleticism": 82,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Philadelphia 76ers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76970",
+      "sourceName": "John Havlicek",
+      "peakOverall": 96,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 81,
+        "playmaking": 83,
+        "perimeterDefense": 97,
+        "interiorDefense": 78,
+        "rebounding": 77,
+        "athleticism": 86,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:76979",
+      "sourceName": "Elvin Hayes",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 80,
+        "finishing": 88,
+        "playmaking": 65,
+        "perimeterDefense": 77,
+        "interiorDefense": 95,
+        "rebounding": 98,
+        "athleticism": 83,
+        "basketballIq": 92
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Washington Wizards",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:947",
+      "sourceName": "Allen Iverson",
+      "peakOverall": 96,
+      "peakAttributes": {
+        "shooting": 90,
+        "finishing": 67,
+        "playmaking": 92,
+        "perimeterDefense": 91,
+        "interiorDefense": 52,
+        "rebounding": 41,
+        "athleticism": 93,
+        "basketballIq": 89
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Philadelphia 76ers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77142",
+      "sourceName": "Magic Johnson",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 91,
+        "finishing": 86,
+        "playmaking": 97,
+        "perimeterDefense": 85,
+        "interiorDefense": 86,
+        "rebounding": 83,
+        "athleticism": 90,
+        "basketballIq": 96
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Lakers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77196",
+      "sourceName": "Sam Jones",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 73,
+        "playmaking": 81,
+        "perimeterDefense": 84,
+        "interiorDefense": 72,
+        "rebounding": 53,
+        "athleticism": 87,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:893",
+      "sourceName": "Michael Jordan",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 92,
+        "finishing": 88,
+        "playmaking": 87,
+        "perimeterDefense": 96,
+        "interiorDefense": 77,
+        "rebounding": 59,
+        "athleticism": 91,
+        "basketballIq": 98
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Chicago Bulls",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:467",
+      "sourceName": "Jason Kidd",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 87,
+        "finishing": 67,
+        "playmaking": 96,
+        "perimeterDefense": 95,
+        "interiorDefense": 68,
+        "rebounding": 65,
+        "athleticism": 89,
+        "basketballIq": 96
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Brooklyn Nets",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77418",
+      "sourceName": "Jerry Lucas",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 87,
+        "playmaking": 65,
+        "perimeterDefense": 61,
+        "interiorDefense": 92,
+        "rebounding": 98,
+        "athleticism": 74,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Sacramento Kings",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:252",
+      "sourceName": "Karl Malone",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 90,
+        "finishing": 84,
+        "playmaking": 77,
+        "perimeterDefense": 73,
+        "interiorDefense": 93,
+        "rebounding": 96,
+        "athleticism": 87,
+        "basketballIq": 96
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Utah Jazz",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77449",
+      "sourceName": "Moses Malone",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 75,
+        "finishing": 93,
+        "playmaking": 52,
+        "perimeterDefense": 76,
+        "interiorDefense": 96,
+        "rebounding": 98,
+        "athleticism": 83,
+        "basketballIq": 92
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Philadelphia 76ers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77459",
+      "sourceName": "Pete Maravich",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 95,
+        "finishing": 71,
+        "playmaking": 91,
+        "perimeterDefense": 81,
+        "interiorDefense": 54,
+        "rebounding": 58,
+        "athleticism": 81,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Utah Jazz",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77498",
+      "sourceName": "Bob McAdoo",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 71,
+        "finishing": 95,
+        "playmaking": 68,
+        "perimeterDefense": 73,
+        "interiorDefense": 89,
+        "rebounding": 97,
+        "athleticism": 82,
+        "basketballIq": 83
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Clippers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1450",
+      "sourceName": "Kevin McHale",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 87,
+        "finishing": 85,
+        "playmaking": 56,
+        "perimeterDefense": 78,
+        "interiorDefense": 91,
+        "rebounding": 94,
+        "athleticism": 79,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:600012",
+      "sourceName": "George Mikan",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 88,
+        "finishing": 90,
+        "playmaking": 52,
+        "perimeterDefense": 64,
+        "interiorDefense": 95,
+        "rebounding": 97,
+        "athleticism": 72,
+        "basketballIq": 88
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Lakers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:600006",
+      "sourceName": "Earl Monroe",
+      "peakOverall": 89,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 62,
+        "playmaking": 86,
+        "perimeterDefense": 82,
+        "interiorDefense": 53,
+        "rebounding": 36,
+        "athleticism": 84,
+        "basketballIq": 90
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Washington Wizards",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:959",
+      "sourceName": "Steve Nash",
+      "peakOverall": 96,
+      "peakAttributes": {
+        "shooting": 95,
+        "finishing": 58,
+        "playmaking": 96,
+        "perimeterDefense": 86,
+        "interiorDefense": 48,
+        "rebounding": 60,
+        "athleticism": 83,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Phoenix Suns",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1717",
+      "sourceName": "Dirk Nowitzki",
+      "peakOverall": 98,
+      "peakAttributes": {
+        "shooting": 97,
+        "finishing": 83,
+        "playmaking": 66,
+        "perimeterDefense": 63,
+        "interiorDefense": 85,
+        "rebounding": 91,
+        "athleticism": 75,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Dallas Mavericks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:406",
+      "sourceName": "Shaquille O'Neal",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 58,
+        "finishing": 93,
+        "playmaking": 61,
+        "perimeterDefense": 78,
+        "interiorDefense": 98,
+        "rebounding": 98,
+        "athleticism": 85,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Lakers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:165",
+      "sourceName": "Hakeem Olajuwon",
+      "peakOverall": 99,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 90,
+        "playmaking": 62,
+        "perimeterDefense": 75,
+        "interiorDefense": 97,
+        "rebounding": 97,
+        "athleticism": 73,
+        "basketballIq": 95
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Houston Rockets",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:305",
+      "sourceName": "Robert Parish",
+      "peakOverall": 93,
+      "peakAttributes": {
+        "shooting": 67,
+        "finishing": 86,
+        "playmaking": 43,
+        "perimeterDefense": 71,
+        "interiorDefense": 90,
+        "rebounding": 96,
+        "athleticism": 72,
+        "basketballIq": 86
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:101108",
+      "sourceName": "Chris Paul",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 91,
+        "finishing": 65,
+        "playmaking": 96,
+        "perimeterDefense": 96,
+        "interiorDefense": 66,
+        "rebounding": 48,
+        "athleticism": 89,
+        "basketballIq": 96
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time New Orleans Pelicans",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:56",
+      "sourceName": "Gary Payton",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 83,
+        "finishing": 70,
+        "playmaking": 92,
+        "perimeterDefense": 97,
+        "interiorDefense": 66,
+        "rebounding": 46,
+        "athleticism": 87,
+        "basketballIq": 96
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Oklahoma City Thunder",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77847",
+      "sourceName": "Bob Pettit",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 95,
+        "finishing": 88,
+        "playmaking": 64,
+        "perimeterDefense": 67,
+        "interiorDefense": 84,
+        "rebounding": 97,
+        "athleticism": 78,
+        "basketballIq": 84
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Atlanta Hawks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1718",
+      "sourceName": "Paul Pierce",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 79,
+        "playmaking": 79,
+        "perimeterDefense": 86,
+        "interiorDefense": 72,
+        "rebounding": 73,
+        "athleticism": 83,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:937",
+      "sourceName": "Scottie Pippen",
+      "peakOverall": 98,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 84,
+        "playmaking": 84,
+        "perimeterDefense": 96,
+        "interiorDefense": 82,
+        "rebounding": 89,
+        "athleticism": 88,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Chicago Bulls",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:77929",
+      "sourceName": "Willis Reed",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 80,
+        "finishing": 91,
+        "playmaking": 52,
+        "perimeterDefense": 74,
+        "interiorDefense": 94,
+        "rebounding": 95,
+        "athleticism": 81,
+        "basketballIq": 86
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time New York Knicks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:600015",
+      "sourceName": "Oscar Robertson",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 76,
+        "playmaking": 95,
+        "perimeterDefense": 88,
+        "interiorDefense": 67,
+        "rebounding": 86,
+        "athleticism": 86,
+        "basketballIq": 97
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Sacramento Kings",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:764",
+      "sourceName": "David Robinson",
+      "peakOverall": 96,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 85,
+        "playmaking": 47,
+        "perimeterDefense": 74,
+        "interiorDefense": 94,
+        "rebounding": 87,
+        "athleticism": 75,
+        "basketballIq": 87
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time San Antonio Spurs",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:23",
+      "sourceName": "Dennis Rodman",
+      "peakOverall": 93,
+      "peakAttributes": {
+        "shooting": 72,
+        "finishing": 71,
+        "playmaking": 55,
+        "perimeterDefense": 81,
+        "interiorDefense": 85,
+        "rebounding": 98,
+        "athleticism": 87,
+        "basketballIq": 88
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Chicago Bulls",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78049",
+      "sourceName": "Bill Russell",
+      "peakOverall": 98,
+      "peakAttributes": null,
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78076",
+      "sourceName": "Dolph Schayes",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 90,
+        "finishing": 89,
+        "playmaking": 66,
+        "perimeterDefense": 76,
+        "interiorDefense": 85,
+        "rebounding": 96,
+        "athleticism": 79,
+        "basketballIq": 85
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Philadelphia 76ers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78126",
+      "sourceName": "Bill Sharman",
+      "peakOverall": 92,
+      "peakAttributes": {
+        "shooting": 94,
+        "finishing": 77,
+        "playmaking": 84,
+        "perimeterDefense": 88,
+        "interiorDefense": 66,
+        "rebounding": 80,
+        "athleticism": 84,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:304",
+      "sourceName": "John Stockton",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 92,
+        "finishing": 57,
+        "playmaking": 97,
+        "perimeterDefense": 97,
+        "interiorDefense": 62,
+        "rebounding": 42,
+        "athleticism": 91,
+        "basketballIq": 98
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Utah Jazz",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78318",
+      "sourceName": "Isiah Thomas",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 88,
+        "finishing": 65,
+        "playmaking": 97,
+        "perimeterDefense": 84,
+        "interiorDefense": 55,
+        "rebounding": 42,
+        "athleticism": 88,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Detroit Pistons",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:600001",
+      "sourceName": "Nate Thurmond",
+      "peakOverall": 92,
+      "peakAttributes": {
+        "shooting": 67,
+        "finishing": 83,
+        "playmaking": 40,
+        "perimeterDefense": 70,
+        "interiorDefense": 90,
+        "rebounding": 96,
+        "athleticism": 84,
+        "basketballIq": 86
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Golden State Warriors",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78392",
+      "sourceName": "Wes Unseld",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 80,
+        "finishing": 95,
+        "playmaking": 79,
+        "perimeterDefense": 78,
+        "interiorDefense": 89,
+        "rebounding": 97,
+        "athleticism": 87,
+        "basketballIq": 82
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Washington Wizards",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:2548",
+      "sourceName": "Dwyane Wade",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 89,
+        "finishing": 81,
+        "playmaking": 94,
+        "perimeterDefense": 91,
+        "interiorDefense": 74,
+        "rebounding": 59,
+        "athleticism": 91,
+        "basketballIq": 96
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Miami Heat",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78450",
+      "sourceName": "Bill Walton",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 71,
+        "finishing": 87,
+        "playmaking": 72,
+        "perimeterDefense": 72,
+        "interiorDefense": 95,
+        "rebounding": 98,
+        "athleticism": 78,
+        "basketballIq": 94
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Portland Trail Blazers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78497",
+      "sourceName": "Jerry West",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 94,
+        "finishing": 68,
+        "playmaking": 94,
+        "perimeterDefense": 96,
+        "interiorDefense": 61,
+        "rebounding": 35,
+        "athleticism": 89,
+        "basketballIq": 96
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Lakers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:201566",
+      "sourceName": "Russell Westbrook",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 85,
+        "finishing": 76,
+        "playmaking": 94,
+        "perimeterDefense": 82,
+        "interiorDefense": 60,
+        "rebounding": 80,
+        "athleticism": 92,
+        "basketballIq": 92
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Oklahoma City Thunder",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:78530",
+      "sourceName": "Lenny Wilkens",
+      "peakOverall": 84,
+      "peakAttributes": {
+        "shooting": 87,
+        "finishing": 61,
+        "playmaking": 90,
+        "perimeterDefense": 85,
+        "interiorDefense": 55,
+        "rebounding": 53,
+        "athleticism": 79,
+        "basketballIq": 83
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Oklahoma City Thunder",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1122",
+      "sourceName": "Dominique Wilkins",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 89,
+        "finishing": 91,
+        "playmaking": 74,
+        "perimeterDefense": 82,
+        "interiorDefense": 77,
+        "rebounding": 80,
+        "athleticism": 90,
+        "basketballIq": 88
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Atlanta Hawks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1460",
+      "sourceName": "James Worthy",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 89,
+        "finishing": 93,
+        "playmaking": 75,
+        "perimeterDefense": 82,
+        "interiorDefense": 80,
+        "rebounding": 86,
+        "athleticism": 89,
+        "basketballIq": 89
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Los Angeles Lakers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:2225",
+      "sourceName": "Tony Parker",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 92,
+        "finishing": 65,
+        "playmaking": 93,
+        "perimeterDefense": 83,
+        "interiorDefense": 57,
+        "rebounding": 41,
+        "athleticism": 86,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time San Antonio Spurs",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1938",
+      "sourceName": "Manu Ginobili",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 91,
+        "finishing": 70,
+        "playmaking": 89,
+        "perimeterDefense": 83,
+        "interiorDefense": 60,
+        "rebounding": 59,
+        "athleticism": 78,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time San Antonio Spurs",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:2547",
+      "sourceName": "Chris Bosh",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 87,
+        "finishing": 83,
+        "playmaking": 58,
+        "perimeterDefense": 76,
+        "interiorDefense": 80,
+        "rebounding": 93,
+        "athleticism": 79,
+        "basketballIq": 88
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Toronto Raptors",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1713",
+      "sourceName": "Vince Carter",
+      "peakOverall": 97,
+      "peakAttributes": {
+        "shooting": 92,
+        "finishing": 83,
+        "playmaking": 82,
+        "perimeterDefense": 78,
+        "interiorDefense": 68,
+        "rebounding": 63,
+        "athleticism": 89,
+        "basketballIq": 89
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Toronto Raptors",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1503",
+      "sourceName": "Tracy McGrady",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 93,
+        "finishing": 86,
+        "playmaking": 87,
+        "perimeterDefense": 80,
+        "interiorDefense": 67,
+        "rebounding": 51,
+        "athleticism": 86,
+        "basketballIq": 90
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Orlando Magic",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:2397",
+      "sourceName": "Yao Ming",
+      "peakOverall": 91,
+      "peakAttributes": {
+        "shooting": 78,
+        "finishing": 76,
+        "playmaking": 48,
+        "perimeterDefense": 56,
+        "interiorDefense": 93,
+        "rebounding": 97,
+        "athleticism": 54,
+        "basketballIq": 84
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Houston Rockets",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1112",
+      "sourceName": "Ben Wallace",
+      "peakOverall": 89,
+      "peakAttributes": {
+        "shooting": 50,
+        "finishing": 62,
+        "playmaking": 45,
+        "perimeterDefense": 79,
+        "interiorDefense": 97,
+        "rebounding": 85,
+        "athleticism": 80,
+        "basketballIq": 85
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Detroit Pistons",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:87",
+      "sourceName": "Dikembe Mutombo",
+      "peakOverall": 92,
+      "peakAttributes": {
+        "shooting": 57,
+        "finishing": 63,
+        "playmaking": 36,
+        "perimeterDefense": 76,
+        "interiorDefense": 97,
+        "rebounding": 95,
+        "athleticism": 76,
+        "basketballIq": 83
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Atlanta Hawks",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:255",
+      "sourceName": "Grant Hill",
+      "peakOverall": 93,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 84,
+        "playmaking": 86,
+        "perimeterDefense": 85,
+        "interiorDefense": 57,
+        "rebounding": 70,
+        "athleticism": 90,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Detroit Pistons",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:2200",
+      "sourceName": "Pau Gasol",
+      "peakOverall": 92,
+      "peakAttributes": {
+        "shooting": 86,
+        "finishing": 86,
+        "playmaking": 62,
+        "perimeterDefense": 60,
+        "interiorDefense": 90,
+        "rebounding": 87,
+        "athleticism": 69,
+        "basketballIq": 87
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Memphis Grizzlies",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:1497",
+      "sourceName": "Chauncey Billups",
+      "peakOverall": 93,
+      "peakAttributes": {
+        "shooting": 90,
+        "finishing": 59,
+        "playmaking": 91,
+        "perimeterDefense": 88,
+        "interiorDefense": 63,
+        "rebounding": 44,
+        "athleticism": 88,
+        "basketballIq": 93
+      },
+      "gameVersion": "2K26",
+      "team": "All-Time Detroit Pistons",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:185",
+      "sourceName": "Chris Webber",
+      "peakOverall": 93,
+      "peakAttributes": {
+        "shooting": 82,
+        "finishing": 89,
+        "playmaking": 77,
+        "perimeterDefense": 67,
+        "interiorDefense": 82,
+        "rebounding": 92,
+        "athleticism": 79,
+        "basketballIq": 82
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Sacramento Kings",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:297",
+      "sourceName": "Alonzo Mourning",
+      "peakOverall": 94,
+      "peakAttributes": {
+        "shooting": 80,
+        "finishing": 88,
+        "playmaking": 42,
+        "perimeterDefense": 78,
+        "interiorDefense": 97,
+        "rebounding": 95,
+        "athleticism": 81,
+        "basketballIq": 90
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Miami Heat",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:431",
+      "sourceName": "Shawn Kemp",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 74,
+        "finishing": 86,
+        "playmaking": 50,
+        "perimeterDefense": 68,
+        "interiorDefense": 82,
+        "rebounding": 87,
+        "athleticism": 87,
+        "basketballIq": 78
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Oklahoma City Thunder",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:2405",
+      "sourceName": "Amar'e Stoudemire",
+      "peakOverall": 92,
+      "peakAttributes": {
+        "shooting": 88,
+        "finishing": 89,
+        "playmaking": 54,
+        "perimeterDefense": 56,
+        "interiorDefense": 81,
+        "rebounding": 89,
+        "athleticism": 77,
+        "basketballIq": 78
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Phoenix Suns",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:896",
+      "sourceName": "Tim Hardaway",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 89,
+        "finishing": 59,
+        "playmaking": 92,
+        "perimeterDefense": 91,
+        "interiorDefense": 54,
+        "rebounding": 44,
+        "athleticism": 89,
+        "basketballIq": 91
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Golden State Warriors",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:201565",
+      "sourceName": "Derrick Rose",
+      "peakOverall": 95,
+      "peakAttributes": {
+        "shooting": 88,
+        "finishing": 75,
+        "playmaking": 94,
+        "perimeterDefense": 78,
+        "interiorDefense": 57,
+        "rebounding": 53,
+        "athleticism": 91,
+        "basketballIq": 87
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Chicago Bulls",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:201933",
+      "sourceName": "Blake Griffin",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 79,
+        "finishing": 88,
+        "playmaking": 74,
+        "perimeterDefense": 60,
+        "interiorDefense": 70,
+        "rebounding": 86,
+        "athleticism": 82,
+        "basketballIq": 77
+      },
+      "gameVersion": "2K27",
+      "team": "2013-14 Los Angeles Clippers",
+      "teamType": "class"
+    },
+    {
+      "sourcePlayerId": "nba:200746",
+      "sourceName": "LaMarcus Aldridge",
+      "peakOverall": 89,
+      "peakAttributes": {
+        "shooting": 91,
+        "finishing": 83,
+        "playmaking": 48,
+        "perimeterDefense": 56,
+        "interiorDefense": 77,
+        "rebounding": 89,
+        "athleticism": 62,
+        "basketballIq": 83
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Portland Trail Blazers",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:201188",
+      "sourceName": "Marc Gasol",
+      "peakOverall": 93,
+      "peakAttributes": {
+        "shooting": 91,
+        "finishing": 85,
+        "playmaking": 60,
+        "perimeterDefense": 71,
+        "interiorDefense": 94,
+        "rebounding": 86,
+        "athleticism": 68,
+        "basketballIq": 92
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Memphis Grizzlies",
+      "teamType": "allt"
+    },
+    {
+      "sourcePlayerId": "nba:200765",
+      "sourceName": "Rajon Rondo",
+      "peakOverall": 90,
+      "peakAttributes": {
+        "shooting": 75,
+        "finishing": 62,
+        "playmaking": 95,
+        "perimeterDefense": 93,
+        "interiorDefense": 53,
+        "rebounding": 51,
+        "athleticism": 83,
+        "basketballIq": 90
+      },
+      "gameVersion": "2K27",
+      "team": "All-Time Boston Celtics",
+      "teamType": "allt"
+    }
+  ],
+  "unmatched": [
+    {
+      "sourcePlayerId": "nba:787",
+      "sourceName": "Charles Barkley"
+    },
+    {
+      "sourcePlayerId": "nba:397",
+      "sourceName": "Reggie Miller"
+    },
+    {
+      "sourcePlayerId": "nba:201146",
+      "sourceName": "Yi Jianlian"
+    }
+  ]
+}

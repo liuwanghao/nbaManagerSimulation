@@ -20,6 +20,7 @@ describe("Bootstrap fixture routing", () => {
     (fixture) => {
       const markup = renderAtFixture(fixture, false);
       expect(markup).toContain('class="launcher-shell home-screen"');
+      expect(markup).toContain('src="./branding/home-logo-cutout.png"');
       expect(markup).toContain('data-testid="start-new-game"');
     },
   );
@@ -27,5 +28,13 @@ describe("Bootstrap fixture routing", () => {
   it("keeps development fixture previews available", () => {
     const markup = renderAtFixture("save-slots", true);
     expect(markup).not.toContain('class="launcher-shell home-screen"');
+  });
+
+  it("starts returning from the leaderboard with a save restoration screen", () => {
+    vi.stubEnv("DEV", false);
+    vi.stubGlobal("window", { location: { search: "?careerSlot=2" } });
+    const markup = renderToStaticMarkup(createElement(Bootstrap));
+    expect(markup).toContain("正在返回生涯总览");
+    expect(markup).not.toContain('data-testid="start-new-game"');
   });
 });

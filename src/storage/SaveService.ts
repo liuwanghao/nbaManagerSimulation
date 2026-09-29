@@ -5,7 +5,7 @@ import retiredPlayers from "../data/nba-retired-players.json";
 import { createFictionalPlayerProfile } from "../data/playerProfiles";
 import { NBA_PLAYER_DATASET } from "../data/nbaPlayerDataset";
 import { RETIRED_LEGEND_TEMPLATES } from "../data/retiredLegendTemplates";
-import { replaceIneligibleUnpickedHistoricalProspects } from "../game/draft/DraftService";
+import { replaceIneligibleUnpickedHistoricalProspects, upgradeUnpickedHistoricalProspects } from "../game/draft/DraftService";
 import { firstPassOpeningNbaServiceYears, openingNbaServiceYears } from "../data/nbaServiceYears";
 import { GAME_CONFIG } from "../config/gameConfig";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
@@ -61,6 +61,7 @@ const historicalNameBySourceId = new Map([
   ...NBA_PLAYER_DATASET.historicalTemplates,
   ...RETIRED_LEGEND_TEMPLATES,
 ].map((template) => [template.sourcePlayerId, template.sourceName]));
+const retiredLegendPeakBySourceId = new Map(RETIRED_LEGEND_TEMPLATES.map((template) => [template.sourcePlayerId, template.peakOverall]));
 
 function isStorageQuotaError(error: unknown): boolean {
   return error instanceof Error && (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
@@ -89,9 +90,15 @@ interface ConflictBackup {
 function migrateLoadedState(input: GameState): GameState {
   const state = structuredClone(input);
   replaceIneligibleUnpickedHistoricalProspects(state);
+  upgradeUnpickedHistoricalProspects(state);
   for (const player of Object.values(state.players)) {
     if (player.profileSource !== "HISTORICAL_ARCHETYPE" || !player.historicalSourcePlayerId) continue;
     player.name = historicalNameBySourceId.get(player.historicalSourcePlayerId) ?? player.name;
+    const peakOverall = retiredLegendPeakBySourceId.get(player.historicalSourcePlayerId);
+    if (peakOverall !== undefined) {
+      player.truePotential = Math.max(player.truePotential ?? 0, BALANCE_CONFIG.draft.historicalRebirth.potentialFloor, peakOverall);
+      player.scoutedPotentialGrade = "S";
+    }
   }
   const hasFirstServiceYearsMigration = state.meta.dataVersion.includes("+service.2026.v1");
   const legacyRealPlayerServiceYears = !state.meta.dataVersion.includes("+service.2026.v2")

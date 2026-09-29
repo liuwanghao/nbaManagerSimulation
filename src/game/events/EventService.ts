@@ -3,6 +3,8 @@ import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { addTeamNotification } from "../notifications/TeamNotificationService";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, planPlayerRotationResponse, validateRotationPlan } from "../roster/RotationPlanService";
 import { stableHash } from "../random/hash";
+import { projectedFatigueAfterRest } from "../simulation/PlayerStatusService";
+import { SIMULATION_CONFIG } from "../simulation/config";
 import type { EventDefinition, EventEffectDefinition, EventInstance, GameResult, GameState, Player } from "../state/types";
 
 export type EventCommand = {
@@ -250,6 +252,14 @@ export function resolveEvent(input: GameState, eventInstanceId: string, choiceId
     if (choiceId === "manual_adjust" && !enoughMinutes) throw new Error("ROTATION_REQUIRES_EMERGENCY_ROSTER");
     if (choiceId === "manual_adjust" && enoughMinutes && team.rotationPlan) validateRotationPlan(players, team.rotationPlan);
   }
+  if (event.definitionId === "fatigue_management_001" && choiceId === "watch_video") {
+    for (const playerId of state.teams[state.userTeamId].playerIds) {
+      const player = state.players[playerId];
+      if (player && player.fatigue > SIMULATION_CONFIG.coaching.highFatigueThreshold) {
+        player.fatigue = SIMULATION_CONFIG.coaching.highFatigueThreshold;
+      }
+    }
+  }
   event.status = "RESOLVED";
   event.selectedChoiceId = choiceId;
   const choice = choices.find((candidate) => candidate.id === choiceId) as EventInstance["choices"][number];
@@ -339,6 +349,33 @@ export function recentRookieBreakoutContext(state: GameState, userResults: GameR
 export function enqueueAfterUserGameEvents(state: GameState): void {
   const streak = consecutiveUserResults(state);
   if (!streak.length) return;
+  const highFatigueThreshold = SIMULATION_CONFIG.coaching.highFatigueThreshold;
+  const nextUserGame = state.schedule.filter((game) => game.status === "SCHEDULED"
+    && (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId))
+    .sort((left, right) => left.dateIndex - right.dateIndex)[0];
+  if (nextUserGame) {
+    const lastUserGameDate = state.schedule.filter((game) => game.status === "FINAL"
+      && (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId))
+      .reduce((latest, game) => Math.max(latest, game.dateIndex), -1);
+    const restDays = lastUserGameDate < 0 ? Math.max(0, nextUserGame.dateIndex)
+      : Math.max(0, nextUserGame.dateIndex - lastUserGameDate - 1);
+    const rotation = state.teams[state.userTeamId].rotationPlan;
+    const fatigued = state.teams[state.userTeamId].playerIds.map((id) => state.players[id])
+      .filter((player) => player?.available && !player.injury
+        && projectedFatigueAfterRest(player.fatigue, restDays) > highFatigueThreshold
+        && (rotation?.targetMinutes[player.id] ?? 0) > 0)
+      .sort((left, right) => projectedFatigueAfterRest(right.fatigue, restDays)
+        - projectedFatigueAfterRest(left.fatigue, restDays) || left.id.localeCompare(right.id));
+    if (fatigued.length) {
+      const leader = fatigued[0];
+      const predicted = Math.round(projectedFatigueAfterRest(leader.fatigue, restDays));
+      enqueueEvent(state, "fatigue_management_001", {
+        fatigue_summary: fatigued.length === 1
+          ? `${leader.name} 下一场赛前预计疲劳 ${predicted}，休息日恢复后仍高于 ${highFatigueThreshold}`
+          : `${leader.name} 等 ${fatigued.length} 名轮换球员下一场赛前预计疲劳仍高于 ${highFatigueThreshold}（最高 ${predicted}）`,
+      });
+    }
+  }
   const won = streak[0].winnerTeamId === state.userTeamId;
   for (const threshold of BALANCE_CONFIG.randomEvents.streakThresholds) {
     if (streak.length === threshold) enqueueEvent(state, `streak_${won ? "winning" : "losing"}_${String(threshold).padStart(3, "0")}`);
