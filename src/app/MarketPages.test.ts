@@ -4,12 +4,14 @@ import { describe, expect, it } from "vitest";
 import { getFreeAgents } from "../game/freeAgency/FreeAgencyService";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { createCareer } from "../game/season/career";
+import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
+import type { TradeOffer } from "../game/state/types";
 import App from "./App";
 import { executeTradeCommand, generateTradeOffers } from "../game/trade/TradeService";
 import { freeAgencyOfferCommandId, TradeDesk } from "./Stage4Flow";
 import { getUpcomingFreeAgents, RegularSeasonFreeAgents } from "./RegularSeasonFreeAgents";
 import { MarketTradeRecords } from "./MarketTradeRecords";
-import { tradeAssetPositionCounts, tradeInquiryCommandId, tradeOfferStatusLabel, tradePickLabel } from "./tradeView";
+import { targetedTradeInquiryCommandId, tradeAssetPositionCounts, tradeInquiryCommandId, tradeOfferPortraitPlayer, tradeOfferStatusLabel, tradePickLabel } from "./tradeView";
 
 describe("regular-season market", () => {
   it("uses a fresh command id when an offseason offer is withdrawn and retried on the same day", () => {
@@ -45,6 +47,8 @@ describe("regular-season market", () => {
     };
     const markup = renderToStaticMarkup(createElement(App, { initialState: state }));
     expect(markup).toContain("此前报价被拒绝，可调整条件重新报价");
+    expect(markup).toContain("当前要价");
+    expect(markup).toContain("参考估值");
     expect(markup).toContain(`data-testid="open-fa-offer-${playerId}"`);
     expect(markup).toContain("重新报价");
   });
@@ -54,13 +58,36 @@ describe("regular-season market", () => {
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
     player.teamId = "FREE_AGENT";
     player.contract.status = "UFA";
+    player.freeAgentDemand = { uncontestedDays: 100 };
     const markup = renderToStaticMarkup(createElement(RegularSeasonFreeAgents, { state, onOpenPlayer: () => {} }));
     expect(markup).toContain(`data-player-id="${player.id}"`);
     expect(markup.match(/data-player-id="/g)).toHaveLength(getFreeAgents(state).length);
     expect(markup).toContain("赛季中可浏览未签约球员");
+    expect(markup).toContain("下一日历日结算（包括休息日）");
+    expect(markup).toContain("当前要价");
+    expect(markup).toContain("参考估值");
+    expect(markup).not.toContain("下一比赛日结算");
     expect(markup).not.toContain("FREE AGENTS");
     expect(markup).not.toContain('data-testid="submit-fa-offer"');
     expect(markup).toContain("休赛期到期");
+  });
+
+  it("distinguishes an active regular-season offer from the new-offer action", () => {
+    const state = createCareer("regular-season-withdraw-style");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    player.teamId = "FREE_AGENT";
+    player.contract.status = "UFA";
+    const renderMarket = () => renderToStaticMarkup(createElement(RegularSeasonFreeAgents, {
+      state, onOpenPlayer: () => {}, onCommand: async () => {},
+    }));
+    expect(renderMarket()).toContain('class="regular-free-agent-offer"');
+    state.freeAgency = {
+      opened: true, currentDay: 1, settledPlayerDay: {}, transactionLog: [], markets: {},
+      offers: { active: { offerId: "active", teamId: state.userTeamId, playerId: player.id, status: "ACTIVE" } as NonNullable<typeof state.freeAgency>["offers"][string] },
+    };
+    expect(renderMarket()).toContain('class="regular-free-agent-offer withdraw"');
+    expect(renderMarket()).toContain("撤回报价");
   });
 
   it("previews only rostered players whose contract expires after this season", () => {
@@ -134,6 +161,25 @@ describe("regular-season market", () => {
     expect(markup).not.toContain("重置");
   });
 
+  it("uses each target offer's highest OVR outgoing player portrait", () => {
+    const state = createCareer("target-inquiry-portrait");
+    const userRoster = state.teams[state.userTeamId].playerIds.map((id) => state.players[id])
+      .sort((a, b) => calculatePlayerOverall(b) - calculatePlayerOverall(a) || a.id.localeCompare(b.id));
+    const highestOverall = userRoster[0];
+    const lowerOverall = userRoster[userRoster.length - 1];
+    const otherTeam = Object.values(state.teams).find((team) => team.id !== state.userTeamId && team.playerIds.length > 0);
+    if (!highestOverall || !lowerOverall || !otherTeam) throw new Error("Expected both teams to have players");
+    const incomingId = otherTeam.playerIds[0];
+    const offer = {
+      offerId: "portrait-test", inquiryKey: "portrait-test", inquiryCount: 0, counterpartyTeamId: otherTeam.id,
+      userOutgoingPlayerIds: [lowerOverall.id, highestOverall.id], userOutgoingPickIds: [], userIncomingPlayerIds: [incomingId], userIncomingPickIds: [], status: "AVAILABLE",
+    } satisfies TradeOffer;
+    expect(tradeOfferPortraitPlayer(state, offer, "TARGET")?.id).toBe(highestOverall.id);
+    expect(tradeOfferPortraitPlayer(state, { ...offer, offerId: "second-offer", userOutgoingPlayerIds: [lowerOverall.id] }, "TARGET")?.id).toBe(lowerOverall.id);
+    expect(tradeOfferPortraitPlayer(state, { ...offer, offerId: "pick-only", userOutgoingPlayerIds: [] }, "TARGET")).toBeUndefined();
+    expect(tradeOfferPortraitPlayer(state, offer, "ASSET")?.id).toBe(incomingId);
+  });
+
   it("reopens the trade tab without chips or stale quotes after clearing them", () => {
     const state = createCareer("market-clear-chips");
     state.league.currentPhase = "REGULAR_PRE_DEADLINE";
@@ -146,6 +192,21 @@ describe("regular-season market", () => {
     expect(markup).toContain("选择我方交易筹码");
     expect(markup).toContain("0 个方案");
     expect(markup).not.toContain('class="trade-console-offer-card"');
+  });
+
+  it("hides completed quotes and clears trade chips after accepting an offer", () => {
+    const state = createCareer("market-accepted-quote-reset");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const playerId = state.teams[state.userTeamId].playerIds[5];
+    const quoted = generateTradeOffers(state, playerId, false);
+    const accepted = executeTradeCommand(quoted, {
+      commandId: "market-accepted-quote-reset", type: "ACCEPT_TRADE_OFFER", payload: { offerId: quoted.tradeDesk.offers[0].offerId },
+    });
+    const markup = renderToStaticMarkup(createElement(TradeDesk, { state: accepted, busy: false, onTradeCommand: async () => {} }));
+    expect(markup).toContain("选择我方交易筹码");
+    expect(markup).toContain("0 个方案");
+    expect(markup).not.toContain('class="trade-console-offer-card"');
+    expect(accepted.tradeDesk.offers.some((offer) => offer.status === "ACCEPTED")).toBe(true);
   });
 
   it("names the pick assets and statuses that can appear in generated offers", () => {
@@ -178,5 +239,22 @@ describe("regular-season market", () => {
     expect(counts.ALL).toBe(roster.length);
     expect(counts.PG + counts.SG + counts.SF + counts.PF + counts.C).toBe(roster.length);
     expect(counts.PG).toBe(roster.filter((player) => player.position === "PG").length);
+  });
+
+  it("opens with asset inquiry even when the saved quote came from target search", () => {
+    const state = createCareer("targeted-trade-search");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const otherTeam = Object.values(state.teams).find((team) => team.id !== state.userTeamId && team.playerIds.length > 1);
+    if (!otherTeam) throw new Error("Expected another team with multiple players");
+    const targetIds = otherTeam.playerIds.slice(0, 2);
+    state.tradeDesk.inquiryMode = "TARGET";
+    state.tradeDesk.targetPlayerIds = targetIds;
+    const markup = renderToStaticMarkup(createElement(TradeDesk, { state, busy: false, onTradeCommand: async () => {} }));
+    expect(markup).toContain('class="selected" aria-pressed="true">我方筹码询价');
+    expect(markup).toContain('aria-pressed="false">搜索目标球员');
+    expect(markup).toContain("选择筹码并获取报价后");
+    expect(markup).not.toContain('aria-label="按球队筛选目标球员"');
+    expect(targetedTradeInquiryCommandId(state, targetIds)).toBe(targetedTradeInquiryCommandId(structuredClone(state), [...targetIds].reverse()));
+    expect(targetedTradeInquiryCommandId(state, targetIds)).not.toBe(tradeInquiryCommandId(state, targetIds));
   });
 });

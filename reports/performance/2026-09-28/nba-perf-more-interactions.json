@@ -1,0 +1,97 @@
+[
+  {
+    "label": "trade-nav",
+    "result": {
+      "found": true,
+      "ms": 121.80000007152557
+    },
+    "dom": 280,
+    "longTaskCount": 1,
+    "maxLongTaskMs": 106,
+    "tradeResults": 0,
+    "rosterRows": 0
+  },
+  {
+    "label": "trade-target-mode",
+    "result": {
+      "found": true,
+      "ms": 246.70000004768372
+    },
+    "dom": 856,
+    "longTaskCount": 2,
+    "maxLongTaskMs": 119,
+    "tradeResults": 60,
+    "rosterRows": 0
+  },
+  {
+    "label": "trade-search-Le",
+    "result": {
+      "found": true,
+      "ms": 143.70000004768372
+    },
+    "dom": 817,
+    "longTaskCount": 1,
+    "maxLongTaskMs": 101,
+    "tradeResults": 60,
+    "rosterRows": 0
+  },
+  {
+    "label": "trade-position-PG",
+    "result": {
+      "found": true,
+      "ms": 71.20000004768372
+    },
+    "dom": 540,
+    "longTaskCount": 1,
+    "maxLongTaskMs": 59,
+    "tradeResults": 26,
+    "rosterRows": 0
+  },
+  {
+    "label": "roster-nav",
+    "result": {
+      "found": true,
+      "ms": 231
+    },
+    "dom": 1167,
+    "longTaskCount": 1,
+    "maxLongTaskMs": 198,
+    "tradeResults": 0,
+    "rosterRows": 15
+  },
+  {
+    "label": "roster-tab",
+    "result": {
+      "found": true,
+      "ms": 235.5
+    },
+    "dom": 1167,
+    "longTaskCount": 1,
+    "maxLongTaskMs": 184,
+    "tradeResults": 0,
+    "rosterRows": 15
+  },
+  {
+    "label": "roster-sort-overall",
+    "result": {
+      "found": true,
+      "ms": 43.5
+    },
+    "dom": 1167,
+    "longTaskCount": 0,
+    "maxLongTaskMs": 0,
+    "tradeResults": 0,
+    "rosterRows": 15
+  },
+  {
+    "label": "roster-filter-PG",
+    "result": {
+      "found": false
+    },
+    "dom": 1167,
+    "longTaskCount": 0,
+    "maxLongTaskMs": 0,
+    "tradeResults": 0,
+    "rosterRows": 15
+  }
+]

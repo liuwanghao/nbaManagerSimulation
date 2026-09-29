@@ -1,5 +1,6 @@
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
-import { corePlayerTradePremium, publicPlayerValue, tradeDraftPickValue } from "../ai/AIValueService";
+import { corePlayerTradePremium, tradeDraftPickValue } from "../ai/AIValueService";
+import { tradePlayerValue } from "./TradePlayerValue";
 import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
@@ -7,6 +8,8 @@ import type { DraftPickAsset, GameState, Player, Team } from "../state/types";
 import { refreshAiDirection } from "../ai/AIManagementService";
 import type { TeamDirection } from "../state/types";
 import { applyTradePackage, validateTradePackage, type TradePackage } from "./TradeService";
+import { untouchablePlayerIds } from "./TradeAvailabilityService";
+import { playerTradeWaitingReason } from "./TradeTimingPolicy";
 
 const legalPhases = ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE"] as const;
 
@@ -24,7 +27,7 @@ function rosterNeed(team: Team, state: GameState, player: Player): number {
 }
 
 function directionValue(player: Player, direction: TeamDirection): number {
-  const base = publicPlayerValue(player, direction === "REBUILD" ? "FUTURE_FIRST" : direction === "CONTEND" ? "WIN_NOW" : "BALANCED");
+  const base = tradePlayerValue(player, direction === "REBUILD" ? "FUTURE_FIRST" : direction === "CONTEND" ? "WIN_NOW" : "BALANCED");
   const weights = BALANCE_CONFIG.ai.directionWeights[direction];
   return base * weights.currentAbility
     + Math.max(BALANCE_CONFIG.trade.valueLimits.futureFirstAgeFloor, BALANCE_CONFIG.trade.ageValue.futureFirstTargetAge - player.age) * weights.youth
@@ -35,7 +38,7 @@ function pickDirectionValue(state: GameState, pick: DraftPickAsset, direction: T
   return tradeDraftPickValue(state, pick) * (0.8 + BALANCE_CONFIG.ai.directionWeights[direction].youth);
 }
 
-function acceptanceScore(
+export function acceptanceScore(
   state: GameState, team: Team, incomingPlayers: Player[], outgoingPlayers: Player[],
   incomingPicks: DraftPickAsset[], outgoingPicks: DraftPickAsset[], counter: number, direction: TeamDirection,
 ): number {
@@ -52,8 +55,10 @@ function acceptanceScore(
 }
 
 function tradeablePlayers(state: GameState, team: Team, counter: number): Player[] {
+  const protectedIds = new Set(untouchablePlayerIds(state, team.id));
   return team.playerIds.map((id) => state.players[id])
-    .filter((player) => player?.contract.status === "STANDARD" && player.contract.contractType !== "EMERGENCY" && player.contract.yearsRemaining > 0)
+    .filter((player) => player?.contract.status === "STANDARD" && player.contract.contractType !== "EMERGENCY"
+      && player.contract.yearsRemaining > 0 && !protectedIds.has(player.id) && !playerTradeWaitingReason(state, player))
     .sort((left, right) => stableHash(state.seeds.seasonSeed, "ai-trade-player", counter, team.id, left.id)
       .localeCompare(stableHash(state.seeds.seasonSeed, "ai-trade-player", counter, team.id, right.id)))
     .slice(0, BALANCE_CONFIG.ai.tradeCandidatePlayersPerTeam);

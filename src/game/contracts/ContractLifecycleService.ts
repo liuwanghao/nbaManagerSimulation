@@ -1,5 +1,5 @@
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
-import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
+import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { createFutureDraftPicks } from "../../data/draftPicks";
 import { publicPlayerValue } from "../ai/AIValueService";
 import { getProjectedMarketSalary } from "../freeAgency/FreeAgencyService";
@@ -44,7 +44,7 @@ function shouldExercisePlayerOption(state: GameState, player: Player, optionSala
   const config = BALANCE_CONFIG.contracts.playerOption;
   const personality = player.personality === "MONEY_FOCUSED" ? config.moneyFocusedBonus : player.personality === "LOYAL" ? config.loyalBonus : player.personality === "COMPETITIVE" ? config.competitivePenalty : 0;
   const injury = player.injuryRating < config.lowInjuryRatingThreshold ? config.lowInjuryRatingBonus : 0;
-  const salaryAdvantage = (optionSalary / Math.max(1, getProjectedMarketSalary(player)) - 1) * 100;
+  const salaryAdvantage = (optionSalary / Math.max(1, getProjectedMarketSalary(player, state.league.seasonYear)) - 1) * 100;
   return salaryAdvantage + personality + injury + rng.int(BALANCE_CONFIG.contracts.playerOptionNoiseMin, BALANCE_CONFIG.contracts.playerOptionNoiseMax) >= 0;
 }
 
@@ -60,6 +60,7 @@ function detachFromTeam(state: GameState, player: Player): string | undefined {
   const oldTeamId = state.teams[player.teamId] ? player.teamId : player.birdTeamId ?? undefined;
   if (oldTeamId && state.teams[oldTeamId]) state.teams[oldTeamId].playerIds = state.teams[oldTeamId].playerIds.filter((id) => id !== player.id);
   player.teamId = "FREE_AGENT";
+  player.freeAgentDemand = { uncontestedDays: 0 };
   return oldTeamId;
 }
 
@@ -173,6 +174,7 @@ export function rolloverLeagueYear(input: GameState): GameState {
   state.freeAgency = undefined;
   state.injuryState.pendingUserMajorInjury = undefined;
   state.injuryState.pendingAutoRotationAfterEmergency = undefined;
+  state.injuryState.lastProcessedDateIndexByTeam = undefined;
   state.tradeDesk = { offers: [] };
   state = processOffseasonPlayerLifecycle(state);
   for (const player of Object.values(state.players).sort((a, b) => a.id.localeCompare(b.id))) advancePlayerContract(state, player);
@@ -194,20 +196,22 @@ export function resolveTeamOption(input: GameState, playerId: string, decision: 
   return state;
 }
 
-function maxSalary(player: Player): number {
-  const percentages = LEAGUE_FINANCE_CONFIG.maximumSalaryPercentages;
-  return LEAGUE_FINANCE_CONFIG.salaryCap * (player.serviceYears >= 10 ? percentages.tenPlusYears : player.serviceYears >= 7 ? percentages.sevenToNineYears : percentages.zeroToSixYears);
+function maxSalary(player: Player, seasonYear: number): number {
+  const finance = getSeasonFinanceConfig(seasonYear);
+  const percentages = finance.maximumSalaryPercentages;
+  return finance.salaryCap * (player.serviceYears >= 10 ? percentages.tenPlusYears : player.serviceYears >= 7 ? percentages.sevenToNineYears : percentages.zeroToSixYears);
 }
 
 function createCapHolds(state: GameState): void {
+  const finance = getSeasonFinanceConfig(state.league.seasonYear);
   state.capState.capHolds = [];
   for (const player of Object.values(state.players)) {
     const teamId = player.birdTeamId;
     if (player.teamId !== "FREE_AGENT" || !teamId || !state.teams[teamId]) continue;
     if (player.contract.status === "RFA") {
-      state.capState.capHolds.push({ playerId: player.id, teamId, amount: getRfaCapHoldAmount(player), type: "RFA" });
+      state.capState.capHolds.push({ playerId: player.id, teamId, amount: getRfaCapHoldAmount(player, state.league.seasonYear), type: "RFA" });
     } else if (player.contract.status === "UFA" && (player.birdYears ?? 0) >= LEAGUE_FINANCE_CONFIG.capHolds.birdEligibilityYears) {
-      state.capState.capHolds.push({ playerId: player.id, teamId, amount: Math.min(Math.max(player.contract.salary * LEAGUE_FINANCE_CONFIG.capHolds.birdUfaPreviousSalaryMultiplier, LEAGUE_FINANCE_CONFIG.minimumSalary), maxSalary(player)), type: "BIRD_UFA" });
+      state.capState.capHolds.push({ playerId: player.id, teamId, amount: Math.min(Math.max(player.contract.salary * finance.capHolds.birdUfaPreviousSalaryMultiplier, finance.minimumSalary), maxSalary(player, state.league.seasonYear)), type: "BIRD_UFA" });
     }
   }
 }

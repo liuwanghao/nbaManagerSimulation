@@ -1,0 +1,125 @@
+[
+  {
+    "label": "first",
+    "url": "http://127.0.0.1:8765/",
+    "title": "篮球经理：联盟扩军时代",
+    "readyState": "complete",
+    "dom": 33,
+    "navigation": {
+      "domContentLoaded": 755.5999999046326,
+      "load": 766.3999999761581,
+      "responseEnd": 23.199999928474426,
+      "transferSize": 688
+    },
+    "paints": [
+      {
+        "name": "first-paint",
+        "start": 776
+      }
+    ],
+    "longTasks": [
+      {
+        "start": 338,
+        "duration": 425
+      },
+      {
+        "start": 767.1999999284744,
+        "duration": 849
+      },
+      {
+        "start": 1616.6999999284744,
+        "duration": 89
+      }
+    ],
+    "frames": [
+      16.700000000000003,
+      16.700000000000003,
+      16.599999999999994,
+      16.700000000000003,
+      16.69999999999999,
+      16.700000000000017,
+      16.599999999999994,
+      16.69999999999999,
+      16.600000000000023,
+      16.69999999999999,
+      16.69999999999999,
+      16.600000000000023,
+      16.69999999999999,
+      16.69999999999999,
+      16.600000000000023,
+      16.69999999999999,
+      16.600000000000023,
+      416.69999999999993,
+      933.3,
+      2583.2000000000003,
+      16.699999999999818
+    ],
+    "resources": [
+      {
+        "name": "game.js",
+        "duration": 124.70000004768372,
+        "transferSize": 3824779,
+        "decodedBodySize": 3824479
+      },
+      {
+        "name": "opening-arena.jpg",
+        "duration": 7.899999976158142,
+        "transferSize": 198010,
+        "decodedBodySize": 197710
+      },
+      {
+        "name": "favicon.ico",
+        "duration": 37,
+        "transferSize": 635,
+        "decodedBodySize": 335
+      }
+    ],
+    "heap": {
+      "used": 20812709,
+      "total": 35229949
+    },
+    "cdpMetrics": {
+      "Timestamp": 652438.856592,
+      "AudioHandlers": 0,
+      "AudioWorkletProcessors": 0,
+      "Documents": 4,
+      "Frames": 4,
+      "JSEventListeners": 150,
+      "LayoutObjects": 46,
+      "MediaKeySessions": 0,
+      "MediaKeys": 0,
+      "Nodes": 72,
+      "Resources": 3,
+      "ContextLifecycleStateObservers": 11,
+      "V8PerContextDatas": 2,
+      "WorkerGlobalScopes": 0,
+      "UACSSResources": 0,
+      "RTCPeerConnections": 0,
+      "ResourceFetchers": 4,
+      "AdSubframes": 0,
+      "DetachedScriptStates": 1,
+      "ArrayBufferContents": 29146,
+      "LayoutCount": 3,
+      "RecalcStyleCount": 6,
+      "LayoutDuration": 0.076646,
+      "RecalcStyleDuration": 0.013919,
+      "DevToolsCommandDuration": 0.001592,
+      "ScriptDuration": 1.2708,
+      "V8CompileDuration": 0.000068,
+      "TaskDuration": 3.948198,
+      "TaskOtherDuration": 2.585173,
+      "ThreadTime": 1.121174,
+      "ProcessTime": 2.050295,
+      "JSHeapUsedSize": 15877216,
+      "JSHeapTotalSize": 30289920,
+      "FirstMeaningfulPaint": 0,
+      "DomContentLoaded": 652435.077708,
+      "NavigationStart": 652434.322221
+    },
+    "domCounters": {
+      "documents": 4,
+      "nodes": 72,
+      "jsEventListeners": 150
+    }
+  }
+]

@@ -4,8 +4,13 @@ import { createRng } from "../random/xoshiro";
 import type { GameState, InjuryEvent, InjurySeverity, Player, PlayerBoxScore, ScheduleGame, TeamBoxScore } from "../state/types";
 import { enqueueEvent } from "../events/EventService";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan } from "../roster/RotationPlanService";
+import { daysForGames, estimatedInjuryMissedGames, injuryDaysRemaining, injuryDurationLabel } from "./injuryEstimate";
+
+export { estimatedInjuryMissedGames, injuryDaysRemaining } from "./injuryEstimate";
 
 const SEVERITIES: InjurySeverity[] = ["MINOR", "SHORT", "MEDIUM", "LONG", "SEASON_ENDING"];
+const REGULAR_SEASON_DAYS = 174;
+const REGULAR_SEASON_GAMES = 82;
 
 function injuryProbability(player: Player, seconds: number): number {
   const cfg = BALANCE_CONFIG.injuries;
@@ -40,14 +45,16 @@ function eventForPlayer(game: ScheduleGame, player: Player, teamId: string, stat
   const rng = createRng(stableHash(seasonSeed, "injury", game.id, player.id));
   if (rng.nextFloat() >= injuryProbability(player, stat.seconds)) return null;
   const severity = severityFor(player, rng.nextFloat());
-  const [minimum, maximum] = BALANCE_CONFIG.injuries.durationGames[severity];
-  const gamesOut = rng.int(minimum, maximum);
+  const [minimum, maximum] = BALANCE_CONFIG.injuries.durationDays[severity];
+  const daysOut = rng.int(minimum, maximum);
+  const gamesOut = Math.max(1, Math.round(daysOut * REGULAR_SEASON_GAMES / REGULAR_SEASON_DAYS));
   return {
     injuryId: stableHash(game.seasonId, game.id, player.id, severity),
     playerId: player.id,
     teamId,
     severity,
     gamesOut,
+    daysOut,
     gameId: game.id,
     seasonId: game.seasonId,
   };
@@ -97,6 +104,7 @@ export function applyInjuryEvents(state: GameState, events: InjuryEvent[]): void
     player.injury = {
       injuryId: event.injuryId,
       severity: event.severity,
+      daysRemaining: event.daysOut ?? daysForGames(event.gamesOut),
       gamesRemaining: event.gamesOut,
       occurredSeasonId: event.seasonId,
       occurredGameId: event.gameId,
@@ -107,7 +115,10 @@ export function applyInjuryEvents(state: GameState, events: InjuryEvent[]): void
     player.rotationRole = "OUT";
     if (event.teamId === state.userTeamId) {
       enqueueEvent(state, isMajorInjury(event.severity) ? "injury_core_major_001" : "injury_depth_test_001", {
-        player_id: player.id, player_name: player.name, games_out: String(event.gamesOut),
+        player_id: player.id,
+        player_name: player.name,
+        injury_duration: injuryDurationLabel(event.severity, injuryDaysRemaining(player) ?? 0),
+        games_out: String(estimatedInjuryMissedGames(state, player) ?? event.gamesOut),
       });
     }
   }
@@ -116,27 +127,40 @@ export function applyInjuryEvents(state: GameState, events: InjuryEvent[]): void
   for (const teamId of new Set(events.map((event) => event.teamId))) normalizeRotation(state, teamId);
 }
 
-export function advanceInjuriesAfterGames(state: GameState, teamIds: string[], newInjuryIds: Set<string>): void {
-  for (const teamId of [...new Set(teamIds)].sort()) {
+export function recordInjuryMissedGames(state: GameState, teamIds: string[]): void {
+  for (const teamId of new Set(teamIds)) {
     for (const playerId of state.teams[teamId].playerIds) {
       const player = state.players[playerId];
-      const injury = player.injury;
-      if (!injury || newInjuryIds.has(injury.injuryId)) continue;
-      if (player.career) player.career.careerInjuryGamesMissed += 1;
-      const recovery = BALANCE_CONFIG.injuryRecovery;
-      player.health = Math.min(recovery.maximumHealthBeforeFullRecovery, (player.health ?? recovery.defaultInjuredHealth)
-        + Math.max(recovery.minimumPerGame, recovery.recoveryPool / Math.max(1, injury.gamesRemaining)));
-      injury.gamesRemaining -= 1;
-      if (injury.gamesRemaining <= 0) {
-        player.available = true;
-        player.health = recovery.fullHealth;
-        player.rotationRole = injury.previousRotationRole;
-        delete player.injury;
-        if (teamId === state.userTeamId) enqueueEvent(state, "injury_recovery_001", { player_id: player.id, player_name: player.name });
-      }
+      if (player.injury && player.career) player.career.careerInjuryGamesMissed += 1;
     }
-    normalizeRotation(state, teamId);
   }
+}
+
+export function advanceInjuriesByDays(state: GameState, elapsedDays: number, teamIds?: string[]): void {
+  if (elapsedDays <= 0) return;
+  const changedTeams = new Set<string>();
+  const selectedTeams = teamIds ? new Set(teamIds) : null;
+  for (const player of Object.values(state.players)) {
+    const injury = player.injury;
+    if (!injury || selectedTeams && !selectedTeams.has(player.teamId)) continue;
+    const previousDays = injuryDaysRemaining(player) ?? 0;
+    const nextDays = Math.max(0, previousDays - elapsedDays);
+    const recovery = BALANCE_CONFIG.injuryRecovery;
+    player.health = Math.min(recovery.maximumHealthBeforeFullRecovery, (player.health ?? recovery.defaultInjuredHealth)
+      + (recovery.fullHealth - (player.health ?? recovery.defaultInjuredHealth)) * Math.min(1, elapsedDays / Math.max(1, previousDays)));
+    injury.daysRemaining = nextDays;
+    changedTeams.add(player.teamId);
+    if (nextDays === 0) {
+      player.available = true;
+      player.health = recovery.fullHealth;
+      player.rotationRole = injury.previousRotationRole;
+      delete player.injury;
+      if (player.teamId === state.userTeamId) enqueueEvent(state, "injury_recovery_001", { player_id: player.id, player_name: player.name });
+    } else {
+      injury.gamesRemaining = Math.round(nextDays * REGULAR_SEASON_GAMES / REGULAR_SEASON_DAYS);
+    }
+  }
+  for (const teamId of changedTeams) if (state.teams[teamId]) normalizeRotation(state, teamId);
 }
 
 export function availablePlayerCount(state: GameState, teamId: string): number {

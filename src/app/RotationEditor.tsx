@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
+import { injuryDaysRemaining } from "../game/simulation/injuries";
 import {
   LINEUP_POSITIONS,
   buildDefaultRotationPlan,
@@ -150,7 +151,7 @@ export function RotationEditor({ players, plan, postseason, busy, onSave }: Rota
         <PlayerPortrait player={player} portraitPath={player.portraitPath} className="rotation-player-avatar" />
         <span className="rotation-player-copy">
           <span className="rotation-player-name-row">{starterSlot ? <span className={`rotation-assigned-slot${mismatchPenalty > 0 ? " mismatch" : ""}`} title={`${positionCompatibilityLabel(player, starterSlot)}${mismatchPenalty > 0 ? `，表现 -${mismatchPenalty}` : ""}`}>{starterSlot}</span> : benchRank ? <span className="rotation-assigned-slot bench" title={`替补第 ${benchRank} 顺位`}>{benchRank}</span> : null}<b title={name}>{name}</b></span>
-          <span className="rotation-player-meta"><span className="rotation-position-badge">{positionPairLabel(player.position, player.secondaryPosition)}</span><strong className="rotation-player-overall" aria-label={`能力值 ${calculatePlayerOverall(player).toFixed(0)}`}>{calculatePlayerOverall(player).toFixed(0)}</strong>{player.injury ? <span className="rotation-injury-tag">伤停 {player.injury.gamesRemaining} 场</span> : !player.available ? <span className="rotation-injury-tag">不可出战</span> : !minutes && !starterSlot ? <span className="rotation-outside-tag">轮换外</span> : null}</span>
+          <span className="rotation-player-meta"><span className="rotation-position-badge">{positionPairLabel(player.position, player.secondaryPosition)}</span><strong className="rotation-player-overall" aria-label={`能力值 ${calculatePlayerOverall(player).toFixed(0)}`}>{calculatePlayerOverall(player).toFixed(0)}</strong>{player.injury ? <span className="rotation-injury-tag">伤停约 {injuryDaysRemaining(player)} 天</span> : !player.available ? <span className="rotation-injury-tag">不可出战</span> : !minutes && !starterSlot ? <span className="rotation-outside-tag">轮换外</span> : null}</span>
         </span>
       </button>
       <div className="rotation-minute-stepper">

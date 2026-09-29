@@ -26,12 +26,14 @@ describe("free-agent offer dialog", () => {
         expect(markup).toContain(`data-testid="${field}"`);
       }
       expect(markup).toContain("球员期望合同");
+      expect(markup).toContain("当前要价");
+      expect(markup).toContain("参考估值");
       expect(markup).toContain("逐年薪资预览");
       expect(markup.match(/class="fa-offer-salary-row"/g)).toHaveLength(3);
       expect(markup).toContain("球队选项");
       expect(markup).toContain("首年占用空间");
     }
-    expect(regular).toContain("后续比赛日决定是否接受");
-    expect(offseason).not.toContain("后续比赛日决定是否接受");
+    expect(regular).toContain("下一日历日（包括休息日）决定是否接受");
+    expect(offseason).not.toContain("下一日历日（包括休息日）决定是否接受");
   });
 });

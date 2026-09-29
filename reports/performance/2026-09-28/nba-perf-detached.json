@@ -1,0 +1,11 @@
+{
+  "snapshotBytes": 63798802,
+  "nodeCount": 554669,
+  "detachedNodes": 3,
+  "detachedSelfBytes": 0,
+  "examples": [
+    "system / Code / ArrayBufferPrototypeGetDetached (builtin)",
+    "system / Code / ThrowDataViewDetachedError (builtin)",
+    "ArrayBufferPrototypeGetDetached"
+  ]
+}

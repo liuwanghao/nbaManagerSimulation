@@ -4,6 +4,8 @@ import { TEAM_DEFINITIONS } from "../data/league";
 import retiredPlayers from "../data/nba-retired-players.json";
 import { createFictionalPlayerProfile } from "../data/playerProfiles";
 import { NBA_PLAYER_DATASET } from "../data/nbaPlayerDataset";
+import { RETIRED_LEGEND_TEMPLATES } from "../data/retiredLegendTemplates";
+import { replaceIneligibleUnpickedHistoricalProspects } from "../game/draft/DraftService";
 import { firstPassOpeningNbaServiceYears, openingNbaServiceYears } from "../data/nbaServiceYears";
 import { GAME_CONFIG } from "../config/gameConfig";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
@@ -18,6 +20,7 @@ import { createAiTeamProfiles } from "../game/ai/AIManagementService";
 import { encodeStoredString, type StorageAdapter } from "../platform/storage/StorageAdapter";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, upgradeLegacyAutomaticRotationPlan } from "../game/roster/RotationPlanService";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
+import { hasOpeningMipBaselines, seedOpeningMipBaselines } from "../game/awards/OpeningMipBaseline";
 
 export interface SaveEnvelope {
   saveId: string;
@@ -54,7 +57,14 @@ const checkpointKey = (slotId: number, checkpointId: string): string => `${slotK
 const checkpointIndexKey = (slotId: number): string => `${slotKey(slotId)}:checkpoint-index`;
 const previousKey = (slotId: number): string => `${slotKey(slotId)}:previous-valid`;
 const conflictBackupKey = (slotId: number): string => `${slotKey(slotId)}:conflict-backup`;
-const historicalNameBySourceId = new Map(NBA_PLAYER_DATASET.historicalTemplates.map((template) => [template.sourcePlayerId, template.sourceName]));
+const historicalNameBySourceId = new Map([
+  ...NBA_PLAYER_DATASET.historicalTemplates,
+  ...RETIRED_LEGEND_TEMPLATES,
+].map((template) => [template.sourcePlayerId, template.sourceName]));
+
+function isStorageQuotaError(error: unknown): boolean {
+  return error instanceof Error && (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
+}
 
 interface CheckpointEnvelope {
   checkpointId: string;
@@ -78,6 +88,7 @@ interface ConflictBackup {
 
 function migrateLoadedState(input: GameState): GameState {
   const state = structuredClone(input);
+  replaceIneligibleUnpickedHistoricalProspects(state);
   for (const player of Object.values(state.players)) {
     if (player.profileSource !== "HISTORICAL_ARCHETYPE" || !player.historicalSourcePlayerId) continue;
     player.name = historicalNameBySourceId.get(player.historicalSourcePlayerId) ?? player.name;
@@ -87,6 +98,11 @@ function migrateLoadedState(input: GameState): GameState {
     && (state.meta.dataVersion.startsWith("bundled.") || state.meta.dataVersion.startsWith("hupu.nba.live-roster"));
   state.meta.configVersion = GAME_CONFIG.version;
   state.commandReceipts ??= {};
+  if (state.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear
+    && (state.rookieDraft?.source === "CURATED_2026" || state.rookieDraft?.source === "PROCEDURAL_2026")
+    && state.rookieDraft.lotteryPresented === undefined) {
+    state.rookieDraft.lotteryPresented = true;
+  }
   state.teamNotifications ??= [];
   state.draftPicks ??= {};
   const requiredPicks = {
@@ -260,12 +276,43 @@ function migrateLoadedState(input: GameState): GameState {
     applyRotationPlanToPlayers(roster, team.rotationPlan);
   }
   state.meta.schemaVersion = Math.max(18, state.meta.schemaVersion);
+  if (state.league.seasonYear === 2026
+    && (state.meta.dataVersion.startsWith("bundled.") || state.meta.dataVersion.startsWith("hupu.nba.live-roster"))
+    && (state.schedule.length === 0 || state.schedule.some((game) => game.status === "SCHEDULED"))
+    && !hasOpeningMipBaselines(state)) seedOpeningMipBaselines(state);
   ensureExpansionWelcomeNotification(state);
   return state;
 }
 
 export class SaveService {
   constructor(private readonly adapter: StorageAdapter) {}
+
+  private async evictOldestCheckpoint(slotId: number): Promise<boolean> {
+    const serialized = await this.adapter.get(checkpointIndexKey(slotId));
+    const checkpoints = serialized ? JSON.parse(serialized) as string[] : [];
+    const oldest = checkpoints.shift();
+    if (!oldest) return false;
+    await this.adapter.remove(checkpointKey(slotId, oldest));
+    await this.adapter.set(checkpointIndexKey(slotId), JSON.stringify(checkpoints));
+    return true;
+  }
+
+  private async setWithQuotaRecovery(slotId: number, key: string, value: string): Promise<void> {
+    for (;;) {
+      try {
+        await this.adapter.set(key, value);
+        return;
+      } catch (error) {
+        if (!isStorageQuotaError(error)) throw error;
+        if (await this.evictOldestCheckpoint(slotId)) continue;
+        if (key !== previousKey(slotId) && await this.adapter.get(previousKey(slotId)) !== null) {
+          await this.adapter.remove(previousKey(slotId));
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
 
   async save(slotId: number, state: GameState): Promise<SaveEnvelope> {
     if (slotId < 1 || slotId > 3) throw new Error("V1 supports save slots 1 through 3");
@@ -288,15 +335,21 @@ export class SaveService {
       state,
     };
     const serialized = JSON.stringify(envelope);
-    await this.adapter.set(tempKey(slotId), serialized);
+    await this.setWithQuotaRecovery(slotId, tempKey(slotId), serialized);
     const verify = JSON.parse((await this.adapter.get(tempKey(slotId))) as string) as SaveEnvelope;
     const verifiedStateHash = stableHash(stableSerialize(verify.state));
     if (verify.stateHash !== envelope.stateHash || verifiedStateHash !== envelope.stateHash) {
       throw new Error("Temporary save verification failed");
     }
     const previousSerialized = await this.adapter.get(slotKey(slotId));
-    if (previousSerialized) await this.adapter.set(previousKey(slotId), previousSerialized);
-    await this.adapter.set(slotKey(slotId), serialized);
+    if (previousSerialized) {
+      try {
+        await this.setWithQuotaRecovery(slotId, previousKey(slotId), previousSerialized);
+      } catch (error) {
+        if (!isStorageQuotaError(error)) throw error;
+      }
+    }
+    await this.setWithQuotaRecovery(slotId, slotKey(slotId), serialized);
     await this.adapter.remove(tempKey(slotId));
     return envelope;
   }
@@ -325,17 +378,24 @@ export class SaveService {
 
   async saveCheckpoint(slotId: number, checkpointId: string, state: GameState): Promise<void> {
     if (!/^[a-z0-9-]{1,40}$/u.test(checkpointId)) throw new Error("Invalid checkpoint id");
+    const indexSerialized = await this.adapter.get(checkpointIndexKey(slotId));
+    const current = indexSerialized ? JSON.parse(indexSerialized) as string[] : [];
+    const retained = current.filter((id) => id !== checkpointId);
+    // Free space before writing: a fourth full-season checkpoint can exceed browser storage quota.
+    while (retained.length >= 3) {
+      const oldest = retained.shift() as string;
+      await this.adapter.remove(checkpointKey(slotId, oldest));
+    }
+    if (retained.length !== current.length && !current.includes(checkpointId)) {
+      await this.adapter.set(checkpointIndexKey(slotId), JSON.stringify(retained));
+    }
     const envelope: CheckpointEnvelope = {
       checkpointId,
       stateHash: stableHash(stableSerialize(state)),
       state,
     };
     await this.adapter.set(checkpointKey(slotId, checkpointId), JSON.stringify(envelope));
-    const indexSerialized = await this.adapter.get(checkpointIndexKey(slotId));
-    const current = indexSerialized ? JSON.parse(indexSerialized) as string[] : [];
-    const next = current.filter((id) => id !== checkpointId).concat(checkpointId);
-    while (next.length > 3) await this.adapter.remove(checkpointKey(slotId, next.shift() as string));
-    await this.adapter.set(checkpointIndexKey(slotId), JSON.stringify(next));
+    await this.adapter.set(checkpointIndexKey(slotId), JSON.stringify([...retained, checkpointId]));
   }
 
   async loadCheckpoint(slotId: number, checkpointId: string): Promise<GameState | null> {

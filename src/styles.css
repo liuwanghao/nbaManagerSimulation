@@ -6171,6 +6171,7 @@ body,
   box-shadow: 0 24px 80px rgba(0,0,0,.58);
 }
 .draft-prospect-dialog > header { padding-right: 28px; }
+.draft-prospect-dialog .draft-detail-avatar { width: 62px; height: 62px; margin-bottom: 10px; border-radius: 4px; }
 .draft-prospect-dialog-rank { color: var(--accent-orange); font-size: 9px; font-weight: 900; letter-spacing: .12em; }
 .draft-prospect-dialog h2 { margin: 6px 0 3px; font-size: 24px; }
 .draft-prospect-dialog header p { margin: 0; color: var(--text-sub); font-size: 10px; }
@@ -6361,6 +6362,52 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .trade-console-space b { color: #34d399; font-size: 10px; }
 .trade-console-close { position: absolute; z-index: 4; top: 16px; right: 10px; width: 34px; height: 34px; padding: 0; color: #cbd5e1; border: 0; border-radius: 8px; background: rgba(30,41,59,.85); font-size: 17px; }
 .trade-console-scroll { display: flex; min-height: 0; padding: 14px; overflow-y: auto; flex: 1 1 auto; flex-direction: column; gap: 14px; -webkit-overflow-scrolling: touch; }
+.trade-mode-tabs { display: grid; margin: 0; padding: 0 0 8px; grid-template-columns: 1fr 1fr; gap: 5px; border-bottom: 1px solid #26394b; }
+.trade-mode-tabs button { min-height: 42px; padding: 4px 8px; color: #94a3b8; border: 1px solid #315066; border-radius: 0; background: #101e30; font-size: 10px; font-weight: 800; line-height: 1.2; }
+.trade-mode-tabs button.selected { color: var(--trade-cyan); border-color: var(--trade-cyan); background: rgba(0,217,239,.12); box-shadow: inset 0 0 10px rgba(0,217,239,.08); }
+.trade-mode-tabs button:focus-visible { outline: 2px solid var(--trade-cyan); outline-offset: 2px; }
+.trade-target-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.trade-target-filters label { display: grid; min-width: 0; gap: 4px; color: #94a3b8; font-size: 9px; }
+.trade-target-filters .trade-target-name { grid-column: 1 / -1; }
+.trade-target-filters input { width: 100%; min-width: 0; height: 40px; padding: 0 10px; color: #f1f5f9; border: 1px solid #315166; border-radius: 0; outline: none; background: #101e30; font-size: 11px; }
+.trade-target-filters input:focus { border-color: var(--trade-cyan); }
+.trade-target-filter { position: relative; display: grid; min-width: 0; gap: 4px; }
+.trade-target-filter-label { color: #94a3b8; font-size: 9px; }
+.trade-target-filter-trigger { display: flex; width: 100%; min-width: 0; height: 40px; padding: 0 10px; align-items: center; justify-content: space-between; gap: 8px; color: #f1f5f9; border: 1px solid #315166; border-radius: 0; background: #101e30; font-size: 11px; font-weight: 700; text-align: left; cursor: pointer; }
+.trade-target-filter-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-target-filter-trigger > i { width: 7px; height: 7px; flex: 0 0 7px; border-right: 2px solid var(--trade-cyan); border-bottom: 2px solid var(--trade-cyan); transform: translateY(-2px) rotate(45deg); }
+.trade-target-filter-trigger[aria-expanded="true"] { color: var(--trade-cyan); border-color: var(--trade-cyan); background: #102d43; }
+.trade-target-filter-trigger:focus-visible,.trade-target-filter-option:focus-visible { outline: 2px solid var(--trade-cyan); outline-offset: 2px; }
+.trade-target-filter-menu { position: absolute; z-index: 8; top: calc(100% + 4px); left: 0; width: max(100%, min(248px, calc(100vw - 42px))); max-height: min(268px, 48dvh); padding: 4px; overflow-y: auto; border: 1px solid #0088ad; background: #071526; box-shadow: 0 10px 22px rgba(0,0,0,.48); scrollbar-color: #335167 #101a2b; }
+.trade-target-filter:nth-child(2) .trade-target-filter-menu { right: 0; left: auto; width: 100%; }
+.trade-target-filter-menu.open-up { top: auto; bottom: calc(100% + 4px); }
+.trade-target-filter-option { display: flex; width: 100%; min-height: 35px; padding: 5px 9px; align-items: center; justify-content: space-between; gap: 8px; color: #dceefa; border: 1px solid transparent; border-radius: 0; background: #09203a; font-size: 10px; font-weight: 700; text-align: left; cursor: pointer; }
+.trade-target-filter-option + .trade-target-filter-option { margin-top: 3px; }
+.trade-target-filter-option > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-target-filter-option > b { color: var(--trade-cyan); font-size: 12px; }
+.trade-target-filter-option:hover,.trade-target-filter-option[aria-pressed="true"] { color: var(--trade-cyan); border-color: #0088ad; background: #102d43; }
+.trade-target-hint { margin: 10px 0; color: #94a3b8; font-size: 9px; line-height: 1.5; }
+.trade-target-selected { display: flex; margin-bottom: 8px; padding: 8px; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid rgba(0,240,255,.3); border-radius: 8px; background: rgba(0,240,255,.08); }
+.trade-target-selected b { min-width: 0; color: #d9fbff; font-size: 10px; line-height: 1.4; }
+.trade-target-selected button { flex: 0 0 auto; color: var(--trade-cyan); border: 0; background: transparent; font-size: 10px; }
+.trade-target-results { display: grid; gap: 6px; }
+.trade-target-submit { display: grid; gap: 6px; margin-top: 9px; }
+.trade-target-submit .trade-inquiry-submit { margin-top: 0; }
+.trade-target-card:has(.trade-target-selected) .trade-target-submit { position: sticky; z-index: 5; bottom: 8px; box-shadow: 0 0 0 8px var(--trade-card), 0 -8px 18px rgba(0,0,0,.38); background: var(--trade-card); }
+.trade-target-player { display: flex; width: 100%; min-height: 61px; padding: 7px; align-items: center; gap: 8px; color: #fff; border: 1px solid #26364b; border-radius: 10px; background: #182238; text-align: left; }
+.trade-target-player.selected { border-color: var(--trade-cyan); background: #10303a; }
+.trade-target-player:disabled { opacity: .45; }
+.trade-target-player.untouchable:disabled { opacity: .8; }
+.trade-target-player.untouchable > strong { color: #fbbf24; }
+.trade-target-player .trade-avatar { width: 39px; height: 39px; flex-basis: 39px; }
+.trade-target-player > span:nth-child(2) { display: grid; min-width: 0; flex: 1 1 auto; gap: 3px; }
+.trade-target-player b { overflow: hidden; color: #fff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.trade-target-player small { color: #94a3b8; font-size: 9px; }
+.trade-target-player em { color: #fbbf24; font-size: 8px; font-style: normal; }
+.trade-target-player .trade-target-overall { display: grid; min-width: 35px; flex: 0 0 35px; justify-items: center; gap: 1px; color: #ffd166; border-left: 1px solid #315066; font-size: 17px; font-weight: 900; line-height: 1; }
+.trade-target-player .trade-target-overall small { color: #8da1b7; font-size: 7px; font-weight: 800; letter-spacing: .05em; }
+.trade-target-player > strong { flex: 0 0 auto; color: var(--trade-cyan); font-size: 9px; }
+.trade-target-more { display: block; padding: 6px; color: #94a3b8; font-size: 9px; text-align: center; }
 .trade-console-card { padding: 13px; border: 1px solid #1e293b; border-radius: 16px; background: var(--trade-card); }
 .trade-console-card-heading { display: flex; margin-bottom: 11px; align-items: center; justify-content: space-between; gap: 8px; }
 .trade-console-card-heading > b { color: #cbd5e1; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
@@ -6380,7 +6427,7 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .trade-pick-picker { display: grid; gap: 7px; margin-top: 8px; padding-top: 10px; border-top: 1px solid #243548; }
 .trade-pick-picker > b { color: #f4f8fd; font-size: 11px; }
 .trade-pick-picker > small { color: #8da1b7; font-size: 9px; }
-.trade-console-offers { display: grid; gap: 10px; }
+.trade-console-offers { display: grid; gap: 10px; scroll-margin-top: 115px; }
 .trade-console-offer-heading { display: flex; padding: 0 3px; align-items: center; justify-content: space-between; gap: 8px; }
 .trade-console-offer-heading > b { color: #cbd5e1; font-size: 10px; letter-spacing: .07em; }
 .trade-console-offer-heading > b span { margin-left: 5px; padding: 2px 7px; color: var(--trade-cyan); border: 1px solid rgba(0,240,255,.3); border-radius: 999px; background: rgba(0,240,255,.12); font-size: 8px; }
@@ -6389,6 +6436,15 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .trade-console-offer-list { display: grid; gap: 10px; }
 .trade-console-offer-card { display: flex; width: 100%; min-height: 74px; padding: 12px; align-items: center; gap: 10px; color: inherit; border: 1px solid #1e293b; border-radius: 16px; background: var(--trade-card); text-align: left; }
 .trade-console-offer-card:active { border-color: rgba(0,240,255,.6); transform: scale(.98); }
+.trade-target-offer-card { display: grid; gap: 8px; }
+.trade-target-offer-primary { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.trade-target-offer-primary .trade-offer-copy > b { font-size: 12px; white-space: normal; }
+.trade-target-offer-primary .trade-offer-side-label { color: var(--trade-cyan); font-size: 8px; font-weight: 800; letter-spacing: .04em; }
+.trade-target-offer-package { display: grid; width: 100%; padding-top: 7px; gap: 5px; border-top: 1px solid #29384b; }
+.trade-target-offer-package small { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 7px; color: #d2deea; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.trade-target-offer-package strong { color: #f3c879; font-size: 9px; }
+.trade-target-offer-package .trade-target-offer-incoming strong { color: var(--trade-cyan); }
+.trade-target-offer-package .trade-target-offer-team { display: block; color: #91a8bb; font-size: 9px; }
 .trade-offer-copy { display: grid; min-width: 0; flex: 1 1 auto; gap: 3px; }
 .trade-offer-copy > b { overflow: hidden; color: #fff; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .trade-offer-copy em { padding: 1px 4px; color: #fbbf24; border: 1px solid rgba(251,191,36,.2); border-radius: 3px; background: rgba(251,191,36,.1); font-size: 8px; font-style: normal; }
@@ -6528,6 +6584,7 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .reference-rookie-draft .gemini-list-heading { align-items: center; color: #8ca5bb; font-size: 9px; }
 .reference-rookie-draft .gemini-list-heading b { color: #f1f7ff; font-size: 11px; }
 .reference-rookie-draft .gemini-list-heading span { color: #8ca5bb; }
+.reference-rookie-draft .gemini-list-heading a { color: #77dfe8; font-size: 9px; text-decoration: underline; }
 .reference-rookie-draft .gemini-tabs { gap: 3px; padding: 3px; border-color: #0088ad; border-radius: 0; background: #071526; }
 .reference-rookie-draft .gemini-tabs button { min-height: 33px; color: #8ca5bb; border-radius: 0; font-size: 9px; }
 .reference-rookie-draft .gemini-tabs button.active { color: #001116; background: #00e5f2; box-shadow: none; }
@@ -6545,8 +6602,6 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .reference-rookie-draft .gemini-prospect-avatar { border-color: #315573; border-radius: 0; background-color: #0d2a45; }
 .reference-rookie-draft .gemini-prospect-copy > b { color: #f1f7ff; font-size: 12px; }
 .reference-rookie-draft .gemini-prospect-copy > small { color: #82a1b9; font-size: 8px; }
-.reference-rookie-draft .gemini-prospect-copy > .draft-legend-archetype { color: #f8c66d; font-size: 9px; font-weight: 800; }
-.draft-prospect-dialog .draft-legend-archetype { width: fit-content; margin: 8px auto 0; padding: 5px 8px; color: #f8c66d; border: 1px solid rgba(248,198,109,.45); background: rgba(248,198,109,.1); font-size: 10px; font-weight: 800; }
 .reference-rookie-draft .gemini-scout-bar span { background: #00e5f2; }
 .reference-rookie-draft .gemini-scout-bar em { color: #82a1b9; }
 .reference-rookie-draft .gemini-prospect-grade b { color: #f4d35e; font-size: 15px; }
@@ -6675,7 +6730,9 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .draft-prep-lottery-identity small { color: #8ca5bb; font-size: 9px; }
 .draft-prep-lottery li strong { color: #00e5f2; text-align: right; }
 .draft-prep-lottery-identity em { color: #f8c66d; font-size: 9px; font-style: normal; white-space: nowrap; }
-.draft-lottery-screen.flow-card { display: flex; width: 100%; max-width: none; min-height: calc(100dvh - 80px - env(safe-area-inset-bottom)); margin: 0; padding: 14px max(14px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-right)); flex-direction: column; gap: 14px; border: 0; border-radius: 0; background: #050d19; box-shadow: none; }
+.rookie-draft-shell:has(.draft-lottery-screen) { display: flex; padding-bottom: 0; flex-direction: column; overflow: hidden; }
+.rookie-draft-shell:has(.draft-lottery-screen) .game-chrome { flex: none; margin-bottom: 0; }
+.draft-lottery-screen.flow-card { display: flex; width: 100%; max-width: none; min-height: 0; height: auto; margin: 0; padding: 14px max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-right)); flex: 1; flex-direction: column; gap: 12px; overflow: hidden; border: 0; border-radius: 0; background: #050d19; box-shadow: none; }
 .draft-lottery-heading { text-align: center; }
 .draft-lottery-heading > span { color: #00e5f2; font-size: 10px; font-weight: 900; letter-spacing: .16em; }
 .draft-lottery-heading h2 { margin: 5px 0; color: #f5f7fb; font-size: clamp(23px, 6vw, 34px); }
@@ -6691,24 +6748,33 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .draft-lottery-progress { display: grid; gap: 6px; color: #8ca5bb; font-size: 10px; font-weight: 700; }
 .draft-lottery-progress > div { height: 5px; overflow: hidden; background: #1c2d4a; }
 .draft-lottery-progress i { display: block; height: 100%; background: #00e5f2; transition: width .45s ease; }
-.draft-lottery-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-.draft-lottery-result { display: grid; min-width: 0; min-height: 76px; padding: 8px; align-content: center; gap: 4px; border: 1px solid #1c2d4a; background: #071526; opacity: .65; }
-.draft-lottery-result.is-revealed { border-color: #0088ad; background: #09203a; opacity: 1; }
+.draft-lottery-results { display: grid; min-height: 0; padding-bottom: 6px; flex: 1; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: start; gap: 7px; overflow-y: auto; overscroll-behavior: contain; }
+.draft-lottery-result { position: relative; display: grid; min-width: 0; min-height: 86px; padding: 9px; align-content: center; gap: 5px; border: 1px solid #1c2d4a; background: #071526; opacity: .65; }
+.draft-lottery-result.is-revealed { --lottery-card-background: #09203a; border-color: #0088ad; background: var(--lottery-card-background); opacity: 1; }
 .draft-lottery-result.is-latest { animation: draftLotteryReveal .55s ease-out both; }
-.draft-lottery-result.is-top-three.is-revealed { border-color: #9d7133; background: #221c17; }
-.draft-lottery-result.is-my-pick { box-shadow: inset 3px 0 #00e5f2; }
+.draft-lottery-result.is-rank-1 { --lottery-card-background: linear-gradient(135deg, #312612, #191a20); border-color: #c69a3b; background: var(--lottery-card-background); }
+.draft-lottery-result.is-rank-2 { --lottery-card-background: linear-gradient(135deg, #263444, #151e2d); border-color: #9eafc1; background: var(--lottery-card-background); }
+.draft-lottery-result.is-rank-3 { --lottery-card-background: linear-gradient(135deg, #322219, #1b1b25); border-color: #ad7450; background: var(--lottery-card-background); }
+.draft-lottery-result.is-my-pick { background: linear-gradient(120deg, rgba(0,229,242,.4), rgba(0,229,242,.14)), var(--lottery-card-background, #09203a); }
+.draft-lottery-my-badge { position: absolute; top: 7px; right: 7px; padding: 2px 5px; color: #001116; border-radius: 3px; background: #00e5f2; font-size: 8px; font-weight: 900; line-height: 1.3; }
 .draft-lottery-number { color: #00e5f2; font-size: 14px; font-weight: 950; }
-.draft-lottery-result.is-top-three .draft-lottery-number { color: #f8c66d; }
-.draft-lottery-result strong { overflow: hidden; color: #f5f7fb; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.draft-lottery-result small { overflow: hidden; color: #8ca5bb; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.draft-lottery-actions { position: sticky; z-index: 2; bottom: 0; display: flex; margin-top: auto; padding: 9px 0 max(9px, env(safe-area-inset-bottom)); gap: 9px; background: linear-gradient(transparent, #050d19 22%); }
-.draft-lottery-actions .draft-terminal-cta { min-height: 48px; margin: 0; flex: 1; color: #001116; border-radius: 0; background: #00e5f2; box-shadow: 0 0 10px rgba(0,229,242,.4); }
+.draft-lottery-result.is-rank-1 .draft-lottery-number { color: #ffd166; }
+.draft-lottery-result.is-rank-2 .draft-lottery-number { color: #e0e8f1; }
+.draft-lottery-result.is-rank-3 .draft-lottery-number { color: #e6a77b; }
+.draft-lottery-result strong { min-width: 0; color: #f5f7fb; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.draft-lottery-result small { min-width: 0; color: #8ca5bb; font-size: 9px; line-height: 1.35; overflow-wrap: anywhere; }
+.draft-lottery-actions { z-index: 2; display: grid; margin-top: auto; flex: none; gap: 8px; background: #050d19; }
+.draft-lottery-actions .draft-terminal-cta { min-height: 48px; width: 100%; margin: 0; color: #001116; border-radius: 0; background: #00e5f2; box-shadow: 0 0 10px rgba(0,229,242,.4); }
 .draft-lottery-actions .draft-terminal-cta:disabled { opacity: .45; box-shadow: none; }
-.draft-lottery-secondary { min-width: 100px; padding: 0 12px; color: #00e5f2; border: 1px solid #0088ad; background: #09203a; font-size: 11px; font-weight: 800; cursor: pointer; }
+.draft-lottery-tools { display: flex; min-height: 38px; gap: 8px; }
+.draft-lottery-secondary { min-width: 100px; padding: 7px 12px; flex: 1; color: #00e5f2; border: 1px solid #0088ad; background: #09203a; font-size: 11px; font-weight: 800; cursor: pointer; }
+.draft-lottery-secondary.reward { color: #f8c66d; border-color: #9d7133; background: #221c17; }
+.draft-lottery-secondary:disabled { cursor: default; opacity: .5; }
 .draft-lottery-secondary:hover, .draft-lottery-secondary:focus-visible { border-color: #00e5f2; }
+.draft-lottery-reward-message { margin: 0; color: #f8c66d; font-size: 10px; line-height: 1.4; text-align: center; }
 @keyframes draftLotteryFloat { 50% { transform: translateY(-7px); } }
 @keyframes draftLotteryReveal { from { opacity: .2; transform: translateY(12px) scale(.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@media (max-width: 430px) { .draft-lottery-stage { min-height: 146px; gap: 13px; } .draft-lottery-ball { width: 76px; height: 76px; font-size: 25px; } .draft-lottery-results { grid-template-columns: repeat(2, minmax(0, 1fr)); } .draft-lottery-result { min-height: 64px; } }
+@media (max-width: 430px) { .draft-lottery-stage { min-height: 146px; gap: 13px; } .draft-lottery-ball { width: 76px; height: 76px; font-size: 25px; } .draft-lottery-results { grid-template-columns: repeat(2, minmax(0, 1fr)); } .draft-lottery-result { min-height: 82px; } }
 @media (prefers-reduced-motion: reduce) { .draft-lottery-ball, .draft-lottery-result.is-latest { animation: none; } .draft-lottery-progress i { transition: none; } }
 .draft-prep-trade-backdrop { position: fixed; z-index: 115; inset: 0; display: grid; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); place-items: center; background: rgba(1,4,8,.86); }
 .draft-prep-trade-dialog { position: relative; width: min(100%, 580px); }
@@ -7359,11 +7425,16 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .season-command-calendar header small { color: #00f0ff; font: 800 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em; }
 .season-command-summary > div:first-child b { overflow: hidden; color: #fff; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .season-command-summary > div:first-child span { color: #8291a5; font: 8px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.season-command-ratings { display: grid; grid-template-columns: 1fr; min-width: 72px; gap: 5px; }
-.season-command-ratings > span { display: grid; min-width: 60px; padding: 6px 8px; place-items: center; border-left: 1px solid rgba(100,116,139,.3); }
-.season-command-ratings small { color: #8fa0b5; letter-spacing: 0; }
-.season-command-ratings strong { color: #fff; font: 900 22px/1 Chakra Petch, Inter, sans-serif; }
-.season-command-ratings em { color: #718096; font: 7px/1 ui-monospace, monospace; font-style: normal; }
+.season-command-summary.regular-season-summary { grid-template-columns: minmax(0,1fr) clamp(128px,28%,164px); gap: 8px; }
+.regular-season-summary > div:first-child .season-command-team-name { overflow: hidden; color: #e8f1fa; font: 800 10px/1.2 Inter, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.regular-season-summary > div:first-child .season-command-progress { color: #9fb1c6; font-size: 9px; }
+.season-command-ratings { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(47px,.8fr); min-width: 0; padding-left: 8px; align-items: center; gap: 6px; border-left: 1px solid rgba(100,116,139,.3); }
+.season-command-overall { display: grid; min-height: 48px; align-content: center; justify-items: center; gap: 3px; }
+.season-command-overall strong { color: #fff; font: 900 23px/1 Chakra Petch, Inter, sans-serif; }
+.season-command-overall small { color: #a9bdd0; font: 800 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; white-space: nowrap; }
+.season-command-standing { display: grid; min-width: 0; align-content: center; justify-items: start; gap: 5px; }
+.season-command-standing b { color: #f4f8ff; font-size: 11px; line-height: 1.1; white-space: nowrap; }
+.season-command-standing span { color: #00e7f4; font-size: 10px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
 
 .season-command-matchup { padding: 10px 11px; border-top: 2px solid var(--team-color); }
 .season-command-matchup > header,
@@ -7409,8 +7480,44 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .season-command-honors > span + span { border-left: 1px solid rgba(245,185,68,.22); }
 .season-command-honors small { color: #d9b967; font-size: 10px; font-weight: 900; }
 .season-command-honors strong { overflow: hidden; color: #fff1c2; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.season-command-complete button { min-height: 40px; padding: 0 18px; color: #041318; border: 0; background: #00f0ff; font-weight: 900; }
+.season-command-complete button { min-width: 154px; min-height: 40px; padding: 0 18px; color: #041318; border: 0; background: #00f0ff; font-weight: 900; }
 .season-command-complete.postseason-settled button { min-height: 0; padding: 0 12px; font-size: 11px; white-space: nowrap; }
+.season-command-complete .season-transition-error { color: #ff9b9b; font-size: 11px; }
+.postseason-home { display: grid; min-width: 0; gap: 8px; }
+.postseason-next-matchup { display: grid; grid-template-columns: minmax(0,1fr) 38px minmax(0,1fr); align-items: center; gap: 7px; margin: 13px 0 5px; text-align: center; }
+.postseason-next-matchup span { min-width: 0; padding: 13px 5px; overflow: hidden; color: #f1f8ff; border: 1px solid rgba(0,240,255,.23); background: rgba(13,31,48,.75); font-size: 12px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.postseason-next-matchup strong { color: #00e7f4; font: 900 16px/1 Chakra Petch,Inter,sans-serif; }
+.postseason-next-game > p { margin: 0 0 10px; color: #93a8ba; font-size: 10px; }
+.postseason-next-game .season-command-secondary-actions { grid-template-columns: 1fr; }
+.postseason-settle-action { width: 100%; min-height: 32px; margin-top: 7px; color: #97aabc; border: 1px solid rgba(100,116,139,.35); background: transparent; font-size: 10px; font-weight: 800; cursor: pointer; }
+.postseason-home button:disabled { cursor: not-allowed; opacity: .5; }
+.postseason-schedule, .postseason-bracket { min-width: 0; padding: 12px; color: #e8f1fa; border: 1px solid rgba(0,240,255,.28); border-radius: 4px; background: linear-gradient(145deg,rgba(10,20,34,.96),rgba(5,10,18,.97)); }
+.postseason-schedule > header, .postseason-bracket > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid rgba(100,116,139,.27); }
+.postseason-schedule > header small, .postseason-bracket > header small { color: #00e7f4; font: 800 8px/1 ui-monospace,monospace; letter-spacing: .12em; }
+.postseason-schedule h2, .postseason-bracket h2 { margin: 3px 0 0; font-size: 14px; }
+.postseason-schedule > header > span, .postseason-bracket > header > span { color: #91a4b9; font-size: 9px; white-space: nowrap; }
+.postseason-schedule ol { display: grid; max-height: 360px; margin: 0; padding: 7px 0 0; gap: 5px; overflow-y: auto; list-style: none; }
+.postseason-schedule li { display: flex; min-width: 0; min-height: 47px; padding: 7px 9px; align-items: center; gap: 9px; border: 1px solid rgba(100,116,139,.28); background: #101e30; }
+.postseason-schedule li.mine { border-color: #317789; background: #153343; }
+.postseason-schedule li > div { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.postseason-schedule li small { color: #8ea6b9; font-size: 8px; }
+.postseason-schedule li b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.postseason-schedule li i { color: #6a7e91; font-style: normal; }
+.postseason-schedule li strong { color: #e8f9fd; font: 900 11px/1 Chakra Petch,Inter,sans-serif; white-space: nowrap; }
+.postseason-schedule li > span { color: #8193a9; font-size: 9px; white-space: nowrap; }
+.postseason-schedule li button { min-height: 28px; padding: 0 7px; color: #00e7f4; border: 1px solid rgba(0,231,244,.42); background: transparent; font-size: 9px; font-weight: 800; cursor: pointer; }
+.postseason-bracket-conference { margin-top: 14px; }
+.postseason-bracket h3 { margin: 0 0 6px; color: #00e7f4; font-size: 12px; }
+.postseason-bracket-rounds { display: grid; grid-template-columns: repeat(4,minmax(130px,1fr)); gap: 7px; overflow-x: auto; }
+.postseason-bracket-rounds > div { display: grid; min-width: 0; align-content: start; gap: 6px; }
+.postseason-bracket h4 { margin: 0; color: #91a4b9; font-size: 9px; }
+.postseason-bracket-series { display: grid; min-width: 0; padding: 5px 7px; gap: 3px; border: 1px solid rgba(100,116,139,.32); background: #0e1b2b; }
+.postseason-bracket-series > span { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 4px; color: #a8b8c7; font-size: 9px; }
+.postseason-bracket-series > span.winner { color: #00e7f4; }
+.postseason-bracket-series b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.postseason-bracket-series strong { font-variant-numeric: tabular-nums; }
+.postseason-bracket-finals { max-width: 220px; margin: 14px auto 0; }
+@media (max-width: 640px) { .postseason-schedule li { gap: 5px; } .postseason-bracket-rounds { grid-template-columns: repeat(4,130px); } }
 
 .season-results { display: grid; gap: 12px; color: #e8f1fa; }
 .season-results-actions { display: grid; grid-template-columns: 1fr; gap: 8px; }
@@ -7430,7 +7537,6 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .season-results-dialog-close:focus-visible { color: #00e7f4; border-color: #00e7f4; outline: none; }
 .season-results-dialog .season-results-bracket { margin: 14px; }
 .season-results-bracket > header small { color: #8493a7; font-size: 11px; }
-.season-results-bracket { padding: 14px; border: 1px solid rgba(0,240,255,.28); border-radius: 4px; background: linear-gradient(145deg, rgba(10,20,34,.96), rgba(5,10,18,.97)); }
 .season-awards-preview-note { margin: 0; color: #94a3b8; font-size: 12px; }
 .season-results-bracket > header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .season-results-bracket h3 { margin: 0; font-size: 14px; }
@@ -7536,6 +7642,19 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .league-rollover-card small { color: #00e7f4; font: 800 10px/1 Chakra Petch,Inter,sans-serif; letter-spacing: .16em; }
 .league-rollover-card b { font-size: 18px; }
 .league-rollover-card p { margin: 0; color: #92a9bc; font-size: 11px; line-height: 1.5; }
+.league-rollover-card .league-rollover-slow { color: #ffd28c; }
+.league-transition-error-backdrop { position: fixed; z-index: 160; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(2,8,19,.86); }
+.league-transition-error-card { display: grid; width: min(100%,380px); gap: 12px; padding: 22px; color: #effaff; border: 1px solid #ef7777; border-radius: 10px; background: #0d1b2d; box-shadow: 0 16px 48px rgba(0,0,0,.45); }
+.league-transition-error-card h2 { margin: 0; font-size: 18px; }
+.league-transition-error-card p { margin: 0; color: #b4c4d4; font-size: 12px; line-height: 1.5; }
+.league-transition-error-card code { overflow-wrap: anywhere; padding: 10px; color: #ffb8b8; border: 1px solid rgba(239,119,119,.36); border-radius: 4px; background: rgba(239,119,119,.08); font-size: 11px; }
+.league-transition-error-card button { min-height: 38px; color: #061820; border: 0; border-radius: 4px; background: #00e7f4; font-weight: 800; }
+.game-issue-feedback { display: grid; width: 100%; gap: 6px; }
+.game-issue-feedback button { min-height: 38px; padding: 8px 12px; color: #061820; border: 1px solid #00e7f4; border-radius: 4px; background: #00e7f4; font: 800 12px/1.4 var(--font-family); cursor: pointer; }
+.game-issue-feedback button:disabled { cursor: default; opacity: .65; }
+.game-issue-feedback p { margin: 0; color: #ffb3bf; font-size: 11px; line-height: 1.5; }
+.game-issue-feedback p[role="status"] { color: #80e7b8; }
+.league-transition-error-card > button:last-child { color: #b4c4d4; border: 1px solid #31465c; background: #15243a; }
 
 .option-phase-shell.expansion-shell { width: 100%; max-width: none; margin: 0; padding: 0; overflow-y: auto; }
 .option-phase-shell .game-chrome { margin-inline: 0; margin-bottom: 0; padding-left: var(--mobile-safe-left); padding-right: var(--mobile-safe-right); }
@@ -7653,8 +7772,7 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
   .app-shell:has(.regular-team-banner) .game-chrome { margin-bottom: 8px; }
   .app-shell:has(.regular-team-banner) .regular-status-strip { min-height: 26px; margin-bottom: 7px; }
   .season-command-summary { padding: 9px 11px; }
-  .season-command-ratings > span { padding-block: 3px; }
-  .season-command-ratings strong { font-size: 20px; }
+  .season-command-overall strong { font-size: 21px; }
   .season-command-matchup > header,
   .season-command-calendar > header { padding-bottom: 6px; }
   .season-command-secondary-actions { margin-top: 5px; }
@@ -7810,9 +7928,7 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
   .rotation-editor-heading { flex-direction: column; }
   .rotation-auto { width: 100%; }
   .season-command-versus > button { padding-right: 5px; padding-left: 5px; }
-  .season-command-summary { grid-template-columns: 1fr; }
-  .season-command-ratings { border-top: 1px solid rgba(100,116,139,.25); }
-  .season-command-ratings > span { border-left: 0; }
+  .season-command-summary:not(.regular-season-summary) { grid-template-columns: 1fr; }
   .rotation-minute-list article { gap: 4px; }
   .rotation-minute-stepper { grid-template-columns: 26px 30px 26px; gap: 4px; }
   .rotation-minute-stepper button { width: 26px; height: 28px; }
@@ -7843,6 +7959,27 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .fa-market-bottom-actions .fa-market-settle-button strong {
   font-size: var(--flow-secondary-action-font-size);
   font-weight: 900;
+}
+
+/* The expansion result is a required pause in the dark stage flow. */
+.expansion-shell .prototype-complete-screen .prototype-flow-heading,
+.expansion-shell .prototype-complete-screen .roster-summary > div {
+  color: var(--text-main);
+  border-color: var(--border-color);
+  background: var(--bg-sub-card);
+}
+.expansion-shell .prototype-complete-screen .prototype-flow-heading h2,
+.expansion-shell .prototype-complete-screen .prototype-section-bar b,
+.expansion-shell .prototype-complete-screen .roster-summary b { color: var(--text-main); }
+.expansion-shell .prototype-complete-screen .prototype-flow-heading p,
+.expansion-shell .prototype-complete-screen .prototype-section-bar span,
+.expansion-shell .prototype-complete-screen .roster-summary small { color: var(--text-sub); }
+.expansion-shell .prototype-complete-screen .roster-summary .summary-logo { flex: 0 0 48px; }
+.expansion-shell .prototype-complete-screen .prototype-sticky-action {
+  display: grid;
+  gap: 8px;
+  border-color: var(--border-color);
+  background: rgba(6, 9, 17, .96);
 }
 
 /* Events are focused decisions, separate from the team inbox. */
@@ -8046,6 +8183,11 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .manage-player-table th button small { color: #8399b2; font-size: 8px; }
 .manage-player-avatar.gemini-prospect-avatar { width: 33px; height: 33px; flex: 0 0 33px; border-radius: 0; border-color: #385065; }
 .manage-player-table .manage-overall-cell { color: #ffac3f; font-weight: 900; }
+.manage-player-table .manage-status-cell { min-width: 43px; padding-right: 5px; padding-left: 5px; color: #9fb1c6; font-weight: 800; font-variant-numeric: tabular-nums; }
+.manage-status-cell > span { display: inline-flex; align-items: center; gap: 2px; line-height: 1; }
+.manage-status-cell em { font-size: 8px; font-style: normal; }
+.manage-player-table .manage-status-cell.fatigued { color: #ffc078; }
+.manage-player-table .manage-status-cell.low-morale { color: #ff8292; }
 .manage-page-heading { display: flex; min-height: 66px; padding: 12px; align-items: center; justify-content: space-between; gap: 8px; border-left: 3px solid #00d9ef; }
 .manage-page-heading h2 { margin: 3px 0; color: #f5f9ff; font-size: 17px; }
 .manage-page-heading p { margin: 0; color: #8b9db1; font-size: 9px; }
@@ -8124,6 +8266,8 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .regular-free-agent-ovr small { color: #8194aa; font-size: 7px; font-weight: 800; letter-spacing: .08em; }
 .regular-free-agent-ovr strong { color: #ffac3f; font-size: 18px; font-weight: 900; line-height: 1; }
 .regular-free-agent-offer { flex: 0 0 auto; margin: 8px; padding: 0 8px; color: #05272f; border: 1px solid #00d9ef; background: #00d9ef; font-size: 9px; font-weight: 800; cursor: pointer; }
+.regular-free-agent-offer.withdraw { color: #ffca80; border-color: #b97731; background: #3b281b; }
+.regular-free-agent-offer.withdraw:hover:not(:disabled) { color: #ffe1ad; border-color: #e5a553; background: #50341d; }
 .regular-free-agent-offer:disabled { color: #8fa4bb; border-color: #345064; background: #1b2b3b; cursor: default; }
 .regular-free-agent-empty { margin: 0; padding: 20px 8px; color: #8fa4bb; border: 1px solid #283b50; font-size: 11px; text-align: center; }
 .trade-offer-picks { color: #ffd783 !important; }

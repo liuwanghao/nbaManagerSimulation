@@ -1,9 +1,11 @@
-import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
+import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { createFictionalPlayerProfile, fictionalNameAt } from "../../data/playerProfiles";
 import { calculateMarketPreference } from "../player/MarketPreferenceService";
 import { createBundledPlayer } from "../../data/hupuRoster";
-import { eligibleHistoricalTemplates, NBA_PLAYER_DATASET, type HistoricalPlayerTemplate } from "../../data/nbaPlayerDataset";
+import { NBA_PLAYER_DATASET, type HistoricalPlayerTemplate } from "../../data/nbaPlayerDataset";
+import { RETIRED_LEGEND_TEMPLATES } from "../../data/retiredLegendTemplates";
+import { BUNDLED_RETIRED_PORTRAIT_IDS } from "../../data/retiredLegendPortraitIds";
 import { REAL_2026_DRAFT, REAL_2026_DRAFT_PLAYER_IDS, REAL_2026_UNDRAFTED_PLAYER_IDS, type Real2026DraftEntry } from "../../data/real2026Draft";
 import { publicPlayerValue } from "../ai/AIValueService";
 import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
@@ -12,10 +14,13 @@ import { createRng } from "../random/xoshiro";
 import { resolveConferenceStandings } from "../standings/standings";
 import { calculateAttributeOverall } from "../player/PlayerRatingService";
 import { emptyPlayerSeasonStats, type ExpansionCityId, type GameState, type Player, type PlayerAttributes, type PlayerTrait, type Position, type RookieDraftPick, type RookieDraftState } from "../state/types";
+import { tradeCalendarDate } from "../trade/TradeTimingPolicy";
 
 export type DraftCommand =
   | { commandId: string; type: "PREPARE_ROOKIE_DRAFT"; payload: Record<string, never> }
   | { commandId: string; type: "ACKNOWLEDGE_DRAFT_LOTTERY"; payload: Record<string, never> }
+  | { commandId: string; type: "COMPLETE_DRAFT_LOTTERY_REVEAL"; payload: Record<string, never> }
+  | { commandId: string; type: "REROLL_DRAFT_LOTTERY"; payload: Record<string, never> }
   | { commandId: string; type: "REVEAL_DRAFT_PROSPECT"; payload: { playerId: string } }
   | { commandId: string; type: "ADVANCE_ROOKIE_DRAFT_AI_PICK"; payload: { expectedPickNumber: number } }
   | { commandId: string; type: "FAST_FORWARD_ROOKIE_DRAFT"; payload: { expectedPickNumber: number } }
@@ -28,13 +33,8 @@ export type DraftProspectView = Pick<Player,
 
 const POSITIONS: Position[] = ["PG", "SG", "SF", "PF", "C"];
 const TRAITS: PlayerTrait[] = ["PRIMARY_CREATOR", "SECONDARY_CREATOR", "SPACER", "SLASHER", "RIM_RUNNER", "WING_STOPPER", "RIM_PROTECTOR", "REBOUNDER", "TWO_WAY", "SIXTH_MAN"];
-const LEGEND_SOURCE_NAMES = new Set([
-  "Ben Wallace", "Tim Duncan", "Dirk Nowitzki", "Paul Pierce", "Elton Brand", "Shawn Marion",
-  "Andrei Kirilenko", "Manu Ginobili", "Paul Millsap", "Joakim Noah", "Marc Gasol",
-  "Blake Griffin", "DeMarcus Cousins", "Kyrie Irving", "Pau Gasol", "Chris Bosh",
-  "Dwyane Wade", "Dwight Howard", "Andre Iguodala", "Jason Kidd", "Kevin Garnett", "Kobe Bryant",
-]);
-const HISTORICAL_TEMPLATE_BY_ID = new Map(NBA_PLAYER_DATASET.historicalTemplates.map((template) => [template.sourcePlayerId, template]));
+const HISTORICAL_TEMPLATE_BY_ID = new Map(RETIRED_LEGEND_TEMPLATES.map((template) => [template.sourcePlayerId, template]));
+const bundledRetiredPortraitIds = new Set<string>(BUNDLED_RETIRED_PORTRAIT_IDS);
 const clamp = (
   value: number,
   min: number = BALANCE_CONFIG.playerLifecycle.attributeMinimum,
@@ -251,6 +251,7 @@ function historicalProspect(
     BALANCE_CONFIG.draft.scoutingPotentialMinimum,
     BALANCE_CONFIG.playerLifecycle.attributeMaximum,
   );
+  const sourceNbaId = template.sourcePlayerId.match(/^nba:(\d+)$/u)?.[1];
   return {
     id,
     teamId: "FREE_AGENT",
@@ -266,8 +267,11 @@ function historicalProspect(
     position: template.position,
     profileSource: "HISTORICAL_ARCHETYPE",
     projectionSource: "HISTORICAL_REBIRTH_V1",
-    projectionDataVersion: NBA_PLAYER_DATASET.datasetVersion,
+    projectionDataVersion: `${NBA_PLAYER_DATASET.datasetVersion}+retired-legends-90-v1`,
     historicalSourcePlayerId: template.sourcePlayerId,
+    portraitPath: sourceNbaId && bundledRetiredPortraitIds.has(sourceNbaId)
+      ? `./retired-portraits/nba-${sourceNbaId}.webp`
+      : null,
     attributes,
     threeRate: template.tendencies.threeRate,
     assistRate: template.tendencies.assistRate,
@@ -303,12 +307,36 @@ function historicalProspect(
   };
 }
 
+export function replaceIneligibleUnpickedHistoricalProspects(state: GameState): void {
+  const draft = state.rookieDraft;
+  if (state.league.currentPhase !== "DRAFT" || draft?.source !== "MIXED_FUTURE") return;
+  const history = state.history.rebornHistoricalSourceIds ?? (state.history.rebornHistoricalSourceIds = []);
+  const used = new Set(draft.classPlayerIds
+    .map((id) => state.players[id]?.historicalSourcePlayerId)
+    .filter((id): id is string => Boolean(id && HISTORICAL_TEMPLATE_BY_ID.has(id))));
+  for (const [rank, id] of draft.classPlayerIds.entries()) {
+    const player = state.players[id];
+    const oldSourceId = player?.historicalSourcePlayerId;
+    if (player?.profileSource !== "HISTORICAL_ARCHETYPE" || player.teamId !== "FREE_AGENT"
+      || !oldSourceId || HISTORICAL_TEMPLATE_BY_ID.has(oldSourceId)) continue;
+    const replacement = RETIRED_LEGEND_TEMPLATES
+      .filter((template) => !used.has(template.sourcePlayerId))
+      .sort((left, right) => history.lastIndexOf(left.sourcePlayerId) - history.lastIndexOf(right.sourcePlayerId)
+        || stableHash(draft.draftSeed, id, left.sourcePlayerId).localeCompare(stableHash(draft.draftSeed, id, right.sourcePlayerId)))[0];
+    if (!replacement) throw new Error("No retired legend available to replace an old draft prospect");
+    state.players[id] = historicalProspect(state, rank, draft.draftSeed, replacement);
+    used.add(replacement.sourcePlayerId);
+    const historyIndex = history.lastIndexOf(oldSourceId);
+    if (historyIndex >= 0) history[historyIndex] = replacement.sourcePlayerId;
+    else history.push(replacement.sourcePlayerId);
+  }
+}
+
 function historicalTemplatesForClass(state: GameState, draftSeed: string): Map<number, HistoricalPlayerTemplate> {
   const config = BALANCE_CONFIG.draft.historicalRebirth;
   if (!config.enabled || config.mode !== "LEGEND_ARCHETYPE" || state.league.seasonYear < config.firstEligibleSeasonYear) return new Map();
   const history = state.history.rebornHistoricalSourceIds ?? [];
-  const eligible = eligibleHistoricalTemplates()
-    .filter((template) => LEGEND_SOURCE_NAMES.has(template.sourceName))
+  const eligible = [...RETIRED_LEGEND_TEMPLATES]
     .sort((left, right) => history.lastIndexOf(left.sourcePlayerId) - history.lastIndexOf(right.sourcePlayerId)
       || stableHash(draftSeed, left.sourcePlayerId).localeCompare(stableHash(draftSeed, right.sourcePlayerId)));
   const count = Math.min(config.maximumPerClass, Math.round(BALANCE_CONFIG.draft.classSize * config.classShare), eligible.length);
@@ -473,9 +501,10 @@ function signRookie(state: GameState, player: Player, pick: RookieDraftPick): vo
   clearAiRookieRosterSlot(state, team.id);
   if (team.playerIds.length >= LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum) throw new Error(`${team.fullName} exceeds the offseason roster limit`);
   const firstRound = pick.round === 1;
+  const seasonFinance = getSeasonFinanceConfig(state.league.seasonYear);
   const year1 = firstRound
-    ? Math.round((LEAGUE_FINANCE_CONFIG.rookieScale[pick.pickNumber] * LEAGUE_FINANCE_CONFIG.rookieContracts.firstRoundScaleMultiplier) / 10_000) * 10_000
-    : LEAGUE_FINANCE_CONFIG.minimumSalary;
+    ? Math.round((seasonFinance.rookieScale[pick.pickNumber] * LEAGUE_FINANCE_CONFIG.rookieContracts.firstRoundScaleMultiplier) / 10_000) * 10_000
+    : seasonFinance.minimumSalary;
   const growth = firstRound ? LEAGUE_FINANCE_CONFIG.rookieContracts.firstRoundSalaryGrowth : LEAGUE_FINANCE_CONFIG.rookieContracts.secondRoundSalaryGrowth;
   const salaryByYear = growth.map((multiplier) => Math.round(year1 * multiplier));
   const guaranteedYears = firstRound ? LEAGUE_FINANCE_CONFIG.rookieContracts.firstRoundGuaranteedYears : LEAGUE_FINANCE_CONFIG.rookieContracts.secondRoundGuaranteedYears;
@@ -498,6 +527,7 @@ function signRookie(state: GameState, player: Player, pick: RookieDraftPick): vo
     optionByYear: firstRound ? ["NONE", "NONE", "TEAM_OPTION", "TEAM_OPTION"] : ["NONE", "TEAM_OPTION"],
     signedTeamId: team.id,
     signedPhase: "DRAFT",
+    signedOn: tradeCalendarDate(state),
   };
   player.birdTeamId = team.id;
   player.birdYears = 1;
@@ -545,6 +575,7 @@ function clearAiRookieRosterSlot(state: GameState, teamId: string): void {
   addDraftWaiverDeadMoney(state, player, teamId);
   team.playerIds = team.playerIds.filter((id) => id !== player.id);
   player.teamId = "FREE_AGENT";
+  player.freeAgentDemand = { uncontestedDays: 0 };
   player.rotationRole = "OUT";
   player.teamRole = "DEVELOPMENT";
   player.contract = { salary: 0, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA", optionType: "NONE", optionDecision: "NOT_APPLICABLE" };
@@ -625,6 +656,7 @@ function selectAiProspect(state: GameState, pick: RookieDraftPick, commitReplace
 export function prepareRookieDraft(input: GameState): GameState {
   assertPhaseAllowed(input, "Prepare rookie draft", ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT"]);
   if (input.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear && !input.expansion?.finalized) throw new Error("Expansion Draft must be finalized first");
+  if (input.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear && !input.expansion?.summaryConfirmed) throw new Error("请先确认扩军选秀结果摘要");
   const state = structuredClone(input);
   const draftSeed = stableHash(state.seeds.seasonSeed, "rookie_draft", state.league.seasonYear);
   const historicalByRank = historicalTemplatesForClass(state, draftSeed);
@@ -659,6 +691,7 @@ export function prepareRookieDraft(input: GameState): GameState {
     classPlayerIds,
     revealedProspectIds: [],
     lotteryPresented: isCurated2026,
+    lotteryRevealComplete: isCurated2026,
     pickOrder: buildPickOrder(state, draftSeed),
     currentPickIndex: 0,
     completed: false,
@@ -681,6 +714,54 @@ function acknowledgeDraftLottery(input: GameState): GameState {
   return state;
 }
 
+function completeDraftLotteryReveal(input: GameState): GameState {
+  assertPhaseAllowed(input, "Complete draft lottery reveal", ["DRAFT"]);
+  const draft = input.rookieDraft;
+  if (!draft || input.league.seasonYear <= BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear || draft.lotteryPresented || draft.currentPickIndex !== 0 || draft.completed) {
+    throw new Error("本届没有待揭晓的乐透抽签");
+  }
+  const state = structuredClone(input);
+  state.rookieDraft!.lotteryRevealComplete = true;
+  return state;
+}
+
+function rerollDraftLottery(input: GameState): GameState {
+  assertPhaseAllowed(input, "Reroll draft lottery", ["DRAFT"]);
+  const draft = input.rookieDraft;
+  if (!draft || input.league.seasonYear <= BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear) throw new Error("本届没有可重新抽取的乐透顺位");
+  if (draft.lotteryPresented || draft.currentPickIndex !== 0 || draft.completed || draft.pickOrder.some((pick) => pick.playerId)) {
+    throw new Error("乐透已确认或选秀已经开始，不能重新抽签");
+  }
+  const count = (draft.lotteryRerollCount ?? 0) + 1;
+  const preview = getDraftLotteryPreview(input);
+  const current = draft.pickOrder.slice(0, preview.length).map((pick) => pick.originalTeamId);
+  let drawn: string[] | undefined;
+  // A seeded draw can coincidentally reproduce the previous order. Advance a
+  // deterministic attempt salt so each successful reroll visibly changes it.
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const candidate = drawLottery(input, preview, stableHash(draft.draftSeed, "reroll", count, attempt));
+    if (candidate.some((teamId, index) => teamId !== current[index])) {
+      drawn = candidate;
+      break;
+    }
+  }
+  if (!drawn) throw new Error("无法生成不同的合法乐透结果");
+  const state = structuredClone(input);
+  const nextDraft = state.rookieDraft!;
+  nextDraft.lotteryRerollCount = count;
+  nextDraft.lotteryRevealComplete = false;
+  for (let index = 0; index < drawn.length; index += 1) {
+    const originalTeamId = drawn[index];
+    nextDraft.pickOrder[index] = {
+      ...nextDraft.pickOrder[index],
+      originalTeamId,
+      ownerTeamId: pickOwner(state, state.league.seasonYear, 1, originalTeamId),
+    };
+  }
+  validateRookieDraftState(state);
+  return state;
+}
+
 function revealDraftProspect(input: GameState, playerId: string): GameState {
   assertPhaseAllowed(input, "Reveal draft prospect", ["DRAFT", "OFFSEASON_POST_DRAFT"]);
   const draft = input.rookieDraft;
@@ -699,10 +780,15 @@ export function getNextAiDraftProspect(state: GameState): DraftProspectView | un
   return publicProspect(selectAiProspect(state, pick));
 }
 
+function requireLotteryAcknowledgement(draft: RookieDraftState): void {
+  if (draft.lotteryPresented !== true) throw new Error("请先确认乐透抽签结果，再开始选秀");
+}
+
 export function advanceRookieDraftAiPick(input: GameState, expectedPickNumber: number): GameState {
   assertPhaseAllowed(input, "Advance rookie draft AI pick", ["DRAFT"]);
   const draft = input.rookieDraft;
   if (!draft) throw new Error("Rookie Draft is not prepared");
+  requireLotteryAcknowledgement(draft);
   const pick = draft.pickOrder[draft.currentPickIndex];
   if (!pick || pick.pickNumber !== expectedPickNumber) throw new Error("Draft pick has changed; refresh and try again");
   if (pick.ownerTeamId === input.userTeamId) throw new Error("Current pick is controlled by the player team");
@@ -720,6 +806,7 @@ export function fastForwardRookieDraft(input: GameState, expectedPickNumber: num
   assertPhaseAllowed(input, "Fast forward rookie draft", ["DRAFT"]);
   const draft = input.rookieDraft;
   if (!draft) throw new Error("Rookie Draft is not prepared");
+  requireLotteryAcknowledgement(draft);
   const pick = draft.pickOrder[draft.currentPickIndex];
   if (!pick || pick.pickNumber !== expectedPickNumber) throw new Error("Draft pick has changed; refresh and try again");
   if (pick.ownerTeamId === input.userTeamId) throw new Error("Current pick is controlled by the player team");
@@ -741,6 +828,7 @@ export function draftPlayer(input: GameState, playerId: string, expectedPickNumb
   assertPhaseAllowed(input, "Draft player", ["DRAFT"]);
   const draft = input.rookieDraft;
   if (!draft) throw new Error("Rookie Draft is not prepared");
+  requireLotteryAcknowledgement(draft);
   const pick = draft.pickOrder[draft.currentPickIndex];
   if (!pick || pick.pickNumber !== expectedPickNumber) throw new Error("Draft pick has changed; refresh and try again");
   if (pick.ownerTeamId !== input.userTeamId) throw new Error("Current pick is not controlled by the player team");
@@ -804,6 +892,10 @@ export function executeDraftCommand(state: GameState, command: DraftCommand): Ga
     ? prepareRookieDraft(state)
     : command.type === "ACKNOWLEDGE_DRAFT_LOTTERY"
       ? acknowledgeDraftLottery(state)
+    : command.type === "COMPLETE_DRAFT_LOTTERY_REVEAL"
+      ? completeDraftLotteryReveal(state)
+    : command.type === "REROLL_DRAFT_LOTTERY"
+      ? rerollDraftLottery(state)
     : command.type === "REVEAL_DRAFT_PROSPECT"
       ? revealDraftProspect(state, command.payload.playerId)
     : command.type === "ADVANCE_ROOKIE_DRAFT_AI_PICK"

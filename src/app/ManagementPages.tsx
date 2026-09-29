@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
+import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 import type { CapSheet } from "../game/cap/CapSheetService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
+import { SIMULATION_CONFIG } from "../game/simulation/config";
 import type { DraftPickAsset, Player, StandingRecord, Team } from "../game/state/types";
 import { fitGrade, type TeamFitBreakdown } from "../game/team/TeamFitService";
 import { EXPANSION_POSITION_FILTERS, getCurrentRosterPositionCounts, matchesExpansionPosition, type ExpansionPositionFilter } from "./expansionDraftView";
@@ -68,10 +69,14 @@ export function ManagementOverview({ team, players, record, rank, seasonId, over
       <div className="draft-current-roster-filter manage-player-position-filter" role="group" aria-label="按主位置筛选球员赛季数据">
         {EXPANSION_POSITION_FILTERS.map((position) => <button type="button" key={position} className={positionFilter === position ? "active" : ""} aria-pressed={positionFilter === position} onClick={() => setPositionFilter(position)}><b>{position === "ALL" ? "全部" : position}</b><small>{position === "ALL" ? players.length : positionCounts.find((entry) => entry.position === position)?.count ?? 0}</small></button>)}
       </div>
-      <p className="manage-section-note">场均数据随比赛更新；点击球员可查看详细资料。左右滑动查看完整数据。</p>
-      <div className="manage-table-scroll"><table className="manage-player-table"><thead><tr><th scope="col">球员</th><th scope="col">总评</th><th scope="col">场次</th><th scope="col">分钟</th><th scope="col">得分</th><th scope="col">篮板</th><th scope="col">助攻</th><th scope="col">抢断</th><th scope="col">盖帽</th><th scope="col">投篮</th><th scope="col">三分</th></tr></thead><tbody>{sortedPlayers.map((player) => {
+      <p className="manage-section-note">场均数据随比赛更新；疲劳超过 60、士气低于 50 时高亮。点击球员可查看详情，左右滑动查看完整数据。</p>
+      <div className="manage-table-scroll"><table className="manage-player-table"><thead><tr><th scope="col">球员</th><th scope="col">总评</th><th scope="col">疲劳</th><th scope="col">士气</th><th scope="col">场次</th><th scope="col">分钟</th><th scope="col">得分</th><th scope="col">篮板</th><th scope="col">助攻</th><th scope="col">抢断</th><th scope="col">盖帽</th><th scope="col">投篮</th><th scope="col">三分</th></tr></thead><tbody>{sortedPlayers.map((player) => {
         const stats = player.seasonStats;
-        return <tr key={player.id} data-player-id={player.id}><th scope="row"><button type="button" onClick={() => onOpenPlayer(player.id)}><PlayerPortrait player={player} portraitPath={player.portraitPath} className="manage-player-avatar" /><span><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)}{player.injury ? " · 伤停" : ""}</small></span></button></th><td className="manage-overall-cell">{calculatePlayerOverall(player).toFixed(0)}</td><td>{stats.games}</td><td>{playerPerGame(stats.seconds, stats.games, 60)}</td><td>{playerPerGame(stats.pts, stats.games)}</td><td>{playerPerGame(stats.reb, stats.games)}</td><td>{playerPerGame(stats.ast, stats.games)}</td><td>{playerPerGame(stats.stl, stats.games)}</td><td>{playerPerGame(stats.blk, stats.games)}</td><td>{percentage(stats.fgm, stats.fga)}</td><td>{percentage(stats.threePm, stats.threePa)}</td></tr>;
+        const fatigue = Math.ceil(player.fatigue ?? 0);
+        const morale = Math.floor(player.morale ?? SIMULATION_CONFIG.defaultMorale);
+        const fatigued = (player.fatigue ?? 0) > SIMULATION_CONFIG.fatigue.noPenaltyThreshold;
+        const lowMorale = (player.morale ?? SIMULATION_CONFIG.defaultMorale) < SIMULATION_CONFIG.moraleNoPenaltyThreshold;
+        return <tr key={player.id} data-player-id={player.id}><th scope="row"><button type="button" onClick={() => onOpenPlayer(player.id)}><PlayerPortrait player={player} portraitPath={player.portraitPath} className="manage-player-avatar" /><span><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)}{player.injury ? " · 伤停" : ""}</small></span></button></th><td className="manage-overall-cell">{calculatePlayerOverall(player).toFixed(0)}</td><td className={`manage-status-cell${fatigued ? " fatigued" : ""}`} title={`疲劳 ${fatigue}${fatigued ? "，偏高" : ""}`}><span>{fatigue}{fatigued && <em>高</em>}</span></td><td className={`manage-status-cell${lowMorale ? " low-morale" : ""}`} title={`士气 ${morale}${lowMorale ? "，偏低" : ""}`}><span>{morale}{lowMorale && <em>低</em>}</span></td><td>{stats.games}</td><td>{playerPerGame(stats.seconds, stats.games, 60)}</td><td>{playerPerGame(stats.pts, stats.games)}</td><td>{playerPerGame(stats.reb, stats.games)}</td><td>{playerPerGame(stats.ast, stats.games)}</td><td>{playerPerGame(stats.stl, stats.games)}</td><td>{playerPerGame(stats.blk, stats.games)}</td><td>{percentage(stats.fgm, stats.fga)}</td><td>{percentage(stats.threePm, stats.threePa)}</td></tr>;
       })}</tbody></table></div>
     </section>
   </div>;
@@ -83,6 +88,7 @@ const capLines = (sheet: CapSheet): Array<[string, number]> => [
   ["薪资占位", sheet.capHolds],
   ["报价预留", sheet.activeOfferReservations],
   ["未满员费用", sheet.incompleteRosterCharges],
+  ["最低工资差额", sheet.salaryFloorShortfall],
 ];
 
 function contractOptionLabel(player: Player): string {
@@ -92,23 +98,25 @@ function contractOptionLabel(player: Player): string {
   return contractStatusLabel(player.contract.status);
 }
 
-export function ManagementContracts({ players, sheet, onOpenPlayer, onWaive, busy = false }: {
+export function ManagementContracts({ players, sheet, seasonYear, onOpenPlayer, onWaive, busy = false }: {
   players: Player[];
   sheet: CapSheet;
+  seasonYear: number;
   onOpenPlayer: (playerId: string) => void;
   onWaive?: (playerId: string) => Promise<void>;
   busy?: boolean;
 }) {
   const [pendingWaiveId, setPendingWaiveId] = useState<string | null>(null);
   const pendingWaive = pendingWaiveId ? players.find((player) => player.id === pendingWaiveId) : undefined;
+  const finance = getSeasonFinanceConfig(seasonYear);
   const thresholds = [
-    { key: "cap", label: "工资帽", value: LEAGUE_FINANCE_CONFIG.salaryCap },
-    { key: "tax", label: "奢侈税线", value: LEAGUE_FINANCE_CONFIG.luxuryTaxLine },
-    { key: "first", label: "第一土豪线", value: LEAGUE_FINANCE_CONFIG.firstApron },
-    { key: "second", label: "第二土豪线", value: LEAGUE_FINANCE_CONFIG.secondApron },
+    { key: "cap", label: "工资帽", value: finance.salaryCap },
+    { key: "tax", label: "奢侈税线", value: finance.luxuryTaxLine },
+    { key: "first", label: "第一土豪线", value: finance.firstApron },
+    { key: "second", label: "第二土豪线", value: finance.secondApron },
   ] as const;
   const capStatus = [...thresholds].reverse().find(({ value }) => sheet.total >= value)?.label ?? "工资帽以下";
-  const meterMaximum = LEAGUE_FINANCE_CONFIG.secondApron;
+  const meterMaximum = finance.secondApron;
   const usagePercent = Math.max(0, Math.min(100, sheet.total / meterMaximum * 100));
   const contracts = [...players].sort((left, right) => right.contract.salary - left.contract.salary || left.id.localeCompare(right.id));
   return <div className="manage-page-content manage-contracts">

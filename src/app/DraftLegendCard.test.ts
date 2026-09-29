@@ -19,11 +19,10 @@ describe("future draft legend cards", () => {
     const legends = getAvailableDraftProspects(entered).filter((player) => player.historicalArchetypeName);
     expect(legends).toHaveLength(3);
     const markup = renderToStaticMarkup(createElement(App, { initialState: entered }));
-    expect(markup).toContain("本届历史巨星 3 人");
     for (const player of legends) {
       expect(player.name).toBe(player.historicalArchetypeName);
       expect(markup).toContain(playerNameZh(player.name, player.id));
     }
-    expect(markup).toContain("历史巨星");
+    expect(markup).not.toContain("历史巨星");
   });
 });

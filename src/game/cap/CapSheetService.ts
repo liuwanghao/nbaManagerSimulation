@@ -1,4 +1,4 @@
-import { LEAGUE_FINANCE_CONFIG, type LeagueFinanceConfig } from "../../config/leagueFinance";
+import { getSeasonFinanceConfig, type LeagueFinanceConfig } from "../../config/leagueFinance";
 import type { GameState } from "../state/types";
 
 export interface CapSheet {
@@ -8,6 +8,7 @@ export interface CapSheet {
   capHolds: number;
   activeOfferReservations: number;
   incompleteRosterCharges: number;
+  salaryFloorShortfall: number;
   total: number;
   availableCapSpace: number;
   activeStandardContracts: number;
@@ -16,7 +17,7 @@ export interface CapSheet {
 export function getCapSheet(
   state: GameState,
   teamId: string,
-  config: LeagueFinanceConfig = LEAGUE_FINANCE_CONFIG,
+  config: LeagueFinanceConfig = getSeasonFinanceConfig(state.league.seasonYear),
 ): CapSheet {
   const team = state.teams[teamId];
   if (!team) throw new Error(`Unknown team: ${teamId}`);
@@ -40,7 +41,10 @@ export function getCapSheet(
   }, 0);
   const occupiedSlots = activePlayers.length + holds.length;
   const incompleteRosterCharges = Math.max(0, config.incompleteRosterMinimumSlots - occupiedSlots) * config.rookieMinimumSalary;
-  const total = activeContractSalary + deadMoney + capHolds + activeOfferReservations + incompleteRosterCharges;
+  const salaryFloorShortfall = (state.capState.salaryFloorShortfalls ?? [])
+    .filter((entry) => entry.teamId === teamId && entry.seasonId === state.league.seasonId)
+    .reduce((total, entry) => total + entry.amount, 0);
+  const total = activeContractSalary + deadMoney + capHolds + activeOfferReservations + incompleteRosterCharges + salaryFloorShortfall;
   return {
     teamId,
     activeContractSalary,
@@ -48,6 +52,7 @@ export function getCapSheet(
     capHolds,
     activeOfferReservations,
     incompleteRosterCharges,
+    salaryFloorShortfall,
     total,
     availableCapSpace: config.salaryCap - total,
     activeStandardContracts: activePlayers.length,

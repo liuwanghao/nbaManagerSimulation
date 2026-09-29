@@ -23,12 +23,22 @@ describe("draft lottery presentation", () => {
     expect(markup).toContain("乐透抽签揭晓");
     expect(markup).toContain(`已公布 0 / ${entrants.length}`);
     expect(markup).toContain('aria-label="乐透抽签公布进度"');
-    expect(markup).toContain("公布全部");
-    expect(markup).toContain("进入选秀大厅");
-    expect(markup).toContain('disabled=""');
+    expect(markup).toContain("开始抽签");
+    expect(markup).not.toContain("公布全部");
+    expect(markup).not.toContain("进入选秀大厅");
+    expect(markup).not.toContain("看视频重新抽签");
     expect(markup).not.toContain('class="draft-lottery-result is-revealed');
     const appMarkup = renderToStaticMarkup(createElement(App, { initialState: state }));
     expect(appMarkup).toContain('aria-label="新秀选秀乐透抽签"');
     expect(appMarkup).not.toContain("候选新秀（");
+
+    const saved = structuredClone(state);
+    saved.rookieDraft!.lotteryRevealComplete = true;
+    const resumedMarkup = renderToStaticMarkup(createElement(DraftLotteryScreen, { state: saved, busy: false, onCommand: async () => {} }));
+    expect(resumedMarkup).toContain(`已公布 ${entrants.length} / ${entrants.length}`);
+    expect(resumedMarkup).toContain("状元签归属");
+    expect(resumedMarkup).toContain("进入选秀大厅");
+    expect(resumedMarkup).not.toContain("等待揭晓");
+    expect(resumedMarkup).not.toContain("开始抽签");
   });
 });

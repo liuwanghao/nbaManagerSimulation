@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { EXPANSION_BRAND_PRESETS } from "../../data/expansionBrands";
+import { getSeasonFinanceConfig } from "../../config/leagueFinance";
 import { REAL_2026_DRAFT } from "../../data/real2026Draft";
 import { NBA_PLAYER_DATASET } from "../../data/nbaPlayerDataset";
+import { RETIRED_LEGEND_TEMPLATES } from "../../data/retiredLegendTemplates";
+import { BUNDLED_RETIRED_PORTRAIT_IDS } from "../../data/retiredLegendPortraitIds";
 import { playerOverall } from "../development/PlayerDevelopmentService";
 import { executeExpansionCommand, getSelectableExpansionPlayers } from "../expansion/ExpansionService";
 import { stableHash, stableSerialize } from "../random/hash";
@@ -9,7 +12,7 @@ import { createCareer, createExpansionCareer } from "../season/career";
 import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { enterFreeAgency, getFreeAgents } from "../freeAgency/FreeAgencyService";
 import type { GameState } from "../state/types";
-import { executeDraftCommand, getAvailableDraftProspects, getDraftLotteryPreview, getNextAiDraftProspect } from "./DraftService";
+import { executeDraftCommand, getAvailableDraftProspects, getDraftLotteryPreview, getNextAiDraftProspect, replaceIneligibleUnpickedHistoricalProspects, type DraftCommand } from "./DraftService";
 
 function finishExpansionState(initial: GameState): GameState {
   const preset = EXPANSION_BRAND_PRESETS.SEA[0];
@@ -26,7 +29,7 @@ function finishExpansionState(initial: GameState): GameState {
     const player = getSelectableExpansionPlayers(state)[0];
     state = executeExpansionCommand(state, { commandId: `exp-${expectedPickNumber}`, type: "SELECT_EXPANSION_PLAYER", payload: { playerId: player.id, expectedPickNumber } });
   }
-  return state;
+  return executeExpansionCommand(state, { commandId: "confirm-expansion-summary", type: "CONFIRM_EXPANSION_SUMMARY", payload: {} });
 }
 
 function finishExpansion(seed: string): GameState {
@@ -68,6 +71,22 @@ function finishRookieDraft(seed: string): GameState {
 }
 
 describe("Stage 4 rookie draft", () => {
+  it("uses the draft season's salary scale for a future first-round pick", () => {
+    const state = createCareer("future-rookie-salary-scale");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    state.seeds.seasonSeed = stableHash(state.seeds.careerSeed, "season", state.league.seasonId);
+    const prepared = executeDraftCommand(state, { commandId: "future-salary-prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const acknowledged = executeDraftCommand(prepared, { commandId: "future-salary-ack", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} });
+    const pick = acknowledged.rookieDraft!.pickOrder[0];
+    const drafted = pick.ownerTeamId === acknowledged.userTeamId
+      ? executeDraftCommand(acknowledged, { commandId: "future-salary-user", type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(acknowledged)[0].id, expectedPickNumber: pick.pickNumber } })
+      : executeDraftCommand(acknowledged, { commandId: "future-salary-ai", type: "ADVANCE_ROOKIE_DRAFT_AI_PICK", payload: { expectedPickNumber: pick.pickNumber } });
+    const salary = Math.round(getSeasonFinanceConfig(2027).rookieScale[1] * 1.2 / 10_000) * 10_000;
+    expect(drafted.players[drafted.rookieDraft!.pickOrder[0].playerId!].contract.salary).toBe(salary);
+  });
+
   it("keeps future rookies' entry ratings below established stars across fixed seeds", () => {
     const topEightRatings: number[] = [];
     const historicalRookieRatings: number[] = [];
@@ -123,19 +142,98 @@ describe("Stage 4 rookie draft", () => {
     expect(stableHash(stableSerialize(state))).toBe(before);
     const prepared = executeDraftCommand(state, { commandId: "lottery-preview-prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
     expect(prepared.rookieDraft?.lotteryPresented).toBe(false);
+    expect(prepared.rookieDraft?.lotteryRevealComplete).toBe(false);
     const firstRound = prepared.rookieDraft?.pickOrder.filter((pick) => pick.round === 1) ?? [];
     expect(firstRound).toHaveLength(32);
     expect(new Set(firstRound.slice(0, preview.length).map((pick) => pick.originalTeamId))).toEqual(new Set(preview.map((entry) => entry.teamId)));
     for (const entry of preview.filter((team) => team.draftRelegated)) {
       expect(firstRound.find((pick) => pick.originalTeamId === entry.teamId)?.pickNumber).toBeLessThanOrEqual(12);
     }
-    const saved = structuredClone(prepared);
+    const revealed = executeDraftCommand(prepared, { commandId: "lottery-preview-reveal", type: "COMPLETE_DRAFT_LOTTERY_REVEAL", payload: {} });
+    expect(revealed.rookieDraft?.lotteryRevealComplete).toBe(true);
+    expect(revealed.rookieDraft?.lotteryPresented).toBe(false);
+    expect(revealed.rookieDraft?.pickOrder).toEqual(prepared.rookieDraft?.pickOrder);
+    const saved = structuredClone(revealed);
     const acknowledged = executeDraftCommand(saved, { commandId: "lottery-preview-ack", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} });
     expect(acknowledged.rookieDraft?.lotteryPresented).toBe(true);
+    expect(acknowledged.rookieDraft?.lotteryRevealComplete).toBe(true);
     expect(acknowledged.rookieDraft?.pickOrder).toEqual(prepared.rookieDraft?.pickOrder);
     expect(saved.rookieDraft?.lotteryPresented).toBe(false);
     expect(executeDraftCommand(acknowledged, { commandId: "lottery-preview-ack", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} })).toBe(acknowledged);
     expect(() => executeDraftCommand(acknowledged, { commandId: "lottery-preview-ack-again", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} })).toThrow("乐透抽签已公布");
+  });
+
+  it("requires lottery acknowledgement before player, AI, or fast-forward picks from restored saves", () => {
+    const future = createCareer("draft-lottery-hard-gate");
+    future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    future.league.seasonYear = 2027;
+    future.league.seasonId = "2027-28";
+    const prepared = executeDraftCommand(future, { commandId: "gate-prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const firstPick = prepared.rookieDraft!.pickOrder[0];
+    const commands: DraftCommand[] = [
+      { commandId: "gate-player", type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(prepared)[0].id, expectedPickNumber: firstPick.pickNumber } },
+      { commandId: "gate-ai", type: "ADVANCE_ROOKIE_DRAFT_AI_PICK", payload: { expectedPickNumber: firstPick.pickNumber } },
+      { commandId: "gate-fast", type: "FAST_FORWARD_ROOKIE_DRAFT", payload: { expectedPickNumber: firstPick.pickNumber } },
+    ];
+    for (const command of commands) {
+      const restored = structuredClone(prepared);
+      const before = stableHash(stableSerialize(restored));
+      expect(() => executeDraftCommand(restored, command)).toThrow("请先确认乐透抽签结果");
+      expect(stableHash(stableSerialize(restored))).toBe(before);
+      expect(restored.commandReceipts[command.commandId]).toBeUndefined();
+    }
+
+    const legacy = structuredClone(prepared);
+    delete legacy.rookieDraft!.lotteryPresented;
+    expect(() => executeDraftCommand(legacy, commands[1])).toThrow("请先确认乐透抽签结果");
+    const acknowledged = executeDraftCommand(legacy, { commandId: "gate-ack", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} });
+    expect(acknowledged.rookieDraft?.lotteryPresented).toBe(true);
+    const nextPick = acknowledged.rookieDraft!.pickOrder[0];
+    const afterPick = nextPick.ownerTeamId === acknowledged.userTeamId
+      ? executeDraftCommand(acknowledged, { commandId: "gate-after-ack-player", type: "DRAFT_PLAYER", payload: { playerId: getAvailableDraftProspects(acknowledged)[0].id, expectedPickNumber: nextPick.pickNumber } })
+      : executeDraftCommand(acknowledged, { commandId: "gate-after-ack-ai", type: "ADVANCE_ROOKIE_DRAFT_AI_PICK", payload: { expectedPickNumber: nextPick.pickNumber } });
+    expect(afterPick.rookieDraft?.currentPickIndex).toBe(1);
+  });
+
+  it("rerolls future lottery deterministically with distinct legal picks and preserves ownership", () => {
+    const future = finishExpansion("lottery-reroll");
+    future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    future.league.seasonYear = 2027;
+    future.league.seasonId = "2027-28";
+    future.seeds.seasonSeed = stableHash(future.seeds.careerSeed, "season", future.league.seasonId);
+    const prepared = executeDraftCommand(future, { commandId: "reroll-prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const originalOrder = prepared.rookieDraft!.pickOrder;
+    const preview = getDraftLotteryPreview(prepared);
+    const revealed = executeDraftCommand(prepared, { commandId: "reroll-before-reveal", type: "COMPLETE_DRAFT_LOTTERY_REVEAL", payload: {} });
+    const command: DraftCommand = { commandId: "reroll-1", type: "REROLL_DRAFT_LOTTERY", payload: {} };
+    const first = executeDraftCommand(revealed, command);
+    const firstRound = first.rookieDraft!.pickOrder.filter((pick) => pick.round === 1);
+    expect(first.rookieDraft?.lotteryRerollCount).toBe(1);
+    expect(first.rookieDraft?.lotteryRevealComplete).toBe(false);
+    expect(first.rookieDraft?.draftSeed).toBe(prepared.rookieDraft?.draftSeed);
+    expect(first.rookieDraft?.classPlayerIds).toEqual(prepared.rookieDraft?.classPlayerIds);
+    expect(firstRound.slice(0, preview.length).map((pick) => pick.originalTeamId))
+      .not.toEqual(originalOrder.slice(0, preview.length).map((pick) => pick.originalTeamId));
+    expect(new Set(firstRound.map((pick) => pick.originalTeamId)).size).toBe(firstRound.length);
+    expect(firstRound.every((pick) => pick.ownerTeamId === (first.draftPicks[`2027-R1-${pick.originalTeamId}`]?.ownerTeamId ?? pick.originalTeamId))).toBe(true);
+    expect(first.rookieDraft?.pickOrder.slice(preview.length)).toEqual(originalOrder.slice(preview.length));
+    expect(executeDraftCommand(first, command)).toBe(first);
+
+    const restored = structuredClone(first);
+    const secondCommand: DraftCommand = { commandId: "reroll-2", type: "REROLL_DRAFT_LOTTERY", payload: {} };
+    const second = executeDraftCommand(restored, secondCommand);
+    expect(second.rookieDraft?.lotteryRerollCount).toBe(2);
+    expect(second.rookieDraft?.pickOrder.slice(0, preview.length).map((pick) => pick.originalTeamId))
+      .not.toEqual(first.rookieDraft?.pickOrder.slice(0, preview.length).map((pick) => pick.originalTeamId));
+    expect(executeDraftCommand(structuredClone(first), secondCommand)).toEqual(second);
+    expect(prepared.rookieDraft?.lotteryRerollCount).toBeUndefined();
+
+    const acknowledged = executeDraftCommand(second, { commandId: "reroll-ack", type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} });
+    const before = stableHash(stableSerialize(acknowledged));
+    expect(() => executeDraftCommand(acknowledged, { commandId: "reroll-after-ack", type: "REROLL_DRAFT_LOTTERY", payload: {} }))
+      .toThrow("乐透已确认");
+    expect(stableHash(stableSerialize(acknowledged))).toBe(before);
+    expect(acknowledged.commandReceipts["reroll-after-ack"]).toBeUndefined();
   });
   it("blocks consecutive first picks based on the original team even when its pick was traded", () => {
     const state = finishExpansion("lottery-repeat-limit");
@@ -445,7 +543,7 @@ describe("Stage 4 rookie draft", () => {
     expect(state.rookieDraft?.source).toBe("MIXED_FUTURE");
     expect(reborn).toHaveLength(3);
     expect(new Set(reborn.map((player) => player.historicalSourcePlayerId)).size).toBe(reborn.length);
-    expect(reborn.every((player) => player.name === NBA_PLAYER_DATASET.historicalTemplates.find((template) => template.sourcePlayerId === player.historicalSourcePlayerId)?.sourceName)).toBe(true);
+    expect(reborn.every((player) => player.name === RETIRED_LEGEND_TEMPLATES.find((template) => template.sourcePlayerId === player.historicalSourcePlayerId)?.sourceName)).toBe(true);
     expect(state.history.rebornHistoricalSourceIds).toEqual(reborn.map((player) => player.historicalSourcePlayerId));
     expect(getAvailableDraftProspects(state).every((player) => !JSON.stringify(player).includes("historicalSourcePlayerId"))).toBe(true);
   });
@@ -471,18 +569,41 @@ describe("Stage 4 rookie draft", () => {
     expect(second).not.toEqual(first);
   });
 
-  it("keeps diverse procedural names and named historical stars for 50 future draft classes", () => {
+  it("repairs an undrafted active-player archetype in an older saved draft", () => {
+    const future = finishExpansion("legacy-historical-rookie");
+    future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    future.league.seasonYear = 2027;
+    future.league.seasonId = "2027-28";
+    future.seeds.seasonSeed = stableHash(future.seeds.careerSeed, "season", future.league.seasonId);
+    const state = executeDraftCommand(future, { commandId: "prepare-legacy", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const historicalId = state.rookieDraft?.classPlayerIds.find((id) => state.players[id].profileSource === "HISTORICAL_ARCHETYPE");
+    expect(historicalId).toBeTruthy();
+    const player = state.players[historicalId as string];
+    const oldSourceId = player.historicalSourcePlayerId as string;
+    player.name = "Kyrie Irving";
+    player.historicalSourcePlayerId = "nba:202681";
+    state.history.rebornHistoricalSourceIds[state.history.rebornHistoricalSourceIds.lastIndexOf(oldSourceId)] = "nba:202681";
+    const classIds = [...(state.rookieDraft?.classPlayerIds ?? [])];
+
+    replaceIneligibleUnpickedHistoricalProspects(state);
+
+    expect(state.rookieDraft?.classPlayerIds).toEqual(classIds);
+    expect(state.players[historicalId as string].name).not.toBe("Kyrie Irving");
+    expect(state.players[historicalId as string].historicalSourcePlayerId).not.toBe("nba:202681");
+    expect(state.history.rebornHistoricalSourceIds).not.toContain("nba:202681");
+    const repaired = stableHash(stableSerialize(state));
+    replaceIneligibleUnpickedHistoricalProspects(state);
+    expect(stableHash(stableSerialize(state))).toBe(repaired);
+  });
+
+  it("uses all 90 retired legends exactly once across 30 future draft classes", () => {
     const future = finishExpansion("draft-generations");
     future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
     const names = new Set<string>();
-    const starNames = new Set([
-      "Ben Wallace", "Tim Duncan", "Dirk Nowitzki", "Paul Pierce", "Elton Brand", "Shawn Marion",
-      "Andrei Kirilenko", "Manu Ginobili", "Paul Millsap", "Joakim Noah", "Marc Gasol",
-      "Blake Griffin", "DeMarcus Cousins", "Kyrie Irving", "Pau Gasol", "Chris Bosh",
-      "Dwyane Wade", "Dwight Howard", "Andre Iguodala", "Jason Kidd", "Kevin Garnett", "Kobe Bryant",
-    ]);
+    const starNames = new Set(RETIRED_LEGEND_TEMPLATES.map((template) => template.sourceName));
+    const portraitIds = new Set<string>(BUNDLED_RETIRED_PORTRAIT_IDS);
     const seenArchetypes = new Set<string>();
-    for (let year = 2027; year < 2077; year += 1) {
+    for (let year = 2027; year < 2057; year += 1) {
       future.league.seasonYear = year;
       future.league.seasonId = `${year}-${String(year + 1).slice(-2)}`;
       future.seeds.seasonSeed = stableHash(future.seeds.careerSeed, "season", future.league.seasonId);
@@ -501,6 +622,12 @@ describe("Stage 4 rookie draft", () => {
       expect(publicProspects.every((player) => !/truePotential|developmentRate|historicalSourcePlayerId/u.test(JSON.stringify(player)))).toBe(true);
       archetypes.forEach((player) => seenArchetypes.add(player.historicalArchetypeName as string));
       for (const player of draftPlayers) {
+        if (player.profileSource === "HISTORICAL_ARCHETYPE") {
+          const nbaId = player.historicalSourcePlayerId?.replace(/^nba:/u, "");
+          expect(player.portraitPath).toBe(nbaId && portraitIds.has(nbaId)
+            ? `./retired-portraits/nba-${nbaId}.webp`
+            : null);
+        }
         if (player.profileSource === "PROCEDURAL_DRAFT") {
           expect(names.has(player.name)).toBe(false);
           names.add(player.name);
@@ -509,7 +636,7 @@ describe("Stage 4 rookie draft", () => {
       }
       future.history.rebornHistoricalSourceIds = state.history.rebornHistoricalSourceIds;
     }
-    expect(names.size).toBe(50 * (80 - 3));
+    expect(names.size).toBe(30 * (80 - 3));
     expect(seenArchetypes).toEqual(starNames);
   });
 

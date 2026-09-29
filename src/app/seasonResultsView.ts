@@ -69,7 +69,37 @@ function completedConference(state: GameState, conference: Conference, games: Ga
   };
 }
 
+function liveSeries(state: GameState, id: string): PostseasonSeriesView | undefined {
+  const series = state.postseason?.series.find((entry) => entry.id === id);
+  return series && {
+    teamA: series.teamAId,
+    teamB: series.teamBId,
+    winsA: series.winsA,
+    winsB: series.winsB,
+    winner: series.winnerTeamId,
+  };
+}
+
+function liveConference(state: GameState, conference: Conference): ConferenceBracketView {
+  const preview = previewConference(state, conference);
+  const merge = (ids: string[], placeholders: PostseasonSeriesView[]) => ids.map((id, index) => liveSeries(state, id) ?? placeholders[index]);
+  return {
+    conference,
+    playIn: merge([`${conference}-PLAYIN-C`, `${conference}-PLAYIN-B`, `${conference}-PLAYIN-A`], preview.playIn),
+    firstRound: merge([0, 1, 2, 3].map((index) => `${conference}-R1-${index}`), preview.firstRound),
+    semifinals: merge([`${conference}-SF-A`, `${conference}-SF-B`], preview.semifinals),
+    final: merge([`${conference}-FINAL`], preview.final),
+  };
+}
+
 export function postseasonBracket(state: GameState): PostseasonBracketView {
+  if (state.postseason && state.league.currentPhase !== "OFFSEASON") {
+    return {
+      conferences: [liveConference(state, "EAST"), liveConference(state, "WEST")],
+      finals: [liveSeries(state, "FINALS") ?? { placeholderA: "东部冠军", placeholderB: "西部冠军" }],
+      settled: false,
+    };
+  }
   const archive = state.history.seasons.find((season) => season.seasonId === state.league.seasonId);
   const games = Object.values(archive?.postseasonGameDetails ?? {});
   if (!games.length) {

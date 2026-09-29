@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { publicPlayerValue, tradeDraftPickValue } from "../game/ai/AIValueService";
+import { tradeDraftPickValue } from "../game/ai/AIValueService";
+import { tradePerformanceAdjustment, tradePlayerValue } from "../game/trade/TradePlayerValue";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { LINEUP_POSITIONS } from "../game/roster/RotationPlanService";
 import type { GameState, TradeOffer } from "../game/state/types";
@@ -43,13 +44,14 @@ function AssetColumn({ state, playerIds, pickIds, title, teamName, incoming, onO
         const player = state.players[id];
         if (!player) return null;
         const overall = calculatePlayerOverall(player);
+        const performanceAdjustment = tradePerformanceAdjustment(player);
         return <button className="trade-detail-asset-item player" type="button" key={`player-${id}`} aria-label={`查看${playerNameZh(player.name, player.id)}球员资料`} onClick={(event) => onOpenPlayer(id, event.currentTarget)}>
           <div className="trade-detail-asset-primary">
             <PlayerPortrait player={player} portraitPath={player.portraitPath} className="trade-avatar" />
             <div className="trade-detail-asset-identity"><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)}</small></div>
             <strong className="trade-detail-asset-overall"><small>OVR</small><b className="player-rating-tone" style={playerRatingStyle(overall)}>{overall.toFixed(0)}</b></strong>
           </div>
-          <div className="trade-detail-asset-meta"><small>年薪 {moneyLabel(player.contract.salary)}</small><span className="trade-detail-asset-value">估值 <b>{publicPlayerValue(player).toFixed(1)}</b></span></div>
+          <div className="trade-detail-asset-meta"><small>年薪 {moneyLabel(player.contract.salary)}{Math.abs(performanceAdjustment) >= 0.05 && ` · 赛季表现 ${signed(performanceAdjustment)}`}</small><span className="trade-detail-asset-value">估值 <b>{tradePlayerValue(player).toFixed(1)}</b></span></div>
         </button>;
       })}
       {pickIds.map((id) => <article className="trade-detail-asset-item pick" key={`pick-${id}`}>
@@ -122,7 +124,7 @@ export function TradeOfferDetail({ state, offer, evaluation, busy, onBack, onAcc
           <AssetColumn state={state} playerIds={offer.userIncomingPlayerIds} pickIds={offer.userIncomingPickIds} title="我方得到" teamName={otherName} incoming onOpenPlayer={openPlayer} />
         </div>
         <div className="trade-detail-value-summary"><span>资产价值差 <small>收到 − 送出</small></span><b className={trend(evaluation.userValueDelta)}>{signed(evaluation.userValueDelta)}</b></div>
-        <p className="trade-detail-value-note">估值参考球员能力层级、年龄、可见成长预期、合同及选秀权原球队强弱；核心球员拆换时，对方还会要求额外回报。</p>
+        <p className="trade-detail-value-note">估值参考球员能力、年龄、可见成长预期、合同和赛季表现，以及选秀权原球队强弱；核心球员拆换时，对方还会要求额外回报。</p>
       </section>
       <section className="trade-detail-card trade-detail-salary"><div className="manage-section-heading"><div><h3>薪资与成交条件</h3></div><span className={evaluation.legal ? "trade-pass" : "trade-fail"}>{evaluation.legal ? "校验通过" : evaluation.reason?.startsWith("对方核心球员") ? "对方拒绝" : "无法成交"}</span></div>
         <div className="trade-detail-salary-grid"><span><small>我方送出年薪</small><b>{moneyLabel(evaluation.outgoingSalary)}</b></span><span><small>我方接收年薪</small><b>{moneyLabel(evaluation.incomingSalary)}</b></span></div>

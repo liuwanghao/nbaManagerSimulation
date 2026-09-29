@@ -1,4 +1,4 @@
-import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
+import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { publicPlayerValue } from "../ai/AIValueService";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
@@ -8,6 +8,8 @@ import { generateSchedule, validateSchedule } from "../schedule/schedule";
 import { emptyStanding, type GameState, type Player, type TeamRole, type TeamRotationPlan, type TrainingFocus } from "../state/types";
 import { enqueueCareerMilestoneEvents, enqueueEvent } from "../events/EventService";
 import { ensureExpansionWelcomeNotification } from "../notifications/TeamNotificationService";
+import { getCapSheet } from "../cap/CapSheetService";
+import { advanceFreeAgencyDay, finishMainFreeAgencyAfterSettlement } from "../freeAgency/FreeAgencyService";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, reconcileRotationAfterRosterChange, validateRotationPlan } from "./RotationPlanService";
 
 export type RosterCommand =
@@ -39,6 +41,7 @@ export function waivePlayer(input: GameState, playerId: string): GameState {
   addDeadMoney(state, player, state.userTeamId);
   state.teams[state.userTeamId].playerIds = state.teams[state.userTeamId].playerIds.filter((id) => id !== playerId);
   player.teamId = "FREE_AGENT";
+  player.freeAgentDemand = { uncontestedDays: 0 };
   player.contract = { salary: 0, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA", optionType: "NONE", optionDecision: "NOT_APPLICABLE" };
   player.birdTeamId = null;
   player.birdYears = 0;
@@ -98,29 +101,26 @@ export function setRotationPlan(input: GameState, plan: TeamRotationPlan): GameS
   return state;
 }
 
-function closeOffers(state: GameState): void {
-  if (!state.freeAgency) return;
-  for (const offer of Object.values(state.freeAgency.offers)) if (offer.status === "ACTIVE") offer.status = "WITHDRAWN";
-  state.capState.offerReservations = [];
-}
-
 export function closeFreeAgency(input: GameState): GameState {
   assertPhaseAllowed(input, "Close free agency", ["OFFSEASON_POST_DRAFT"]);
   if (input.freeAgency?.pendingUserRfaDecision) throw new Error("Resolve the pending RFA decision first");
-  const state = structuredClone(input);
-  closeOffers(state);
-  state.league.currentPhase = "PRESEASON";
-  return state;
+  const settled = input.freeAgency?.opened ? advanceFreeAgencyDay(input) : structuredClone(input);
+  return settled.league.currentPhase === "OFFSEASON_POST_DRAFT" ? finishMainFreeAgencyAfterSettlement(settled) : settled;
 }
 
 function signMinimum(state: GameState, teamId: string, player: Player): void {
+  const minimumSalary = getSeasonFinanceConfig(state.league.seasonYear).minimumSalary;
+  const birdYears = player.birdTeamId === teamId ? (player.birdYears ?? 0) : 1;
   player.teamId = teamId;
+  delete player.freeAgentDemand;
+  player.birdTeamId = teamId;
+  player.birdYears = birdYears;
   player.contract = {
-    salary: LEAGUE_FINANCE_CONFIG.minimumSalary, yearsRemaining: 1, guaranteedAmount: LEAGUE_FINANCE_CONFIG.minimumSalary,
+    salary: minimumSalary, yearsRemaining: 1, guaranteedAmount: minimumSalary,
     status: "STANDARD", optionType: "NONE", optionDecision: "NOT_APPLICABLE",
     contractId: stableHash(state.league.seasonId, teamId, player.id, "minimum"), contractType: "STANDARD",
     startSeason: state.league.seasonYear, endSeason: state.league.seasonYear, currentYearIndex: 0,
-    salaryByYear: [LEAGUE_FINANCE_CONFIG.minimumSalary], guaranteedByYear: [LEAGUE_FINANCE_CONFIG.minimumSalary], optionByYear: ["NONE"],
+    salaryByYear: [minimumSalary], guaranteedByYear: [minimumSalary], optionByYear: ["NONE"],
     signedTeamId: teamId, signedPhase: "PRESEASON",
   };
   if (player.career) { player.career.unemployedGameDays = 0; player.career.unemployedLeagueYears = 0; }
@@ -146,6 +146,7 @@ function trimAiRoster(state: GameState, teamId: string, targetSize: number): voi
     addDeadMoney(state, player, team.id);
     team.playerIds = team.playerIds.filter((id) => id !== player.id);
     player.teamId = "FREE_AGENT";
+    player.freeAgentDemand = { uncontestedDays: 0 };
     player.contract = { salary: 0, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA", optionType: "NONE", optionDecision: "NOT_APPLICABLE" };
   }
 }
@@ -174,6 +175,18 @@ function normalizeAiRosters(state: GameState): void {
   }
 }
 
+function recordOpeningSalaryFloorShortfalls(state: GameState): void {
+  const minimumTeamSalary = getSeasonFinanceConfig(state.league.seasonYear).minimumTeamSalary;
+  const previous = state.capState.salaryFloorShortfalls ?? [];
+  state.capState.salaryFloorShortfalls = previous.filter((entry) => entry.seasonId !== state.league.seasonId);
+  for (const teamId of Object.keys(state.teams)) {
+    const sheet = getCapSheet(state, teamId);
+    const payroll = sheet.activeContractSalary + sheet.deadMoney;
+    const amount = Math.max(0, minimumTeamSalary - payroll);
+    if (amount > 0) state.capState.salaryFloorShortfalls.push({ teamId, seasonId: state.league.seasonId, amount });
+  }
+}
+
 function setRotation(state: GameState, teamId: string): void {
   const players = state.teams[teamId].playerIds.map((id) => state.players[id]).filter(Boolean);
   const plan = buildDefaultRotationPlan(players);
@@ -193,6 +206,7 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
     signMinimum(state, state.userTeamId, player);
   }
   normalizeAiRosters(state);
+  recordOpeningSalaryFloorShortfalls(state);
   for (const teamId of Object.keys(state.teams)) setRotation(state, teamId);
   const schedule = generateSchedule(state.teams, state.league.seasonId, state.calendar.openingDate, state.scheduleCycleYear, stableHash(state.seeds.seasonSeed, "schedule"));
   const report = validateSchedule(schedule, state.teams);

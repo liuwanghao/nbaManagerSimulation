@@ -1,0 +1,30 @@
+[
+  {
+    "viewport": "375x667",
+    "innerWidth": 375,
+    "innerHeight": 667,
+    "scrollWidth": 375,
+    "dom": 1167
+  },
+  {
+    "viewport": "390x844",
+    "innerWidth": 390,
+    "innerHeight": 844,
+    "scrollWidth": 390,
+    "dom": 1167
+  },
+  {
+    "viewport": "393x852",
+    "innerWidth": 393,
+    "innerHeight": 852,
+    "scrollWidth": 393,
+    "dom": 1167
+  },
+  {
+    "viewport": "430x932",
+    "innerWidth": 430,
+    "innerHeight": 932,
+    "scrollWidth": 430,
+    "dom": 1167
+  }
+]

@@ -28,9 +28,9 @@ const rookieScale = Object.fromEntries(Array.from({ length: 32 }, (_, index) => 
 }));
 
 export const LEAGUE_FINANCE_CONFIG: LeagueFinanceConfig = {
-  version: "finance.v4",
+  version: "finance.v5",
   salaryCap: 164_961_000,
-  minimumTeamSalary: 148_465_000,
+  minimumTeamSalary: 148_464_900,
   luxuryTaxLine: 200_428_000,
   firstApron: 209_015_000,
   secondApron: 221_686_000,
@@ -49,3 +49,37 @@ export const LEAGUE_FINANCE_CONFIG: LeagueFinanceConfig = {
   emergencyContract: { fullSeasonDays: 174 },
   serviceYearMinimumRosterDays: 41,
 };
+
+const BASE_SEASON_YEAR = 2026;
+const ANNUAL_CAP_GROWTH = 1.07;
+const seasonFinanceCache = new Map<number, LeagueFinanceConfig>();
+
+/** Monetary amounts are rounded to the nearest dollar at each season's published scale. */
+export function getSeasonFinanceConfig(seasonYear: number): LeagueFinanceConfig {
+  if (!Number.isInteger(seasonYear) || seasonYear < BASE_SEASON_YEAR) throw new Error(`Invalid finance season: ${seasonYear}`);
+  if (seasonYear === BASE_SEASON_YEAR) return LEAGUE_FINANCE_CONFIG;
+  const cached = seasonFinanceCache.get(seasonYear);
+  if (cached) return cached;
+  const factor = ANNUAL_CAP_GROWTH ** (seasonYear - BASE_SEASON_YEAR);
+  const scale = (amount: number): number => Math.round(amount * factor);
+  const salaryCap = scale(LEAGUE_FINANCE_CONFIG.salaryCap);
+  const finance: LeagueFinanceConfig = {
+    ...LEAGUE_FINANCE_CONFIG,
+    salaryCap,
+    minimumTeamSalary: Math.round(salaryCap * 0.9),
+    luxuryTaxLine: scale(LEAGUE_FINANCE_CONFIG.luxuryTaxLine),
+    firstApron: scale(LEAGUE_FINANCE_CONFIG.firstApron),
+    secondApron: scale(LEAGUE_FINANCE_CONFIG.secondApron),
+    minimumSalary: scale(LEAGUE_FINANCE_CONFIG.minimumSalary),
+    rookieMinimumSalary: scale(LEAGUE_FINANCE_CONFIG.rookieMinimumSalary),
+    rookieScale: Object.fromEntries(Object.entries(LEAGUE_FINANCE_CONFIG.rookieScale).map(([pick, salary]) => [pick, scale(salary)])),
+    expansionDraftSalaryLimit: scale(LEAGUE_FINANCE_CONFIG.expansionDraftSalaryLimit),
+    salaryMatching: {
+      ...LEAGUE_FINANCE_CONFIG.salaryMatching,
+      capSpaceBuffer: scale(LEAGUE_FINANCE_CONFIG.salaryMatching.capSpaceBuffer),
+      belowFirstApronBuffer: scale(LEAGUE_FINANCE_CONFIG.salaryMatching.belowFirstApronBuffer),
+    },
+  };
+  seasonFinanceCache.set(seasonYear, finance);
+  return finance;
+}

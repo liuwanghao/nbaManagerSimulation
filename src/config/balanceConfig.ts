@@ -1,5 +1,5 @@
 export const BALANCE_CONFIG = {
-  version: "balance.v13-historical-rookie-readiness",
+  version: "balance.v16-trade-development-performance",
   freeAgency: {
     offerValidDays: 3,
     decisionWindowDays: 3,
@@ -8,6 +8,17 @@ export const BALANCE_CONFIG = {
     minimumAcceptThreshold: 60,
     preferenceNoiseMin: -3,
     preferenceNoiseMax: 3,
+    demand: {
+      graceDays: 14,
+      qualifyingOfferRatio: 0.8,
+      lowballPenaltyThreshold: 0.75,
+      lowballPenaltyPointsPerRatio: 80,
+      tiers: [
+        { minimumOverall: 85, dailyDiscount: 0.001, maximumDiscount: 0.10 },
+        { minimumOverall: 75, dailyDiscount: 0.002, maximumDiscount: 0.20 },
+        { minimumOverall: 0, dailyDiscount: 0.003, maximumDiscount: 0.35 },
+      ],
+    },
     marketSalary: {
       ratingAnchors: [
         { overall: 65, annualSalary: 1_272_870 },
@@ -98,6 +109,42 @@ export const BALANCE_CONFIG = {
     freeAgency: { minimumTargetValue: 0, rfaMatchValue: 70, salaryOfferMinMultiplier: 0.9, salaryOfferMaxMultiplier: 1.1, longOfferMaximumAge: 27, longOfferYears: 3, veteranOfferYears: 2, guaranteedPercent: 0.85 },
   },
   trade: {
+    performance: {
+      fullWeightMinutes: 600,
+      maximumAdjustment: 8,
+      pointsPerImpact: 0.8,
+      expectedImpactAt70: 18,
+      expectedImpactPerOverall: 0.9,
+      pointsWeight: 0.75,
+      reboundsWeight: 0.7,
+      assistsWeight: 1.25,
+      defensiveStatsWeight: 1.5,
+      turnoversWeight: 1.3,
+      expectedTrueShooting: 0.55,
+      efficiencyWeight: 0.25,
+      recentFormWeight: 0.5,
+      recentFormFullWeightMinutes: 240,
+    },
+    untouchable: {
+      explicitPlayerIds: [
+        "nba:203507", // Giannis Antetokounmpo
+        "nba:201939", // Stephen Curry
+        "nba:202695", // Kawhi Leonard
+        "nba:2544", // LeBron James
+        "nba:201142", // Kevin Durant
+        "nba:203954", // Joel Embiid
+        "nba:1627759", // Jaylen Brown
+      ],
+      minimumOverall: 79,
+      firstOverall: 81,
+      firstValue: 55,
+      secondValue: 50,
+      thirdValue: 50,
+      secondMaximumGap: 18,
+      thirdMaximumGap: 23,
+      thirdToSecondMaximumGap: 13,
+      maximumAgeByDirection: { CONTEND: 35, COMPETE: 34, RETOOL: 31, REBUILD: 30 },
+    },
     corePlayerPremium: { minimumOverall: 85, minimumOverallGap: 5, valuePerOverallGap: 2 },
     valueWeights: { futureFirstAge: 1.2, winNowAge: 0.65, balancedAge: 0.8 },
     valueLimits: { futureFirstAgeFloor: -8, winNowAgeFloor: -6, balancedAgeFloor: -7 },
@@ -154,6 +201,13 @@ export const BALANCE_CONFIG = {
       basketballIq: 0.25,
     },
     development: {
+      performance: {
+        fullWeightMinutes: 800,
+        maximumGrowthModifier: 0.12,
+        expectedImpactAt70: 25,
+        expectedImpactPerOverall: 0.6,
+        impactRange: 12,
+      },
       minutesBands: [
         { minimumMinutes: 28, multiplier: 1.12 },
         { minimumMinutes: 18, multiplier: 1 },
@@ -202,9 +256,13 @@ export const BALANCE_CONFIG = {
       competitiveReduction: 0.025,
       unemploymentAgeMinimum: 32,
       unemploymentDaysThreshold: 180,
-      unemploymentAddition: 0.25,
+      unemploymentAddition: 0.05,
       unemploymentYearsThreshold: 2,
       unemploymentProbabilityFloor: 0.92,
+      competitiveVeteranOverallMinimum: 80,
+      competitiveVeteranMinimumGames: 25,
+      competitiveVeteranMinimumMinutes: 500,
+      competitiveVeteranProbabilityMultiplier: 0.1,
       probabilityMin: 0.001,
       probabilityMax: 0.97,
       offseasonUnemploymentDays: 180,
@@ -236,12 +294,12 @@ export const BALANCE_CONFIG = {
     basePerPlayerGameProbability: 0.0035,
     majorSeverityThreshold: "LONG",
     recentEventLimit: 20,
-    durationGames: {
-      MINOR: [1, 3],
-      SHORT: [4, 8],
-      MEDIUM: [9, 20],
-      LONG: [21, 45],
-      SEASON_ENDING: [60, 99],
+    durationDays: {
+      MINOR: [2, 6],
+      SHORT: [9, 17],
+      MEDIUM: [19, 43],
+      LONG: [45, 95],
+      SEASON_ENDING: [127, 210],
     },
     severityWeights: { MINOR: 55, SHORT: 23, MEDIUM: 13, LONG: 7, SEASON_ENDING: 2 },
     injuryRatingInfluence: { baseline: 100, divisor: 70, baseMultiplier: 0.62, riskMultiplier: 0.86 },

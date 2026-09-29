@@ -113,7 +113,7 @@ describe("rotation card position swap", () => {
     expect(benchIds).toContain(zeroMinute!.id);
     expect(benchMarkup.split(`data-player-id="${zeroMinute!.id}"`)[1]?.split("</article>")[0]).toContain('value="0"');
     expect(benchIds.at(-1)).toBe(injured.id);
-    expect(benchMarkup).toContain("伤停 3 场");
+    expect(benchMarkup).toContain("伤停约 7 天");
     expect(markup).toContain("一键自动匹配");
     expect(markup).toContain("PG");
     expect(markup).not.toMatch(/LINEUP CONTROL|STARTERS|BENCH|>MIN</u);

@@ -1,0 +1,10 @@
+{
+  "scenario": "fixed fa-perf-seed; 32 teams, 980 players including 593 initial free agents; three actual advanceFreeAgencyDay calls",
+  "beforeMs": [803.161542, 684.756474, 715.913719],
+  "afterMs": [396.218744, 323.117768, 430.130245],
+  "beforeTotalMs": 2203.831735,
+  "afterTotalMs": 1149.466757,
+  "beforeAndAfterStateSha256": "520e56a4c211269a8a966c146b99a3972011e6a80fa4512f42c7fefcf2b1cc8f",
+  "stateJsonBytes": 1574204,
+  "method": "Before source snapshot was copied before editing; after source was loaded from workspace. Runs were sequential in the same local environment. Full JSON outputs compared byte for byte."
+}

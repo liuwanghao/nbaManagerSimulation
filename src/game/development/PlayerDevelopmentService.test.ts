@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { stableHash, stableSerialize } from "../random/hash";
 import { createRng } from "../random/xoshiro";
 import { createCareer } from "../season/career";
@@ -6,6 +7,14 @@ import { playerOverall, processOffseasonPlayerLifecycle } from "./PlayerDevelopm
 
 function lifecycleState(seed = "player-lifecycle") {
   const state = createCareer(seed);
+  state.league.seasonYear = 2027;
+  state.league.seasonId = "2027-28";
+  state.seeds.seasonSeed = stableHash(seed, "season", state.league.seasonId);
+  return state;
+}
+
+function bundledLifecycleState(seed: string) {
+  const state = createExpansionCareerFromBundledDataset(seed);
   state.league.seasonYear = 2027;
   state.league.seasonId = "2027-28";
   state.seeds.seasonSeed = stableHash(seed, "season", state.league.seasonId);
@@ -74,6 +83,62 @@ describe("PlayerDevelopmentService", () => {
     player.age = 99;
     const next = processOffseasonPlayerLifecycle(state);
     expect(next.players[player.id].age).toBe(25);
+  });
+
+  it("lets real prior-season production modestly influence young-player growth", () => {
+    const state = lifecycleState("growth-season-performance");
+    const player = state.players[state.teams.SEA.playerIds[0]];
+    player.birthDate = "2007-01-10";
+    player.ageSource = "GENERATED_BIRTH_DATE";
+    player.attributes = { shooting: 65, finishing: 65, playmaking: 65, perimeterDefense: 65, interiorDefense: 65, rebounding: 65, athleticism: 65, basketballIq: 65 };
+    player.truePotential = 84;
+    player.developmentRate = 1.15;
+    player.developmentVolatility = 0;
+    player.rotationRole = "BENCH";
+    player.teamRole = "ROTATION";
+    player.seasonStats.games = 70;
+    player.seasonStats.seconds = 70 * 24 * 60;
+
+    const low = structuredClone(state);
+    const lowStats = low.players[player.id].seasonStats;
+    lowStats.pts = 5 * 70;
+    lowStats.reb = 1 * 70;
+    lowStats.ast = 1 * 70;
+    lowStats.tov = 3 * 70;
+
+    const high = structuredClone(state);
+    const highStats = high.players[player.id].seasonStats;
+    highStats.pts = 32 * 70;
+    highStats.reb = 8 * 70;
+    highStats.ast = 6 * 70;
+    highStats.stl = 1 * 70;
+    highStats.blk = 1 * 70;
+    highStats.tov = 2 * 70;
+
+    const lowAfter = processOffseasonPlayerLifecycle(low).players[player.id];
+    const highAfter = processOffseasonPlayerLifecycle(high).players[player.id];
+    expect(playerOverall(highAfter)).toBeGreaterThan(playerOverall(lowAfter));
+    for (const key of Object.keys(player.attributes) as Array<keyof typeof player.attributes>) {
+      expect(highAfter.attributes[key] - lowAfter.attributes[key]).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("ignores a synthetic opening baseline when there are no real games", () => {
+    const state = lifecycleState("ignore-synthetic-growth");
+    const player = state.players[state.teams.SEA.playerIds[0]];
+    player.seasonStats.games = 0;
+    player.seasonStats.seconds = 0;
+    const synthetic = structuredClone(state);
+    synthetic.players[player.id].career ??= {
+      seasonsPlayed: 0, totals: structuredClone(player.seasonStats), peakOverall: playerOverall(player), peakImpact: playerOverall(player),
+      unemployedGameDays: 0, unemployedLeagueYears: 0, careerInjuryGamesMissed: 0,
+    };
+    synthetic.players[player.id].career!.lastSeasonStats = { ...player.seasonStats, games: 82, seconds: 82 * 32 * 60, pts: 82 * 40 };
+    synthetic.players[player.id].career!.lastSeasonStatsSource = "SYNTHETIC_OPENING";
+
+    const baseline = processOffseasonPlayerLifecycle(state).players[player.id];
+    const after = processOffseasonPlayerLifecycle(synthetic).players[player.id];
+    expect(after.attributes).toEqual(baseline.attributes);
   });
 
   it("uses training as a growth weight and consumes the plan at rollover", () => {
@@ -231,6 +296,46 @@ describe("PlayerDevelopmentService", () => {
     const next = processOffseasonPlayerLifecycle(state);
     expect(next.players[player.id].age).toBe(38);
     expect(next.playerLifecycle?.retiredPlayerIds).toContain(player.id);
+  });
+
+  it("keeps a healthy elite starter such as Durant through the first rollover despite an old-model retirement roll", () => {
+    const state = bundledLifecycleState("durant-first-offseason");
+    const durant = state.players["nba:201142"];
+    expect(playerOverall(durant)).toBeGreaterThanOrEqual(80);
+    expect(durant.contract.status).toBe("STANDARD");
+    expect(durant.rotationRole).toBe("STARTER");
+    state.seeds.seasonSeed = seasonSeedWithRetirementRoll(durant.id, 0.05, 0.08);
+
+    const next = processOffseasonPlayerLifecycle(state);
+    expect(next.players[durant.id].age).toBe(38);
+    expect(next.playerLifecycle?.retiredPlayerIds).not.toContain(durant.id);
+  });
+
+  it("protects a high-level veteran who played regularly before becoming a free agent", () => {
+    const state = bundledLifecycleState("recent-veteran-playing-time");
+    const durant = state.players["nba:201142"];
+    state.teams[durant.teamId].playerIds = state.teams[durant.teamId].playerIds.filter((id) => id !== durant.id);
+    durant.teamId = "FREE_AGENT";
+    durant.contract.status = "UFA";
+    durant.seasonStats.games = 60;
+    durant.seasonStats.seconds = 60 * 30 * 60;
+    state.seeds.seasonSeed = seasonSeedWithRetirementRoll(durant.id, 0.05, 0.08);
+
+    const next = processOffseasonPlayerLifecycle(state);
+    expect(next.playerLifecycle?.retiredPlayerIds).not.toContain(durant.id);
+  });
+
+  it("reduces Dwight Powell's first unemployed-season retirement risk", () => {
+    const state = bundledLifecycleState("powell-first-offseason");
+    const powell = state.players["nba:203939"];
+    expect(powell.teamId).toBe("FREE_AGENT");
+    state.seeds.seasonSeed = seasonSeedWithRetirementRoll(powell.id, 0.32, 0.36);
+
+    const next = processOffseasonPlayerLifecycle(state);
+    expect(next.players[powell.id].age).toBe(36);
+    expect(next.players[powell.id].career?.unemployedLeagueYears).toBe(1);
+    expect(next.playerLifecycle?.retiredPlayerIds).not.toContain(powell.id);
+    expect(next.players["nba:1626181"].contract.status).not.toBe("RETIRED");
   });
 
   it("replays the complete all-league lifecycle from the same seed", () => {

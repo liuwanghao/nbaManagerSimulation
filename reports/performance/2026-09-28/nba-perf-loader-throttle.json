@@ -1,0 +1,32 @@
+[
+  {
+    "rate": 1,
+    "loader": true,
+    "dom": 53,
+    "frames": 207,
+    "effectiveFps": 41.4,
+    "maxGapMs": 33.5,
+    "p95GapMs": 33.399999999999636,
+    "gapsOver33Ms": 90
+  },
+  {
+    "rate": 4,
+    "loader": true,
+    "dom": 53,
+    "frames": 181,
+    "effectiveFps": 36.2,
+    "maxGapMs": 50,
+    "p95GapMs": 33.400000000001455,
+    "gapsOver33Ms": 111
+  },
+  {
+    "rate": 6,
+    "loader": true,
+    "dom": 53,
+    "frames": 189,
+    "effectiveFps": 37.8,
+    "maxGapMs": 66.59999999999854,
+    "p95GapMs": 33.400000000001455,
+    "gapsOver33Ms": 106
+  }
+]

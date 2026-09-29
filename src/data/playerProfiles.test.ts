@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createFixtureDataset } from "./fixture";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
+import { fictionalNameAt } from "./playerProfiles";
 
 describe("fictional fixture player profiles", () => {
   it("creates deterministic, unique names without placeholder labels", () => {
@@ -31,5 +32,21 @@ describe("fictional fixture player profiles", () => {
       expect(player.marketPreference).toBe(calculateMarketPreference(player.personality, player.ageAtSnapshot));
       expect(player.profileSource).toBe("FICTIONAL_FIXTURE");
     }
+  });
+});
+
+describe("fictionalNameAt", () => {
+  it("uses every combination once before repeating", () => {
+    const nameCount = 96 * 96;
+    const names = Array.from({ length: nameCount }, (_, ordinal) => fictionalNameAt("name-cycle", ordinal));
+    expect(new Set(names).size).toBe(nameCount);
+    expect(fictionalNameAt("name-cycle", nameCount)).toBe(names[0]);
+    expect(fictionalNameAt("name-cycle", 1234)).toBe(names[1234]);
+  });
+
+  it("spreads first and last names across a single draft class", () => {
+    const names = Array.from({ length: 80 }, (_, ordinal) => fictionalNameAt("name-diversity", ordinal));
+    expect(new Set(names.map((name) => name.split(" ")[0])).size).toBe(80);
+    expect(new Set(names.map((name) => name.split(" ")[1])).size).toBeGreaterThan(55);
   });
 });

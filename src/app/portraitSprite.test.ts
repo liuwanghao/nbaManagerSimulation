@@ -44,6 +44,11 @@ describe("portrait sprite atlas", () => {
     expect(portraitSpriteStyle("nba:999999", "./player-portraits/nba-999999.png")).toBeNull();
   });
 
+  it("uses a bundled source portrait for a reborn prospect with a draft ID", () => {
+    expect(portraitSpriteMeta("DRAFT-2027-001", "./player-portraits/nba-202681.png")?.source)
+      .toMatch(/^\.\/player-portraits\/nba-atlas-\d+\.webp$/u);
+  });
+
   it("maps Max Christie to his bundled portrait atlas tile", () => {
     expect(portraitSpriteMeta("nba:1631108", "./player-portraits/nba-1631108.png")).toMatchObject({
       index: 324,

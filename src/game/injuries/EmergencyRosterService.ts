@@ -1,4 +1,4 @@
-import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
+import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { createFictionalPlayerProfile } from "../../data/playerProfiles";
 import { publicPlayerValue } from "../ai/AIValueService";
@@ -88,7 +88,7 @@ function bestEmergencyCandidate(state: GameState): Player {
 function signEmergencyPlayer(state: GameState, teamId: string): Player {
   const player = bestEmergencyCandidate(state);
   const remainingDays = Math.max(1, state.calendar.finalDateIndex - state.calendar.currentDateIndex + 1);
-  const dailySalary = Math.ceil(LEAGUE_FINANCE_CONFIG.minimumSalary / LEAGUE_FINANCE_CONFIG.emergencyContract.fullSeasonDays);
+  const dailySalary = Math.ceil(getSeasonFinanceConfig(state.league.seasonYear).minimumSalary / LEAGUE_FINANCE_CONFIG.emergencyContract.fullSeasonDays);
   player.teamId = teamId;
   player.available = true;
   player.injury = undefined;
@@ -125,6 +125,7 @@ function terminateEmergencyPlayer(state: GameState, player: Player): void {
   const teamId = player.teamId;
   if (state.teams[teamId]) state.teams[teamId].playerIds = state.teams[teamId].playerIds.filter((id) => id !== player.id);
   player.teamId = "FREE_AGENT";
+  player.freeAgentDemand = { uncontestedDays: 0 };
   player.rotationRole = "OUT";
   player.contract = {
     salary: 0,
@@ -185,7 +186,7 @@ export function chargeEmergencySalariesAtRosterLock(state: GameState, teamIds: s
         teamId,
         seasonId: state.league.seasonId,
         dateIndex,
-        amount: player.contract.emergencyDailySalary ?? Math.ceil(LEAGUE_FINANCE_CONFIG.minimumSalary / LEAGUE_FINANCE_CONFIG.emergencyContract.fullSeasonDays),
+        amount: player.contract.emergencyDailySalary ?? Math.ceil(getSeasonFinanceConfig(state.league.seasonYear).minimumSalary / LEAGUE_FINANCE_CONFIG.emergencyContract.fullSeasonDays),
       });
     }
   }

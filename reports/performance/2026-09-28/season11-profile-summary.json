@@ -1,0 +1,246 @@
+{
+  "samples": 119552,
+  "season11Ms": 147713.279378,
+  "topSelfSamples": [
+    {
+      "selfSamples": 16690,
+      "function": "createOfferMutable",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/freeAgency/FreeAgencyService.ts",
+      "path": "createOfferMutable < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 16186,
+      "function": "generateAiOffers",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/freeAgency/FreeAgencyService.ts",
+      "path": "generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 10450,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/freeAgency/FreeAgencyService.ts",
+      "path": " < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 7139,
+      "function": "encode",
+      "source": "node:internal/encoding",
+      "path": "encode < fnv1a64Utf8 < stableHash < DeterministicRng < createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason"
+    },
+    {
+      "selfSamples": 7068,
+      "function": "fnv1a64Utf8",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/hash.ts",
+      "path": "fnv1a64Utf8 < stableHash < DeterministicRng < createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason < "
+    },
+    {
+      "selfSamples": 6821,
+      "function": "publicPlayerValue",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/ai/AIValueService.ts",
+      "path": "publicPlayerValue <  < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 4024,
+      "function": "advanceFreeAgencyDay",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/freeAgency/FreeAgencyService.ts",
+      "path": "advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 3762,
+      "function": "low32FromHash",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/hash.ts",
+      "path": "low32FromHash < DeterministicRng < createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 3532,
+      "function": "structuredClone",
+      "source": "node:internal/worker/js_transferable",
+      "path": "structuredClone < resolveEvent < resolveAllEvents < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 3256,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/player/PlayerRatingService.ts",
+      "path": " < calculateAttributeOverall < calculatePlayerOverall < publicPlayerValue <  < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason"
+    },
+    {
+      "selfSamples": 2869,
+      "function": "createRng",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/xoshiro.ts",
+      "path": "createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 2816,
+      "function": "stableSerialize",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/hash.ts",
+      "path": "stableSerialize < stableHash < DeterministicRng < createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason < "
+    },
+    {
+      "selfSamples": 2667,
+      "function": "encode",
+      "source": "node:internal/encoding",
+      "path": "encode < fnv1a64Utf8 < stableHash < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 2516,
+      "function": "stableSerialize",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/hash.ts",
+      "path": "stableSerialize < stableHash < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 2200,
+      "function": "fnv1a64Utf8",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/hash.ts",
+      "path": "fnv1a64Utf8 < stableHash < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 2057,
+      "function": "encodeUtf8String",
+      "source": "",
+      "path": "encodeUtf8String < encode < fnv1a64Utf8 < stableHash < DeterministicRng < createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason"
+    },
+    {
+      "selfSamples": 1774,
+      "function": "reconcileShooting",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/simulation/boxScore.ts",
+      "path": "reconcileShooting < buildTeamBoxScore < simulateGame < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 1456,
+      "function": "(garbage collector)",
+      "source": "",
+      "path": "(garbage collector) < (root)"
+    },
+    {
+      "selfSamples": 1356,
+      "function": "stableHash",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/hash.ts",
+      "path": "stableHash < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 1199,
+      "function": "stableHash",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/hash.ts",
+      "path": "stableHash < DeterministicRng < createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 1109,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/simulation/boxScore.ts",
+      "path": " < reconcileShooting < buildTeamBoxScore < simulateGame < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 844,
+      "function": "calculateAttributeOverall",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/player/PlayerRatingService.ts",
+      "path": "calculateAttributeOverall < calculatePlayerOverall < publicPlayerValue <  < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason < "
+    },
+    {
+      "selfSamples": 789,
+      "function": "encodeUtf8String",
+      "source": "",
+      "path": "encodeUtf8String < encode < fnv1a64Utf8 < stableHash < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason < "
+    },
+    {
+      "selfSamples": 726,
+      "function": "DeterministicRng",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/random/xoshiro.ts",
+      "path": "DeterministicRng < createRng < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 689,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/roster/RosterService.ts",
+      "path": " < availableFreeAgents < normalizeAiRosters < lockOpeningRoster < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 541,
+      "function": "getProjectedMarketSalary",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/freeAgency/FreeAgencyService.ts",
+      "path": "getProjectedMarketSalary < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 520,
+      "function": "assignDefaultStarters",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/roster/RotationPlanService.ts",
+      "path": "assignDefaultStarters < effectiveStarterAssignments < simulateGame < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 516,
+      "function": "publicPlayerValue",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/ai/AIValueService.ts",
+      "path": "publicPlayerValue <  < availableFreeAgents < normalizeAiRosters < lockOpeningRoster < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 513,
+      "function": "assignDefaultStarters",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/roster/RotationPlanService.ts",
+      "path": "assignDefaultStarters < buildDefaultRotationPlan < normalizeRotationPlan < normalizeRotation < advanceInjuriesAfterGames < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 493,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/ai/AIValueService.ts",
+      "path": " < projectedDraftPickStrength < tradeDraftPickValue < pickDirectionValue < runAiTradeEvaluation < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 483,
+      "function": "assignDefaultStarters",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/roster/RotationPlanService.ts",
+      "path": "assignDefaultStarters < effectiveStarterAssignments < applyRotationPlanToPlayers < normalizeRotation < advanceInjuriesAfterGames < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 475,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/player/PlayerRatingService.ts",
+      "path": " < calculateAttributeOverall < calculatePlayerOverall < getProjectedMarketSalary < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason < "
+    },
+    {
+      "selfSamples": 345,
+      "function": "calculatePlayerOverall",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/player/PlayerRatingService.ts",
+      "path": "calculatePlayerOverall < publicPlayerValue <  < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 323,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/freeAgency/FreeAgencyService.ts",
+      "path": " < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 257,
+      "function": "",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/player/PlayerRatingService.ts",
+      "path": " < calculateAttributeOverall < calculatePlayerOverall < publicPlayerValue <  < availableFreeAgents < normalizeAiRosters < lockOpeningRoster < advanceSeason < "
+    },
+    {
+      "selfSamples": 256,
+      "function": "structuredClone",
+      "source": "node:internal/worker/js_transferable",
+      "path": "structuredClone < draftPlayer < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 238,
+      "function": "structuredClone",
+      "source": "node:internal/worker/js_transferable",
+      "path": "structuredClone < fastForwardRookieDraft < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 236,
+      "function": "structuredClone",
+      "source": "node:internal/worker/js_transferable",
+      "path": "structuredClone < resolveTeamOption < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 232,
+      "function": "effectiveStarterAssignments",
+      "source": "file:///Users/uwa/nbaGame/nbaManagerSimulation/src/game/roster/RotationPlanService.ts",
+      "path": "effectiveStarterAssignments < simulateGame < simulateLeagueDay < simulateRegularSeason < advanceSeason <  < (root)"
+    },
+    {
+      "selfSamples": 225,
+      "function": "encode",
+      "source": "node:internal/encoding",
+      "path": "encode < fnv1a64Utf8 < stableHash <  < generateAiOffers < advanceFreeAgencyDay < simulateLeagueDay < simulateRegularSeason < advanceSeason < "
+    }
+  ]
+}

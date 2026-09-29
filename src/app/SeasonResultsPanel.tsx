@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AwardType, GameState } from "../game/state/types";
 import { finalizeRegularSeasonAwards } from "../game/awards/AwardsService";
+import { hasOpeningMipBaselines } from "../game/awards/OpeningMipBaseline";
 import { standingsForConference } from "../game/season/career";
 import { playerNameZh } from "./playerNameZh";
 import { PlayerPortrait } from "./PlayerPortrait";
@@ -72,7 +73,7 @@ export function SeasonResultsPanel({ state, onOpenPlayer }: { state: GameState; 
     <section className="season-results-home-awards" aria-label="常规赛奖项速览">
       <header><div><small>SEASON HONORS</small><h3>常规赛奖项</h3></div></header>
       {!settledAwards && <p className="season-awards-preview-note">根据当前赛季数据预览</p>}
-      <div className="season-results-home-award-list">{REGULAR_AWARDS.map((type) => <AwardCard key={type} state={state} type={type} playerId={awardRecord?.winners[type]} emptyLabel={type === "MIP" ? state.history.seasons.length === 0 ? "首季缺少历史数据" : "暂无合格候选" : "待评选"} onOpen={onOpenPlayer} />)}</div>
+      <div className="season-results-home-award-list">{REGULAR_AWARDS.map((type) => <AwardCard key={type} state={state} type={type} playerId={awardRecord?.winners[type]} emptyLabel={type === "MIP" ? hasOpeningMipBaselines(state) ? "模拟基线候选待评选" : state.history.seasons.length === 0 ? "首季缺少历史数据" : "暂无合格候选" : "待评选"} onOpen={onOpenPlayer} />)}</div>
     </section>
     <div className="season-results-actions" aria-label="查看赛季详情">
       <button type="button" onClick={() => { setBracketTab("EAST"); setShowBracket(true); }}><span><small>{bracket.settled ? "最终赛果" : "对阵席位"}</small><b>查看季后赛对阵图</b></span><i aria-hidden="true">→</i></button>

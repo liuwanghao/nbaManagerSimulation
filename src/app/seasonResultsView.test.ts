@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { GameResult } from "../game/state/types";
-import { createCareer } from "../game/season/career";
+import { createCareer, enterPostseason, simulatePostseasonGame } from "../game/season/career";
 import { postseasonBracket } from "./seasonResultsView";
 
 describe("postseason bracket", () => {
+  it("updates the live bracket after an interactive play-in game", () => {
+    const state = createCareer("live-bracket");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].wins = 82;
+    const entered = enterPostseason(state);
+    const first = simulatePostseasonGame(entered);
+    const finished = first.postseason!.series.find((series) => series.winnerTeamId);
+    expect(finished).toBeDefined();
+    const bracket = postseasonBracket(first);
+    const conference = bracket.conferences.find((entry) => entry.conference === finished!.conference)!;
+    const visible = conference.playIn.find((entry) => entry.teamA === finished!.teamAId && entry.teamB === finished!.teamBId);
+    expect(visible).toMatchObject({ winsA: finished!.winsA, winsB: finished!.winsB, winner: finished!.winnerTeamId });
+    expect(bracket.settled).toBe(false);
+  });
+
   it("shows seeded first-round matchups before the play-in is settled", () => {
     const state = createCareer("bracket-preview");
     const bracket = postseasonBracket(state);

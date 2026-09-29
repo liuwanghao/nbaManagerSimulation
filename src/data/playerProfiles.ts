@@ -12,6 +12,10 @@ const FIRST_NAMES = [
   "Victor", "Wesley", "Xavier", "Zaire", "Avery", "Desmond", "Keon", "Landon",
   "Aaron", "Alex", "Brandon", "Christian", "Damian", "Evan", "Gary", "John",
   "Michael", "Jonathan", "Tyler", "Daniel", "Stephen", "Coby", "Jayson", "Jerami",
+  "Adam", "Aiden", "Andrew", "Anthony", "Austin", "Ben", "Bennedict", "Bradley",
+  "Bruce", "Cade", "Chris", "Deandre", "Dejounte", "Demar", "Derrick", "Dillon",
+  "Donovan", "Eli", "Fred", "George", "Isaac", "Jaren", "Jarrett", "Jaylen",
+  "Joel", "Julius", "Keegan", "Kevin", "Klay", "Kyrie", "Malik", "Nikola",
 ] as const;
 
 const LAST_NAMES = [
@@ -23,6 +27,10 @@ const LAST_NAMES = [
   "Shepherd", "Sloan", "Sterling", "Sutton", "Vaughn", "Warren", "Whitaker", "Wilder",
   "Brown", "Davis", "Edwards", "Gordon", "Harris", "Jackson", "Robinson", "Walker",
   "Young", "Williams", "Thompson", "Collins", "Miller", "Green", "Butler", "Washington",
+  "Adams", "Barnes", "Beal", "Bennett", "Booker", "Brooks", "Brunson", "Carter",
+  "Clarkson", "Cunningham", "Curry", "Fox", "Garland", "George", "Henderson", "Herro",
+  "Holiday", "Horford", "Ingram", "James", "Johnson", "Leonard", "Lopez", "Mitchell",
+  "Morris", "Murray", "Pierce", "Poole", "Price", "Reed", "Russell", "Smart",
 ] as const;
 
 const PERSONALITIES: PlayerPersonality[] = [
@@ -53,7 +61,7 @@ function greatestCommonDivisor(left: number, right: number): number {
 }
 
 function nameStep(nameCount: number): number {
-  let step = 97;
+  let step = 131;
   while (greatestCommonDivisor(step, nameCount) !== 1) step += 2;
   return step;
 }

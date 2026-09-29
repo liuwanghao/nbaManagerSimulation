@@ -1,6 +1,6 @@
-const FNV_OFFSET_64 = 0xcbf29ce484222325n;
-const FNV_PRIME_64 = 0x100000001b3n;
-const MASK_64 = 0xffffffffffffffffn;
+const FNV_OFFSET_HIGH = 0xcbf29ce4;
+const FNV_OFFSET_LOW = 0x84222325;
+const FNV_PRIME_LOW = 0x1b3;
 
 export function stableSerialize(value: unknown): string {
   if (value === null) return "null";
@@ -17,12 +17,19 @@ export function stableSerialize(value: unknown): string {
 }
 
 export function fnv1a64Utf8(input: string): string {
-  let hash = FNV_OFFSET_64;
+  let high = FNV_OFFSET_HIGH;
+  let low = FNV_OFFSET_LOW;
   for (const byte of new TextEncoder().encode(input)) {
-    hash ^= BigInt(byte);
-    hash = (hash * FNV_PRIME_64) & MASK_64;
+    low = (low ^ byte) >>> 0;
+    // 0x100000001b3 = (0x100 << 32) + 0x1b3. The low product is
+    // below 2^53, so its carry is exact in a JavaScript number.
+    const lowProduct = low * FNV_PRIME_LOW;
+    high = (Math.imul(high, FNV_PRIME_LOW)
+      + Math.floor(lowProduct / 0x1_0000_0000)
+      + Math.imul(low, 0x100)) >>> 0;
+    low = lowProduct >>> 0;
   }
-  return hash.toString(16).padStart(16, "0");
+  return high.toString(16).padStart(8, "0") + low.toString(16).padStart(8, "0");
 }
 
 export function stableHash(...parts: unknown[]): string {

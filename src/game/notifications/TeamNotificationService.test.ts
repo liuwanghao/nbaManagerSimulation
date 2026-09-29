@@ -80,6 +80,25 @@ describe("team notifications", () => {
     ]);
   });
 
+  it("shows current duration and scheduled missed games for an active injury in an older save", () => {
+    const state = createCareer("legacy-injury-notice");
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    player.injury = {
+      injuryId: "legacy-injury", severity: "SEASON_ENDING", daysRemaining: 130, gamesRemaining: 61,
+      occurredSeasonId: state.league.seasonId, occurredGameId: "legacy-game", previousRotationRole: player.rotationRole,
+    };
+    state.schedule = state.schedule
+      .filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId)
+      .slice(0, 18)
+      .map((game, index) => ({ ...game, dateIndex: index + 1, status: "SCHEDULED" }));
+    addTeamNotification(state, {
+      id: "legacy-injury-notice", category: "SEASON", seasonId: state.league.seasonId,
+      title: "核心球员受伤", message: `${player.name}受伤，预计缺阵 61 场。已自动调整轮换。`,
+    });
+    expect(getTeamInboxItems(state)[0].message).toBe(`${player.name}受伤，赛季报销，预计缺席 18 场。已自动调整轮换。`);
+    expect(state.teamNotifications?.[0].message).toContain("61 场");
+  });
+
   it("backfills the first-season expansion welcome only once with the opening date", () => {
     const state = createCareer("old-expansion-save");
     state.league.currentPhase = "REGULAR_PRE_DEADLINE";

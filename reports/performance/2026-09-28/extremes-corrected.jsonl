@@ -1,0 +1,10 @@
+{"kind":"schedule","i":0,"ms":194.59533800000008,"games":1312}
+{"kind":"schedule","i":1,"ms":142.98909299999968,"games":1312}
+{"kind":"schedule","i":2,"ms":152.288505,"games":1312}
+{"kind":"regular","ms":13459.291925,"final":1312}
+{"kind":"postseason","ms":997.6072539999986,"history":1,"playoffBoxes":96}
+{"kind":"leaders","players":480,"ms":4.572540000001027,"results":[5,5,5,5,5]}
+{"kind":"leaders","players":1000,"ms":8.654194999999163,"results":[5,5,5,5,5]}
+{"kind":"leaders","players":3000,"ms":19.304998999999953,"results":[5,5,5,5,5]}
+{"kind":"standings","conf":"WEST","ms":0.3141460000006191,"teams":16}
+{"kind":"standings","conf":"EAST","ms":0.17082600000139792,"teams":16}

@@ -1,0 +1,44 @@
+[
+  {
+    "cycle": 0,
+    "heapMB": 59.25531005859375,
+    "documents": 2,
+    "nodes": 794,
+    "jsEventListeners": 396
+  },
+  {
+    "cycle": 10,
+    "heapMB": 59.97286033630371,
+    "documents": 2,
+    "nodes": 794,
+    "jsEventListeners": 396
+  },
+  {
+    "cycle": 20,
+    "heapMB": 60.036996841430664,
+    "documents": 2,
+    "nodes": 794,
+    "jsEventListeners": 396
+  },
+  {
+    "cycle": 30,
+    "heapMB": 60.099897384643555,
+    "documents": 2,
+    "nodes": 794,
+    "jsEventListeners": 396
+  },
+  {
+    "cycle": 40,
+    "heapMB": 60.14072227478027,
+    "documents": 2,
+    "nodes": 794,
+    "jsEventListeners": 396
+  },
+  {
+    "cycle": 50,
+    "heapMB": 60.225263595581055,
+    "documents": 2,
+    "nodes": 794,
+    "jsEventListeners": 396
+  }
+]

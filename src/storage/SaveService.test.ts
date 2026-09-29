@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
+import { executeDraftCommand } from "../game/draft/DraftService";
 import { calculateAttributeOverall, calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import { addTeamNotification, executeTeamNotificationCommand } from "../game/notifications/TeamNotificationService";
@@ -10,6 +11,20 @@ import type { StorageAdapter } from "../platform/storage/StorageAdapter";
 import { SaveService } from "./SaveService";
 
 describe("SaveService", () => {
+  it("adds the opening MIP comparison group to unfinished older real-roster saves", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createExpansionCareerFromBundledDataset("legacy-mip-baseline");
+    for (const player of Object.values(state.players)) {
+      if (player.career?.lastSeasonStatsSource !== "SYNTHETIC_OPENING") continue;
+      delete player.career.lastSeasonStats;
+      delete player.career.lastSeasonStatsSource;
+    }
+    await service.save(1, state);
+    const loaded = await service.load(1);
+    expect(Object.values(loaded!.players).filter((player) => player.career?.lastSeasonStatsSource === "SYNTHETIC_OPENING")).toHaveLength(30);
+    expect(Object.values(state.players).filter((player) => player.career?.lastSeasonStatsSource === "SYNTHETIC_OPENING")).toHaveLength(0);
+  });
+
   it("restores historical rookie names in existing saves without changing the source object", async () => {
     const service = new SaveService(new MemoryStorageAdapter());
     const state = createCareer("historical-name-migration");
@@ -115,6 +130,57 @@ describe("SaveService", () => {
     const next = await service.save(1, state);
     expect(next.revision).toBe(2);
     expect(next.parentRevision).toBe(1);
+  });
+
+  it("restores the completed lottery reveal before draft acknowledgement", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("lottery-reveal-save");
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    const prepared = executeDraftCommand(state, { commandId: "lottery-save-prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+    const revealed = executeDraftCommand(prepared, { commandId: "lottery-save-reveal", type: "COMPLETE_DRAFT_LOTTERY_REVEAL", payload: {} });
+    await service.save(1, revealed);
+
+    const loaded = await service.load(1);
+    expect(loaded?.rookieDraft?.lotteryRevealComplete).toBe(true);
+    expect(loaded?.rookieDraft?.lotteryPresented).toBe(false);
+    expect(loaded?.rookieDraft?.pickOrder).toEqual(revealed.rookieDraft?.pickOrder);
+  });
+
+  it("repairs only missing lottery confirmation in a legacy first-season draft", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const legacy = createCareer("legacy-curated-lottery-field");
+    legacy.league.currentPhase = "DRAFT";
+    legacy.rookieDraft = {
+      draftSeed: "legacy-draft", classPlayerIds: [], pickOrder: [],
+      currentPickIndex: 0, completed: false, source: "CURATED_2026",
+    };
+    await service.save(1, legacy);
+    await service.saveCheckpoint(1, "legacy-lottery", legacy);
+    const restored = await service.load(1);
+    expect(restored?.rookieDraft?.lotteryPresented).toBe(true);
+    expect((await service.loadCheckpoint(1, "legacy-lottery"))?.rookieDraft?.lotteryPresented).toBe(true);
+    expect(legacy.rookieDraft.lotteryPresented).toBeUndefined();
+    await service.save(1, restored!);
+    expect((await service.load(1))?.rookieDraft?.lotteryPresented).toBe(true);
+
+    const procedural2026 = structuredClone(legacy);
+    procedural2026.rookieDraft!.source = "PROCEDURAL_2026";
+    await service.saveCheckpoint(1, "legacy-procedural-lottery", procedural2026);
+    expect((await service.loadCheckpoint(1, "legacy-procedural-lottery"))?.rookieDraft?.lotteryPresented).toBe(true);
+
+    const future = structuredClone(legacy);
+    future.league.seasonYear = 2027;
+    future.league.seasonId = "2027-28";
+    future.rookieDraft!.source = "PROCEDURAL_FUTURE";
+    await service.save(2, future);
+    expect((await service.load(2))?.rookieDraft?.lotteryPresented).toBeUndefined();
+
+    const explicitlyPending = structuredClone(legacy);
+    explicitlyPending.rookieDraft!.lotteryPresented = false;
+    await service.save(3, explicitlyPending);
+    expect((await service.load(3))?.rookieDraft?.lotteryPresented).toBe(false);
   });
 
   it("restores read and unread team notifications and initializes older saves", async () => {
@@ -389,6 +455,32 @@ describe("SaveService", () => {
     expect(await service.loadCheckpoint(1, "one")).toBeNull();
     expect(await service.loadCheckpoint(1, "four")).not.toBeNull();
     expect(await service.getSlotUsageBytes(1)).toBeGreaterThan(0);
+  });
+
+  it("frees old checkpoints before a full storage quota can block season rollover saves", async () => {
+    class BoundedStorageAdapter implements StorageAdapter {
+      values = new Map<string, string>();
+      capacity = Number.POSITIVE_INFINITY;
+      async get(key: string) { return this.values.get(key) ?? null; }
+      async remove(key: string) { this.values.delete(key); }
+      async set(key: string, value: string) {
+        const used = [...this.values.entries()].reduce((sum, [name, content]) => sum + (name === key ? 0 : content.length), 0);
+        if (used + value.length > this.capacity) throw new DOMException("Storage quota reached", "QuotaExceededError");
+        this.values.set(key, value);
+      }
+      get used() { return [...this.values.values()].reduce((sum, value) => sum + value.length, 0); }
+    }
+    const adapter = new BoundedStorageAdapter();
+    const service = new SaveService(adapter);
+    const state = createCareer("quota-rollover-save");
+    await service.save(1, state);
+    for (const id of ["expansion", "draft", "free-agency"]) await service.saveCheckpoint(1, id, state);
+    adapter.capacity = adapter.used + 100;
+    await service.saveCheckpoint(1, "pre-rollover-2026-27", state);
+    expect(await service.loadCheckpoint(1, "expansion")).toBeNull();
+    state.league.currentPhase = "OPTION_PHASE";
+    await service.save(1, state);
+    expect((await service.load(1))?.league.currentPhase).toBe("OPTION_PHASE");
   });
 
   it("recovers a corrupted primary revision from a verified pending write", async () => {

@@ -58,6 +58,16 @@ function assertAssetConservation(state: GameState, originalPlayerIds: Set<string
 }
 
 describe("NBA trade rules audit: salary boundaries", () => {
+  it("uses the season's growing cap for trade room", () => {
+    const scenario = salaryScenario([1_000_000], 20_000_000, 155_000_000);
+    expect(() => validateSalaryMatch(scenario.state, scenario.teamId, scenario.outgoingIds, [scenario.incomingId])).toThrow("SALARY_MATCH_FAILED");
+    const deadMoney = scenario.state.capState.deadMoney.find((entry) => entry.id === "audit-dead-money")!;
+    deadMoney.salaryBySeason["2027-28"] = deadMoney.salaryBySeason["2026-27"];
+    scenario.state.league.seasonYear = 2027;
+    scenario.state.league.seasonId = "2027-28";
+    expect(() => validateSalaryMatch(scenario.state, scenario.teamId, scenario.outgoingIds, [scenario.incomingId])).not.toThrow();
+  });
+
   it.each([
     { outgoing: 5_000_000, incoming: 10_250_000, legal: true },
     { outgoing: 5_000_000, incoming: 10_250_001, legal: false },
@@ -91,7 +101,7 @@ describe("NBA trade rules audit: salary boundaries", () => {
 
   it("rejects aggregate salary use above the second apron, while allowing one contract to cover the incoming salary", () => {
     for (const [incoming, legal] of [[8_000_000, true], [10_000_001, false]] as const) {
-      const s = salaryScenario([10_000_000, 3_000_000], incoming, FINANCE.secondApron + 1);
+      const s = salaryScenario([10_000_000, 3_000_000], incoming, FINANCE.secondApron + 5_000_000);
       if (legal) expect(() => validateSalaryMatch(s.state, s.teamId, s.outgoingIds, [s.incomingId])).not.toThrow();
       else expect(() => validateSalaryMatch(s.state, s.teamId, s.outgoingIds, [s.incomingId])).toThrow("SECOND_APRON_SALARY_MATCH_FAILED");
     }

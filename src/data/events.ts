@@ -5,22 +5,22 @@ type EventSeed = [id: string, title: string, description: string, priority?: num
 
 const seedGroups: Record<string, EventSeed[]> = {
   INJURY: [
-    ["injury_core_major_001", "核心球员受伤", "{{player_name}}受伤，预计缺阵 {{games_out}} 场。请选择如何调整首发与轮换。", 90, true],
+    ["injury_core_major_001", "核心球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。请选择如何调整首发与轮换。", 90, true],
     ["injury_recovery_001", "伤员回归", "{{player_name}}已恢复出战。请选择如何重新安排首发与轮换。", 45, true],
     ["injury_emergency_roster_001", "紧急名单", "可用球员不足，球队启用紧急名单。", 95, true],
-    ["injury_depth_test_001", "轮换球员受伤", "{{player_name}}受伤，预计缺阵 {{games_out}} 场。请选择如何调整首发与轮换。", 55, true],
+    ["injury_depth_test_001", "轮换球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。请选择如何调整首发与轮换。", 55, true],
   ],
   MORALE: [
-    ["morale_role_unhappy_001", "角色不满", "教练，我想在轮换里承担更多责任。能多给我一些上场时间吗？", 70, true],
-    ["morale_team_first_001", "团队至上", "教练，我愿意为球队打无私篮球，也希望能有稳定的出场时间。", 38],
-    ["morale_minutes_001", "上场时间诉求", "教练，我准备好了。下一场能多给我一些上场时间吗？", 62, true],
-    ["morale_veteran_voice_001", "老将发声", "教练，我还能帮助年轻球员，也希望留在轮换里。", 40],
+    ["morale_role_unhappy_001", "角色不满", "经理，我想在轮换里承担更多责任。能多给我一些上场时间吗？", 70, true],
+    ["morale_team_first_001", "团队至上", "经理，我愿意为球队打无私篮球，也希望能有稳定的出场时间。", 38],
+    ["morale_minutes_001", "上场时间诉求", "经理，我准备好了。下一场能多给我一些上场时间吗？", 62, true],
+    ["morale_veteran_voice_001", "老将发声", "经理，我还能帮助年轻球员，也希望留在轮换里。", 40],
   ],
   ROLE: [
-    ["role_starter_claim_001", "首发诉求", "教练，我觉得自己可以打首发。能让我试试吗？", 60, true],
-    ["role_sixth_man_001", "第六人定位", "教练，我想带领第二阵容，能给我更多上场时间吗？", 35],
-    ["role_rookie_growth_001", "新秀角色升级", "教练，我已经适应联盟节奏了。能多给我一些机会吗？", 42],
-    ["role_veteran_reduced_001", "老将角色调整", "教练，我知道轮换在变化，但我还想继续为球队出场。", 58, true],
+    ["role_starter_claim_001", "首发诉求", "经理，我觉得自己可以打首发。能让我试试吗？", 60, true],
+    ["role_sixth_man_001", "第六人定位", "经理，我想带领第二阵容，能给我更多上场时间吗？", 35],
+    ["role_rookie_growth_001", "新秀角色升级", "经理，我已经适应联盟节奏了。能多给我一些机会吗？", 42],
+    ["role_veteran_reduced_001", "老将角色调整", "经理，我知道轮换在变化，但我还想继续为球队出场。", 58, true],
   ],
   BREAKOUT: [
     ["breakout_scorer_001", "得分爆发", "{{player_name}} 打出赛季代表作。", 45],
@@ -37,7 +37,7 @@ const seedGroups: Record<string, EventSeed[]> = {
   TRADE: [
     ["trade_market_interest_001", "市场询价", "多支球队正在询问你的轮换球员。", 65, true],
     ["trade_star_available_001", "球星进入市场", "联盟交易市场出现重量级目标。", 72, true, "LEAGUE"],
-    ["trade_deadline_001", "交易截止日", "交易窗口即将关闭。", 92, true],
+    ["trade_deadline_001", "交易截止日", "今天仍可交易；模拟完今天的比赛后，交易窗口关闭。", 92, true],
     ["trade_ai_completed_001", "联盟交易", "两支电脑球队完成交易。", 24, false, "LEAGUE"],
   ],
   STREAK: [

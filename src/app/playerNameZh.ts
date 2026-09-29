@@ -1,5 +1,6 @@
 import type { Player } from "../game/state/types";
 import { currentPlayerNameZh, nbaPlayerIdFromCanonicalId } from "../data/currentPlayerNamesZh";
+import { RETIRED_LEGEND_NAMES_ZH } from "../data/retiredLegendTemplates";
 
 const COMMON_NAME_PARTS: Record<string, string> = {
   aaron: "阿龙", adam: "亚当", adams: "亚当斯", adebayo: "阿德巴约", aiden: "艾登", al: "艾尔", alex: "亚历克斯",
@@ -160,6 +161,7 @@ export function playerNameZh(name: string, canonicalPlayerId?: string): string {
   const officialName = currentPlayerNameZh(nbaPlayerIdFromCanonicalId(canonicalPlayerId));
   if (officialName) return officialName;
   const normalizedName = name.trim().toLowerCase().replace(/\s+/gu, " ");
+  if (RETIRED_LEGEND_NAMES_ZH[normalizedName]) return RETIRED_LEGEND_NAMES_ZH[normalizedName];
   if (FULL_NAME_OVERRIDES[normalizedName]) return FULL_NAME_OVERRIDES[normalizedName];
   const parts = name.match(/[A-Za-z]+/gu) ?? [];
   if (parts.length === 0) return "无名球员";

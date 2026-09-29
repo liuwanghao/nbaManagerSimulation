@@ -1,0 +1,20 @@
+[
+  {
+    "size": 1500000,
+    "ok": true
+  },
+  {
+    "size": 2000000,
+    "ok": true
+  },
+  {
+    "size": 2500000,
+    "ok": false,
+    "error": "QuotaExceededError"
+  },
+  {
+    "size": 3000000,
+    "ok": false,
+    "error": "QuotaExceededError"
+  }
+]

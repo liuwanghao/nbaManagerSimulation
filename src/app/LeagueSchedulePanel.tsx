@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { GameState, Team } from "../game/state/types";
+import type { GameState, ScheduleGame, Team } from "../game/state/types";
 
 export function nearestScheduleDate(dates: string[], preferred: string): string {
   return dates.find((date) => date >= preferred) ?? dates.at(-1) ?? "";
@@ -17,15 +17,16 @@ function dateLabel(date: string): string {
   return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日 · ${weekday}`;
 }
 
-export function LeagueSchedulePanel({ state, currentDate }: {
+export function LeagueSchedulePanel({ state, currentDate, schedule = state.schedule }: {
   state: GameState;
   currentDate: string;
+  schedule?: ScheduleGame[];
 }) {
   const [selectedDate, setSelectedDate] = useState(currentDate);
-  const dates = useMemo(() => [...new Set(state.schedule.map((game) => game.date))].sort(), [state.schedule]);
+  const dates = useMemo(() => [...new Set(schedule.map((game) => game.date))].sort(), [schedule]);
   const date = dates.includes(selectedDate) ? selectedDate : nearestScheduleDate(dates, selectedDate);
   const dateIndex = dates.indexOf(date);
-  const games = state.schedule.filter((game) => game.date === date)
+  const games = schedule.filter((game) => game.date === date)
     .sort((left, right) => {
       const leftMine = left.homeTeamId === state.userTeamId || left.awayTeamId === state.userTeamId;
       const rightMine = right.homeTeamId === state.userTeamId || right.awayTeamId === state.userTeamId;

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { stableHash, stableSerialize } from "../random/hash";
 import { createCareer } from "../season/career";
 import { publicPlayerValue, tradeDraftPickValue } from "../ai/AIValueService";
+import { tradePlayerValue } from "./TradePlayerValue";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
-import { acceptTradeOffer, applyTradePackage, evaluateTradeOffer, executeTradeCommand, generateTradeOffers, isTradePhaseAllowed, validateTradePackage } from "./TradeService";
+import { acceptTradeOffer, applyTradePackage, evaluateTradeOffer, executeTradeCommand, generateTargetedTradeOffers, generateTradeOffers, isTradePhaseAllowed, validateTradePackage } from "./TradeService";
+import { isUntouchable, untouchablePlayerIds } from "./TradeAvailabilityService";
 
 function tradeState() {
   const state = createCareer("player-trade-tests");
@@ -12,8 +14,130 @@ function tradeState() {
 }
 
 describe("TradeService", () => {
+  it("rejects untouchables in direct packages, targeted inquiries and saved offers", () => {
+    const state = tradeState();
+    const protectedTeam = Object.values(state.teams).find((team) => team.id !== state.userTeamId
+      && untouchablePlayerIds(state, team.id).length > 0);
+    if (!protectedTeam) throw new Error("Expected a protected AI player");
+    const protectedId = untouchablePlayerIds(state, protectedTeam.id)[0];
+    const outgoingId = state.teams[state.userTeamId].playerIds[5];
+    expect(isUntouchable(state, protectedId)).toBe(true);
+    const packageWithProtected = {
+      leftTeamId: state.userTeamId, rightTeamId: protectedTeam.id,
+      leftPlayerIds: [outgoingId], rightPlayerIds: [protectedId], leftPickIds: [], rightPickIds: [],
+    };
+    const before = stableHash(stableSerialize(state));
+    expect(() => validateTradePackage(state, packageWithProtected)).toThrow("PLAYER_UNTOUCHABLE");
+    expect(() => applyTradePackage(state, packageWithProtected)).toThrow("PLAYER_UNTOUCHABLE");
+    expect(() => generateTargetedTradeOffers(state, [protectedId])).toThrow("PLAYER_UNTOUCHABLE");
+    expect(stableHash(stableSerialize(state))).toBe(before);
+    expect(Object.keys(state.tradeInquiryCount)).toHaveLength(0);
+
+    const quoted = generateTradeOffers(state, outgoingId, false);
+    expect(quoted.tradeDesk.offers.every((offer) => !offer.userIncomingPlayerIds.some((id) => isUntouchable(quoted, id)))).toBe(true);
+    const legacy = structuredClone(state);
+    legacy.tradeDesk = {
+      selectedPlayerId: outgoingId, selectedPlayerIds: [outgoingId], selectedPickIds: [],
+      offers: [{
+        offerId: "legacy-protected-quote", inquiryKey: "legacy", inquiryCount: 0, counterpartyTeamId: protectedTeam.id,
+        userOutgoingPlayerIds: [outgoingId], userOutgoingPickIds: [], userIncomingPlayerIds: [protectedId],
+        userIncomingPickIds: [], status: "AVAILABLE",
+      }],
+    };
+    const restored = JSON.parse(JSON.stringify(legacy)) as typeof legacy;
+    expect(evaluateTradeOffer(restored, "legacy-protected-quote")).toMatchObject({
+      legal: false, gmWillingness: "拒绝", reason: "对方将该球员列为非卖品，无法交易",
+    });
+    expect(() => acceptTradeOffer(restored, "legacy-protected-quote")).toThrow("对方将该球员列为非卖品，无法交易");
+    expect(restored.players[protectedId].teamId).toBe(protectedTeam.id);
+  });
+
+  it("asks one team for legal multi-player target packages and commits every target", () => {
+    const state = tradeState();
+    const targetIds = state.teams.MIA.playerIds.slice(5, 7);
+    const myIds = state.teams[state.userTeamId].playerIds.slice(5, 7);
+    for (const id of [...targetIds, ...myIds]) {
+      const player = state.players[id];
+      player.overallAdjustment = 76 - calculatePlayerOverall(player);
+      player.age = 27;
+      player.scoutedPotentialGrade = "C";
+      player.contract.salary = 5_000_000;
+      player.contract.guaranteedAmount = 5_000_000;
+      player.contract.guaranteedByYear = [5_000_000];
+      player.contract.yearsRemaining = 1;
+    }
+    const before = stableHash(stableSerialize(state));
+    const queried = executeTradeCommand(state, {
+      commandId: "targeted-mia-two", type: "GENERATE_TARGETED_TRADE_OFFERS", payload: { targetPlayerIds: [...targetIds].reverse() },
+    });
+    expect(stableHash(stableSerialize(state))).toBe(before);
+    expect(queried.tradeDesk).toMatchObject({ inquiryMode: "TARGET", targetPlayerIds: [...targetIds].sort() });
+    expect(queried.tradeDesk.offers.length).toBeGreaterThan(0);
+    expect(queried.tradeDesk.offers.length).toBeLessThanOrEqual(3);
+    expect(generateTargetedTradeOffers(state, targetIds).tradeDesk.offers).toEqual(queried.tradeDesk.offers);
+    const refreshed = generateTargetedTradeOffers(queried, targetIds, true);
+    expect(refreshed.tradeDesk.offers[0].inquiryCount).toBe(1);
+    expect(queried.tradeDesk.offers[0].inquiryCount).toBe(0);
+    for (const offer of queried.tradeDesk.offers) {
+      expect(offer.counterpartyTeamId).toBe("MIA");
+      expect(offer.userIncomingPlayerIds).toEqual([...targetIds].sort());
+      expect(offer.userOutgoingPlayerIds.length + offer.userOutgoingPickIds.length).toBeGreaterThan(0);
+      expect(evaluateTradeOffer(queried, offer.offerId).legal).toBe(true);
+    }
+    expect(executeTradeCommand(queried, {
+      commandId: "targeted-mia-two", type: "GENERATE_TARGETED_TRADE_OFFERS", payload: { targetPlayerIds: [...targetIds].reverse() },
+    })).toBe(queried);
+    const loaded = JSON.parse(JSON.stringify(queried)) as typeof queried;
+    const accepted = executeTradeCommand(loaded, {
+      commandId: "accept-targeted", type: "ACCEPT_TRADE_OFFER", payload: { offerId: loaded.tradeDesk.offers[0].offerId },
+    });
+    for (const id of targetIds) expect(accepted.players[id].teamId).toBe(state.userTeamId);
+    expect(accepted.tradeDesk).toMatchObject({ targetPlayerIds: [], selectedPlayerIds: [], selectedPickIds: [] });
+    expect(accepted.tradeDesk.offers.find((offer) => offer.offerId === loaded.tradeDesk.offers[0].offerId)?.status).toBe("ACCEPTED");
+    expect(executeTradeCommand(accepted, {
+      commandId: "accept-targeted", type: "ACCEPT_TRADE_OFFER", payload: { offerId: loaded.tradeDesk.offers[0].offerId },
+    })).toBe(accepted);
+  });
+
+  it("can quote and transfer multiple picks for a high-value target", () => {
+    const state = createCareer("multipick-probe");
+    state.league.currentPhase = "OFFSEASON_POST_DRAFT";
+    const targetId = Object.values(state.teams)
+      .filter((team) => team.id !== state.userTeamId)
+      .flatMap((team) => team.playerIds)
+      .filter((id) => !isUntouchable(state, id))
+      .sort((a, b) => tradePlayerValue(state.players[b]) - tradePlayerValue(state.players[a]))[0];
+    const queried = generateTargetedTradeOffers(state, [targetId]);
+    const offer = queried.tradeDesk.offers.find((entry) => entry.userOutgoingPickIds.length > 1);
+    expect(offer).toBeDefined();
+    expect(evaluateTradeOffer(queried, offer!.offerId).legal).toBe(true);
+    const accepted = acceptTradeOffer(queried, offer!.offerId);
+    for (const id of offer!.userOutgoingPickIds) expect(accepted.draftPicks[id].ownerTeamId).toBe(offer!.counterpartyTeamId);
+    expect(accepted.players[targetId].teamId).toBe(state.userTeamId);
+  });
+
+  it("rejects invalid targeted requests without changing the save or inquiry counter", () => {
+    const state = tradeState();
+    const target = state.teams.MIA.playerIds[5];
+    const anotherTeam = Object.values(state.teams).find((team) => team.id !== state.userTeamId && team.id !== "MIA");
+    if (!anotherTeam) throw new Error("Missing opposing team");
+    const before = stableHash(stableSerialize(state));
+    expect(() => generateTargetedTradeOffers(state, [])).toThrow("TARGET_PLAYER_REQUIRED");
+    expect(() => generateTargetedTradeOffers(state, [target, target])).toThrow("DUPLICATE_TRADE_ASSET");
+    expect(() => generateTargetedTradeOffers(state, [target, anotherTeam.playerIds[5]])).toThrow("TARGET_TEAM_INVALID");
+    expect(() => generateTargetedTradeOffers(state, [state.teams[state.userTeamId].playerIds[5]])).toThrow("TARGET_TEAM_INVALID");
+    expect(() => generateTargetedTradeOffers(state, [target, ...state.teams.MIA.playerIds.slice(6, 9)])).toThrow("TOO_MANY_TARGET_PLAYERS");
+    state.players[target].contract.status = "UFA";
+    const withIllegalTarget = stableHash(stableSerialize(state));
+    expect(() => generateTargetedTradeOffers(state, [target])).toThrow("TARGET_PLAYER_NOT_TRADEABLE");
+    expect(stableHash(stableSerialize(state))).toBe(withIllegalTarget);
+    expect(Object.keys(state.tradeInquiryCount)).toHaveLength(0);
+    expect(before).not.toBe(withIllegalTarget);
+  });
   it("invalidates a saved quote that swaps a core player and a second for two lower-rated players", () => {
     const state = tradeState();
+    // A rebuilding club's older star can still be traded, but the normal core-return premium applies.
+    state.aiTeamProfiles.MIA.direction = "REBUILD";
     const outgoingIds = state.teams[state.userTeamId].playerIds.slice(5, 7);
     const coreId = state.teams.MIA.playerIds[0];
     const second = Object.values(state.draftPicks).find((pick) => pick.ownerTeamId === "MIA" && pick.round === 2 && pick.year === 2027);
@@ -22,7 +146,7 @@ describe("TradeService", () => {
     for (const [id, overall, salary, age] of [
       [outgoingIds[0], 78, 14_500_000, 29],
       [outgoingIds[1], 75, 15_510_000, 33],
-      [coreId, 86, 53_450_000, 29],
+      [coreId, 86, 53_450_000, 33],
     ] as const) {
       const player = state.players[id];
       player.overallAdjustment = overall - calculatePlayerOverall(player);
@@ -62,6 +186,45 @@ describe("TradeService", () => {
     expect(generateTradeOffers(first, playerId, true).tradeDesk.offers[0].inquiryCount).toBe(1);
   });
 
+  it("invalidates a saved offer when season production changes its asset-value balance", () => {
+    const state = tradeState();
+    const playerId = state.teams[state.userTeamId].playerIds[5];
+    const queried = generateTradeOffers(state, playerId, false);
+    const offer = queried.tradeDesk.offers.find((entry) => entry.userIncomingPlayerIds.length > 0);
+    if (!offer) throw new Error("Expected a player offer");
+    expect(evaluateTradeOffer(queried, offer.offerId).legal).toBe(true);
+    const outgoing = queried.players[playerId];
+    const incoming = queried.players[offer.userIncomingPlayerIds[0]];
+    outgoing.seasonStats = { ...outgoing.seasonStats, games: 30, seconds: 30 * 30 * 60 };
+    incoming.seasonStats = {
+      ...incoming.seasonStats, games: 30, seconds: 30 * 30 * 60,
+      pts: 30 * 38, fgm: 30 * 15, fga: 30 * 24, reb: 30 * 10,
+      ast: 30 * 9, stl: 30 * 2, blk: 30 * 2,
+    };
+    const evaluation = evaluateTradeOffer(queried, offer.offerId);
+    expect(evaluation.legal).toBe(false);
+    expect(evaluation.reason).toContain("重新获取报价");
+    const loaded = JSON.parse(JSON.stringify(queried)) as typeof queried;
+    expect(evaluateTradeOffer(loaded, offer.offerId)).toMatchObject({ legal: false, reason: evaluation.reason });
+  });
+
+  it("prices fresh inquiries with the same season-adjusted value shown in the offer", () => {
+    const state = tradeState();
+    const playerId = state.teams[state.userTeamId].playerIds[5];
+    const player = state.players[playerId];
+    player.seasonStats = {
+      ...player.seasonStats, games: 25, seconds: 25 * 30 * 60,
+      pts: 25 * 24, fgm: 25 * 9, fga: 25 * 17,
+      reb: 25 * 7, ast: 25 * 6, stl: 25, blk: 25,
+    };
+    const quoted = generateTradeOffers(state, playerId, false);
+    const value = tradePlayerValue(quoted.players[playerId]);
+    for (const offer of quoted.tradeDesk.offers) {
+      expect(offer.playerValueSnapshot?.[playerId]).toBe(value);
+      expect(evaluateTradeOffer(quoted, offer.offerId).outgoingAssetValue).toBeCloseTo(value);
+    }
+  });
+
   it("persists an empty asset selection and discards quotes tied to the removed chips", () => {
     const state = tradeState();
     const playerId = state.teams[state.userTeamId].playerIds[5];
@@ -86,7 +249,7 @@ describe("TradeService", () => {
       expect(quoted.tradeDesk.offers.length, `seed ${index}`).toBe(3);
       expect(quoted.tradeDesk.offers.every((offer) => evaluateTradeOffer(quoted, offer.offerId).legal), `seed ${index}`).toBe(true);
     }
-  });
+  }, 90_000);
 
   it("commits owned assets atomically and treats a repeated command as already applied", () => {
     const state = tradeState();

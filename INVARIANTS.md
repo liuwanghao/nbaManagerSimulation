@@ -8,7 +8,7 @@
 | INV-002 | 名单内球员必须存在，且其 `teamId` 指向该队；若 `teamId` 指向正常球队，必须恰好在该队名单。 | `src/game/state/invariants.test.ts`（已运行） |
 | INV-003 | `RETIRED` 球员不能留在任何正常球队名单。 | `src/game/state/invariants.test.ts`（已运行）；`src/game/development/PlayerDevelopmentService.test.ts` |
 | INV-004 | 球员年龄、合同薪资及帽表每个金额必须是有限数；薪资不得为负。 | `src/game/state/invariants.test.ts`（已运行） |
-| INV-005 | 帽表总额等于现役薪资、死钱、cap hold、有效报价预留和空位占位之和；帽下空间等于配置工资帽减总额。允许负空间。 | `src/game/state/invariants.test.ts`（已运行）；`src/game/cap/CapSheetService.test.ts` |
+| INV-005 | 帽表总额等于现役薪资、死钱、cap hold、有效报价预留、空位占位及当季最低工资差额之和；帽下空间等于当季工资帽减总额。允许负空间。 | `src/game/state/invariants.test.ts`（已运行）；`src/game/cap/CapSheetService.test.ts` |
 | INV-006 | 同一赛季赛程 `game.id` 唯一；比赛双方存在且不能相同。 | `src/game/state/invariants.test.ts`（已运行）；`src/game/schedule/schedule.test.ts` |
 | INV-007 | `FINAL` 比赛双方得分必须确定、有限且不平；胜队必须是高分队。 | `src/game/state/invariants.test.ts`（已运行）；`src/game/simulation/simulation.test.ts` |
 | INV-008 | 一场常规赛只能结算一次；再次请求相同日期不得再添结果或改动战绩。 | `src/game/state/invariants.test.ts`（已运行） |
@@ -25,11 +25,13 @@
 | INV-019 | 同赛季只能记录一个总冠军；季后赛一轮仅一个晋级者，四胜后系列赛结束。 | `src/game/state/invariants.test.ts`（冠军唯一）；`src/game/season/career.test.ts`（15 轮逐场计数） |
 | INV-020 | 交易不能包含重复球员或签位、不能转移非己资产；同一命令 ID 重试不重复过户。 | `src/game/trade/NBACompliance.test.ts`；`src/game/trade/TradeService.test.ts` |
 | INV-021 | 一笔交易同时转移两队球员、签位并保持资产唯一归属；失败不产生半提交。 | `src/game/trade/NBACompliance.test.ts`；`src/game/trade/TradeService.test.ts` |
+| INV-021A | AI 球队当前被判定为非卖品的球员不能通过任何交易命令过户；绕过 UI、旧报价重放和 AI 自动交易都须受最终交易校验约束。 | `src/game/trade/TradeAvailabilityService.test.ts`；`src/game/trade/TradeService.test.ts`；`src/game/trade/AITradeService.test.ts` |
 | INV-022 | 同一球员同一市场窗口，每队同时最多一份 `ACTIVE` 报价；撤回后可留下历史记录并重新报价。球员不能完成两笔同时生效的签约，失效报价的帽预留必须释放。 | `src/game/freeAgency/FreeAgencyService.test.ts` |
 | INV-023 | 自由市场命令重复提交不能重复签约/扣帽；不合法报价不改变原状态。 | `src/game/freeAgency/FreeAgencyService.test.ts` |
 | INV-024 | 玩家需决策的事件效果仅执行一次；同一事件选择命令重试不重复影响数值。 | `src/game/events/EventService.test.ts` |
 | INV-025 | 存档同版本往返后关键状态与保存前一致；revision 单调增长，损坏存档不能静默当有效档载入。旧版迁移允许有明确记录的字段变化。 | `src/storage/SaveService.test.ts` |
 | INV-026 | 同一种子整季赛程、模拟、选秀及成长结果可重放。 | `src/game/schedule/schedule.test.ts`；`src/game/season/career.test.ts`；`src/game/draft/DraftService.test.ts`；`src/game/development/PlayerDevelopmentService.test.ts` |
+| INV-027 | 自由球员当前要价必须有限，且不低于当季底薪；同一球员无合格报价天数不能为负，合格报价存在时不增长；要价变化后活跃报价效用与新要价一致，存档恢复后保持。 | `src/game/freeAgency/FreeAgentDemand.test.ts` |
 
 ## 测试边界
 

@@ -3,6 +3,8 @@ import { stableHash, stableSerialize } from "../random/hash";
 import { createCareer } from "../season/career";
 import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { getFreeAgents } from "../freeAgency/FreeAgencyService";
+import { getCapSheet } from "../cap/CapSheetService";
+import { getSeasonFinanceConfig } from "../../config/leagueFinance";
 import { lockOpeningRoster, setTeamRole, setTrainingFocus, waivePlayer } from "./RosterService";
 
 describe("RosterService", () => {
@@ -33,6 +35,26 @@ describe("RosterService", () => {
     expect(locked.teamNotifications).toEqual([]);
   });
 
+  it("transfers Bird rights on minimum-salary free-agent fills and keeps them for the original team", () => {
+    for (const originalTeamIsUser of [false, true]) {
+      let state = createCareer(`minimum-bird-${originalTeamIsUser}`);
+      state.league.currentPhase = "PRESEASON";
+      while (state.teams[state.userTeamId].playerIds.length >= 14) {
+        state = waivePlayer(state, state.teams[state.userTeamId].playerIds[0]);
+      }
+      const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+      if (!player) throw new Error("Free agent required for roster fill");
+      const originalBirdTeam = originalTeamIsUser ? state.userTeamId
+        : Object.keys(state.teams).find((teamId) => teamId !== state.userTeamId)!;
+      player.birdTeamId = originalBirdTeam;
+      player.birdYears = 4;
+      const opened = lockOpeningRoster(state, true);
+      expect(opened.players[player.id]).toMatchObject({
+        teamId: state.userTeamId, birdTeamId: state.userTeamId, birdYears: originalTeamIsUser ? 4 : 1,
+      });
+    }
+  });
+
   it("does not queue the expansion opening screen in a later season", () => {
     const state = createCareer("later-season-opening");
     state.league.currentPhase = "PRESEASON";
@@ -42,6 +64,22 @@ describe("RosterService", () => {
     const locked = lockOpeningRoster(state, true);
     expect(locked.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
     expect(locked.eventState.queue.some((event) => event.definitionId === "franchise_season_opening_001")).toBe(false);
+  });
+
+  it("records a season-specific salary-floor shortfall without blocking opening day", () => {
+    const state = createCareer("opening-salary-floor");
+    state.league.currentPhase = "PRESEASON";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    const teamId = state.userTeamId;
+    for (const playerId of state.teams[teamId].playerIds) state.players[playerId].contract.salary = 1_000_000;
+    const opened = lockOpeningRoster(state, true);
+    const payroll = getCapSheet(state, teamId).activeContractSalary + getCapSheet(state, teamId).deadMoney;
+    const expected = Math.max(0, getSeasonFinanceConfig(2027).minimumTeamSalary - payroll);
+    expect(opened.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
+    expect(opened.capState.salaryFloorShortfalls).toContainEqual({ teamId, seasonId: "2027-28", amount: expected });
+    expect(getCapSheet(opened, teamId).salaryFloorShortfall).toBe(expected);
+    expect(state.capState.salaryFloorShortfalls).toBeUndefined();
   });
 
   it("welcomes an expansion franchise once when its first regular season opens", () => {

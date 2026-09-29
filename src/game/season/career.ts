@@ -9,12 +9,12 @@ import { runAiTradeEvaluation } from "../trade/AITradeService";
 import { advanceFreeAgencyDay } from "../freeAgency/FreeAgencyService";
 import { finalizeOptionPhase, resolveTeamOption, rolloverLeagueYear, shouldPickUpTeamOption } from "../contracts/ContractLifecycleService";
 import { lockOpeningRoster, waivePlayer } from "../roster/RosterService";
-import { advanceRookieDraftAiPick, draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../draft/DraftService";
+import { draftPlayer, executeDraftCommand, fastForwardRookieDraft, getAvailableDraftProspects, prepareRookieDraft } from "../draft/DraftService";
 import { publicPlayerValue } from "../ai/AIValueService";
 import { finalizeFinalsAwards, finalizeRegularSeasonAwards } from "../awards/AwardsService";
 import { generateSchedule, validateSchedule } from "../schedule/schedule";
 import { simulateGame } from "../simulation/simulateGame";
-import { advanceInjuriesAfterGames, applyInjuryEvents, availablePlayerCount } from "../simulation/injuries";
+import { advanceInjuriesByDays, applyInjuryEvents, availablePlayerCount, recordInjuryMissedGames } from "../simulation/injuries";
 import {
   chargeEmergencySalariesAtRosterLock,
   fillEmergencyRoster,
@@ -41,6 +41,7 @@ import {
   type GameState,
   type InjuryEvent,
   type PlayerBoxScore,
+  type PostseasonSeries,
   type ScheduleGame,
   type StandingRecord,
 } from "../state/types";
@@ -210,7 +211,8 @@ export function simulateLeagueDay(
     commitGameResult(state, game, result);
     injuryEvents.push(...(result.injuryEvents ?? []));
   }
-  advanceInjuriesAfterGames(state, participatingTeamIds, new Set());
+  recordInjuryMissedGames(state, participatingTeamIds);
+  advanceInjuriesByDays(state, 1);
   applyInjuryEvents(state, injuryEvents);
   state.calendar.currentDateIndex = Math.min(state.calendar.finalDateIndex, dateIndex + 1);
   let next = state;
@@ -266,8 +268,9 @@ function postseasonGame(
   label: string,
   gameNumber: number,
   dateOffset: number,
+  scheduledGame?: ScheduleGame,
 ): GameResult {
-  const game: ScheduleGame = {
+  const game: ScheduleGame = scheduledGame ?? {
     id: stableHash(state.league.seasonId, "postseason", label, homeTeamId, awayTeamId, gameNumber),
     seasonId: state.league.seasonId,
     dateIndex: state.calendar.finalDateIndex + dateOffset,
@@ -277,6 +280,12 @@ function postseasonGame(
     matchupOrdinal: gameNumber,
     status: "SCHEDULED",
   };
+  state.injuryState.lastProcessedDateIndexByTeam ??= {};
+  for (const teamId of [homeTeamId, awayTeamId]) {
+    const previousDate = state.injuryState.lastProcessedDateIndexByTeam[teamId] ?? state.calendar.finalDateIndex;
+    advanceInjuriesByDays(state, Math.max(0, game.dateIndex - previousDate), [teamId]);
+    state.injuryState.lastProcessedDateIndexByTeam[teamId] = game.dateIndex;
+  }
   prepareEmergencyRostersForDay(state, [homeTeamId, awayTeamId]);
   if (state.injuryState.pendingEmergencyRoster?.teamId === state.userTeamId) fillEmergencyRoster(state, state.userTeamId);
   for (const teamId of [homeTeamId, awayTeamId]) {
@@ -289,7 +298,7 @@ function postseasonGame(
   applyFanSupportAfterGame(state, result);
   result.homeBoxScore?.playerStats.forEach((stat) => aggregatePlayerPostseasonGame(state, stat));
   result.awayBoxScore?.playerStats.forEach((stat) => aggregatePlayerPostseasonGame(state, stat));
-  advanceInjuriesAfterGames(state, [homeTeamId, awayTeamId], new Set());
+  recordInjuryMissedGames(state, [homeTeamId, awayTeamId]);
   applyInjuryEvents(state, result.injuryEvents ?? []);
   return result;
 }
@@ -371,7 +380,233 @@ function archiveCompletedSeason(
   else state.history.seasons.push(archive);
 }
 
+const postseasonRoundStart = { PLAY_IN: 2, R1: 10, SF: 30, CF: 50, FINALS: 70 } as const;
+const postseasonHomePattern = [0, 0, 1, 1, 0, 1, 0] as const;
+
+function postseasonDate(state: GameState, dateIndex: number): string {
+  const opening = new Date(`${state.calendar.openingDate}T00:00:00.000Z`);
+  opening.setUTCDate(opening.getUTCDate() + dateIndex);
+  return opening.toISOString().slice(0, 10);
+}
+
+function scheduleSeriesGame(state: GameState, series: PostseasonSeries, dateIndex: number): void {
+  const number = series.gameIds.length + 1;
+  const home = postseasonHomePattern[number - 1] === 1 ? series.teamBId : series.teamAId;
+  const away = home === series.teamAId ? series.teamBId : series.teamAId;
+  const game: ScheduleGame = {
+    id: stableHash(state.league.seasonId, "postseason-interactive", series.id, number),
+    seasonId: state.league.seasonId,
+    dateIndex,
+    date: postseasonDate(state, dateIndex),
+    homeTeamId: home,
+    awayTeamId: away,
+    matchupOrdinal: number,
+    status: "SCHEDULED",
+  };
+  state.postseason!.schedule.push(game);
+  state.postseason!.schedule.sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id));
+  series.gameIds.push(game.id);
+}
+
+function addPostseasonSeries(
+  state: GameState,
+  id: string,
+  conference: PostseasonSeries["conference"],
+  round: PostseasonSeries["round"],
+  teamAId: string,
+  teamBId: string,
+  dateIndex: number,
+): void {
+  const series: PostseasonSeries = {
+    id, conference, round, teamAId, teamBId,
+    winsA: 0, winsB: 0, bestOf: round === "PLAY_IN" ? 1 : 7, gameIds: [],
+  };
+  state.postseason!.series.push(series);
+  scheduleSeriesGame(state, series, dateIndex);
+}
+
+function seriesById(state: GameState, id: string): PostseasonSeries | undefined {
+  return state.postseason?.series.find((series) => series.id === id);
+}
+
+function higherSeedFirst(state: GameState, conference: "WEST" | "EAST", left: string, right: string): [string, string] {
+  const seeds = state.postseason!.seeds[conference];
+  return seeds.indexOf(left) < seeds.indexOf(right) ? [left, right] : [right, left];
+}
+
+function addConferenceSeries(state: GameState, conference: "WEST" | "EAST", round: "SF" | "CF", suffix: string, left: string, right: string): void {
+  const [higher, lower] = higherSeedFirst(state, conference, left, right);
+  addPostseasonSeries(state, `${conference}-${round === "CF" ? "FINAL" : `SF-${suffix}`}`, conference, round, higher, lower, state.calendar.finalDateIndex + postseasonRoundStart[round]);
+}
+
+function advancePostseasonBracket(state: GameState): void {
+  const postseason = state.postseason!;
+  for (const conference of ["WEST", "EAST"] as const) {
+    const a = seriesById(state, `${conference}-PLAYIN-A`);
+    const b = seriesById(state, `${conference}-PLAYIN-B`);
+    if (a?.winnerTeamId && b?.winnerTeamId && !seriesById(state, `${conference}-PLAYIN-C`)) {
+      const loserA = a.winnerTeamId === a.teamAId ? a.teamBId : a.teamAId;
+      postseason.sevenEightLoserTeamIds.push(loserA);
+      postseason.seeds[conference][6] = a.winnerTeamId;
+      addPostseasonSeries(state, `${conference}-PLAYIN-C`, conference, "PLAY_IN", loserA, b.winnerTeamId, state.calendar.finalDateIndex + 5);
+    }
+    const c = seriesById(state, `${conference}-PLAYIN-C`);
+    if (c?.winnerTeamId) postseason.seeds[conference][7] = c.winnerTeamId;
+  }
+
+  if (["WEST", "EAST"].every((conference) => Boolean(seriesById(state, `${conference}-PLAYIN-C`)?.winnerTeamId))
+    && !seriesById(state, "WEST-R1-0")) {
+    const pairs: Array<[number, number]> = [[0, 7], [3, 4], [1, 6], [2, 5]];
+    for (const conference of ["WEST", "EAST"] as const) {
+      pairs.forEach(([higher, lower], index) => addPostseasonSeries(
+        state, `${conference}-R1-${index}`, conference, "R1", postseason.seeds[conference][higher], postseason.seeds[conference][lower],
+        state.calendar.finalDateIndex + postseasonRoundStart.R1,
+      ));
+    }
+    state.league.currentPhase = "PLAYOFFS";
+  }
+
+  if (postseason.series.filter((series) => series.round === "R1").length === 8
+    && postseason.series.filter((series) => series.round === "R1").every((series) => series.winnerTeamId)
+    && !seriesById(state, "WEST-SF-A")) {
+    for (const conference of ["WEST", "EAST"] as const) {
+      addConferenceSeries(state, conference, "SF", "A", seriesById(state, `${conference}-R1-0`)!.winnerTeamId!, seriesById(state, `${conference}-R1-1`)!.winnerTeamId!);
+      addConferenceSeries(state, conference, "SF", "B", seriesById(state, `${conference}-R1-2`)!.winnerTeamId!, seriesById(state, `${conference}-R1-3`)!.winnerTeamId!);
+    }
+  }
+
+  if (postseason.series.filter((series) => series.round === "SF").length === 4
+    && postseason.series.filter((series) => series.round === "SF").every((series) => series.winnerTeamId)
+    && !seriesById(state, "WEST-FINAL")) {
+    for (const conference of ["WEST", "EAST"] as const) {
+      addConferenceSeries(state, conference, "CF", "", seriesById(state, `${conference}-SF-A`)!.winnerTeamId!, seriesById(state, `${conference}-SF-B`)!.winnerTeamId!);
+    }
+  }
+
+  const westChampion = seriesById(state, "WEST-FINAL")?.winnerTeamId;
+  const eastChampion = seriesById(state, "EAST-FINAL")?.winnerTeamId;
+  if (westChampion && eastChampion && !seriesById(state, "FINALS")) {
+    const westRecord = state.standings[westChampion];
+    const eastRecord = state.standings[eastChampion];
+    const westHasHome = westRecord.wins > eastRecord.wins
+      || (westRecord.wins === eastRecord.wins && westRecord.pointsFor - westRecord.pointsAgainst >= eastRecord.pointsFor - eastRecord.pointsAgainst);
+    addPostseasonSeries(state, "FINALS", "FINALS", "FINALS", westHasHome ? westChampion : eastChampion, westHasHome ? eastChampion : westChampion, state.calendar.finalDateIndex + postseasonRoundStart.FINALS);
+  }
+}
+
+export function isUserPostseasonQualified(state: GameState): boolean {
+  const conference = state.teams[state.userTeamId]?.conference;
+  if (!conference) return false;
+  return resolveConferenceStandings(conference, state.standings, state.teams, state.seeds.seasonSeed)
+    .slice(0, 10).some((record) => record.teamId === state.userTeamId);
+}
+
+export function enterPostseason(input: GameState): GameState {
+  assertPhaseAllowed(input, "Enter postseason", ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"]);
+  if (input.schedule.some((game) => game.status !== "FINAL")) throw new Error("REGULAR_SEASON_NOT_COMPLETE");
+  if (!isUserPostseasonQualified(input)) throw new Error("USER_NOT_POSTSEASON_QUALIFIED");
+  const state = finalizeRegularSeasonAwards(input);
+  const west = resolveConferenceStandings("WEST", state.standings, state.teams, state.seeds.seasonSeed);
+  const east = resolveConferenceStandings("EAST", state.standings, state.teams, state.seeds.seasonSeed);
+  state.postseason = {
+    seasonId: state.league.seasonId,
+    schedule: [], gameDetails: {}, series: [],
+    seeds: { WEST: west.slice(0, 10).map((record) => record.teamId), EAST: east.slice(0, 10).map((record) => record.teamId) },
+    sevenEightLoserTeamIds: [],
+  };
+  for (const conference of ["WEST", "EAST"] as const) {
+    const ids = state.postseason.seeds[conference];
+    addPostseasonSeries(state, `${conference}-PLAYIN-A`, conference, "PLAY_IN", ids[6], ids[7], state.calendar.finalDateIndex + postseasonRoundStart.PLAY_IN);
+    addPostseasonSeries(state, `${conference}-PLAYIN-B`, conference, "PLAY_IN", ids[8], ids[9], state.calendar.finalDateIndex + postseasonRoundStart.PLAY_IN);
+  }
+  state.league.currentPhase = "PLAY_IN";
+  return state;
+}
+
+function finalizeInteractivePostseason(state: GameState): void {
+  const postseason = state.postseason!;
+  const finals = seriesById(state, "FINALS")!;
+  const champion = finals.winnerTeamId!;
+  const games = postseason.schedule.map((game) => postseason.gameDetails[game.id]);
+  state.history.champions.push({ seasonId: state.league.seasonId, teamId: champion });
+  finalizeFinalsAwards(state, champion, finals.gameIds.map((id) => postseason.gameDetails[id]));
+  const userConference = state.teams[state.userTeamId].conference;
+  const userSeeds = postseason.seeds[userConference];
+  const userSeries = postseason.series.filter((series) => series.teamAId === state.userTeamId || series.teamBId === state.userTeamId);
+  const userPostseason = {
+    enteredPlayIn: userSeeds.slice(6, 10).includes(state.userTeamId) || userSeries.some((series) => series.round === "PLAY_IN"),
+    enteredPlayoffs: userSeeds.slice(0, 8).includes(state.userTeamId),
+    seriesWins: userSeries.filter((series) => series.bestOf === 7 && series.winnerTeamId === state.userTeamId).length,
+    conferenceFinals: userSeries.some((series) => series.round === "CF"),
+    finalsAppearance: userSeries.some((series) => series.round === "FINALS"),
+    champion: champion === state.userTeamId,
+    playoffWins: games.filter((game) => game.winnerTeamId === state.userTeamId).length,
+    playoffLosses: games.filter((game) => (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId) && game.winnerTeamId !== state.userTeamId).length,
+  };
+  const milestones: Record<string, PostseasonTeamMilestone> = Object.fromEntries(Object.keys(state.teams).map((teamId) => {
+    const teamSeries = postseason.series.filter((series) => series.teamAId === teamId || series.teamBId === teamId);
+    return [teamId, {
+      enteredPlayIn: teamSeries.some((series) => series.round === "PLAY_IN"),
+      enteredPlayoffs: teamSeries.some((series) => series.round === "R1"),
+      seriesWins: teamSeries.filter((series) => series.bestOf === 7 && series.winnerTeamId === teamId).length,
+      conferenceFinals: teamSeries.some((series) => series.round === "CF"),
+      finalsAppearance: teamSeries.some((series) => series.round === "FINALS"),
+      champion: champion === teamId,
+    }];
+  }));
+  applySeasonTeamCoreUpdate(state, milestones, state.history.seasonAwards.find((entry) => entry.seasonId === state.league.seasonId));
+  evaluatePostseasonAchievements(state, userPostseason);
+  enqueueCareerMilestoneEvents(state);
+  archiveCompletedSeason(state, champion, games, userPostseason, postseason.sevenEightLoserTeamIds);
+  rebuildGmCareerFromHistory(state);
+  state.league.currentPhase = "OFFSEASON";
+}
+
+function simulatePostseasonGameInternal(input: GameState, mutate: boolean): GameState {
+  assertPhaseAllowed(input, "Simulate postseason game", ["PLAY_IN", "PLAYOFFS"]);
+  if (!input.postseason || input.postseason.seasonId !== input.league.seasonId) throw new Error("POSTSEASON_NOT_STARTED");
+  if (blockingEvent(input) || input.injuryState.pendingUserMajorInjury || input.injuryState.pendingEmergencyRoster) return input;
+  const state = mutate ? input : structuredClone(input);
+  const game = state.postseason!.schedule.filter((item) => item.status === "SCHEDULED")
+    .sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id))[0];
+  if (!game) throw new Error("POSTSEASON_SCHEDULE_EMPTY");
+  const series = state.postseason!.series.find((item) => item.gameIds.includes(game.id))!;
+  const result = postseasonGame(state, game.homeTeamId, game.awayTeamId, series.id, game.matchupOrdinal, game.dateIndex - state.calendar.finalDateIndex, game);
+  game.status = "FINAL";
+  game.homeScore = result.homeScore;
+  game.awayScore = result.awayScore;
+  game.winnerTeamId = result.winnerTeamId;
+  state.postseason!.gameDetails[game.id] = result;
+  if (result.winnerTeamId === series.teamAId) series.winsA += 1;
+  else series.winsB += 1;
+  if (series.winsA === Math.ceil(series.bestOf / 2) || series.winsB === Math.ceil(series.bestOf / 2)) {
+    series.winnerTeamId = series.winsA > series.winsB ? series.teamAId : series.teamBId;
+  } else {
+    scheduleSeriesGame(state, series, game.dateIndex + 2);
+  }
+  advancePostseasonBracket(state);
+  state.calendar.currentDateIndex = state.postseason!.schedule
+    .filter((item) => item.status === "SCHEDULED")
+    .reduce((earliest, item) => Math.min(earliest, item.dateIndex), game.dateIndex + 1);
+  if (seriesById(state, "FINALS")?.winnerTeamId) finalizeInteractivePostseason(state);
+  return state;
+}
+
+export function simulatePostseasonGame(input: GameState): GameState {
+  return simulatePostseasonGameInternal(input, false);
+}
+
 export function simulatePostseason(input: GameState): GameState {
+  if (input.postseason && ["PLAY_IN", "PLAYOFFS"].includes(input.league.currentPhase)) {
+    let state = structuredClone(input);
+    while (state.league.currentPhase !== "OFFSEASON") {
+      if (state.injuryState.pendingUserMajorInjury) state.injuryState.pendingUserMajorInjury = undefined;
+      if (state.injuryState.pendingEmergencyRoster) fillEmergencyRoster(state, state.userTeamId);
+      if (blockingEvent(state)) state = resolveAllEvents(state);
+      simulatePostseasonGameInternal(state, true);
+    }
+    return state;
+  }
   assertPhaseAllowed(input, "Simulate postseason", ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE", "OFFSEASON"]);
   if (input.league.currentPhase === "OFFSEASON") return input;
   const state = finalizeRegularSeasonAwards(input);
@@ -478,25 +713,35 @@ export function simulateRegularSeason(
 }
 
 export function advanceSeason(input: GameState): GameState {
-  assertPhaseAllowed(input, "Advance season", ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE", "OFFSEASON"]);
-  let state = input.league.currentPhase === "OFFSEASON" ? structuredClone(input) : simulatePostseason(simulateRegularSeason(input, {
-    autoAcknowledgeMajorInjuries: true,
-    autoResolveEmergencyRosters: true,
-    autoResolveEvents: true,
-  }));
+  assertPhaseAllowed(input, "Advance season", ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE", "PLAY_IN", "PLAYOFFS", "OFFSEASON"]);
+  let state = input.league.currentPhase === "OFFSEASON" ? structuredClone(input)
+    : input.league.currentPhase === "PLAY_IN" || input.league.currentPhase === "PLAYOFFS" ? simulatePostseason(input)
+      : simulatePostseason(simulateRegularSeason(input, {
+        autoAcknowledgeMajorInjuries: true,
+        autoResolveEmergencyRosters: true,
+        autoResolveEvents: true,
+      }));
   state = rolloverLeagueYear(state);
+  state.postseason = undefined;
   for (const playerId of [...(state.contractLifecycle?.pendingUserTeamOptionPlayerIds ?? [])]) {
     const player = state.players[playerId];
     state = resolveTeamOption(state, playerId, shouldPickUpTeamOption(player, player.contract.salary) ? "PICK_UP" : "DECLINE");
   }
   state = finalizeOptionPhase(state);
   state = prepareRookieDraft(state);
+  if (state.rookieDraft?.lotteryPresented !== true) {
+    state = executeDraftCommand(state, {
+      commandId: stableHash(state.seeds.seasonSeed, "headless-lottery-acknowledgement"),
+      type: "ACKNOWLEDGE_DRAFT_LOTTERY",
+      payload: {},
+    });
+  }
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
     if (!pick) throw new Error("Headless season advance could not resolve the rookie draft");
     state = pick.ownerTeamId === state.userTeamId
       ? draftPlayer(state, getAvailableDraftProspects(state)[0].id, pick.pickNumber)
-      : advanceRookieDraftAiPick(state, pick.pickNumber);
+      : fastForwardRookieDraft(state, pick.pickNumber);
   }
   while (state.teams[state.userTeamId].playerIds.length > LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum) {
     const cut = state.teams[state.userTeamId].playerIds.map((id) => state.players[id])

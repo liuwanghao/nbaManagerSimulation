@@ -1,4 +1,30 @@
-import type { GameResult, ScheduleGame } from "../game/state/types";
+import type { GameResult, GameState, ScheduleGame } from "../game/state/types";
+import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
+import { estimatedInjuryMissedGames, injuryDaysRemaining } from "../game/simulation/injuries";
+
+export interface InjuryListEntry {
+  playerId: string;
+  name: string;
+  gamesRemaining: number | null;
+  daysRemaining: number | null;
+}
+
+export function userInjuryList(state: GameState): InjuryListEntry[] {
+  return state.teams[state.userTeamId].playerIds
+    .map((playerId) => state.players[playerId])
+    .filter((player) => player && (!player.available || player.injury))
+    .sort((left, right) => calculatePlayerOverall(right) - calculatePlayerOverall(left) || left.id.localeCompare(right.id))
+    .map((player) => ({ playerId: player.id, name: player.name, gamesRemaining: estimatedInjuryMissedGames(state, player), daysRemaining: injuryDaysRemaining(player) }))
+    .slice(0, 2);
+}
+
+export function visibleInjuryList(
+  saved: InjuryListEntry[],
+  frames: Array<{ injuries: InjuryListEntry[] }> = [],
+  completed = 0,
+): InjuryListEntry[] {
+  return completed > 0 ? frames[Math.min(completed, frames.length) - 1]?.injuries ?? saved : saved;
+}
 
 export function hasRemainingScheduledDay(
   schedule: Pick<ScheduleGame, "dateIndex" | "status">[],

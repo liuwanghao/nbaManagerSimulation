@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createCareer } from "../season/career";
-import { advanceInjuriesAfterGames, applyInjuryEvents, availablePlayerCount } from "../simulation/injuries";
+import { advanceInjuriesByDays, applyInjuryEvents, availablePlayerCount, estimatedInjuryMissedGames, recordInjuryMissedGames } from "../simulation/injuries";
 import { solveRotationSeconds } from "../simulation/minutes";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, validateRotationPlan } from "../roster/RotationPlanService";
 import { setRotationPlan } from "../roster/RosterService";
 import { executeEventCommand, nextPendingEvent } from "../events/EventService";
 import type { InjuryEvent } from "../state/types";
+import { advanceFreeAgencyDay } from "../freeAgency/FreeAgencyService";
+import { closeFreeAgency } from "../roster/RosterService";
 
 function majorEvent(playerId: string, teamId: string): InjuryEvent {
   return {
@@ -45,8 +47,8 @@ describe("InjuryService", () => {
     expect(injuredMinutes[playerId] ?? 0).toBe(0);
     expect(Object.values(injuredMinutes).reduce((sum, seconds) => sum + seconds, 0)).toBe(240 * 60);
     if (!adjusted.players[playerId].injury) throw new Error("Expected injury");
-    adjusted.players[playerId].injury.gamesRemaining = 1;
-    advanceInjuriesAfterGames(adjusted, [adjusted.userTeamId], new Set());
+    adjusted.players[playerId].injury.daysRemaining = 1;
+    advanceInjuriesByDays(adjusted, 1);
     expect(adjusted.players[playerId].injury).toBeUndefined();
     const recoveryChoice = nextPendingEvent(adjusted);
     expect(recoveryChoice?.definitionId).toBe("injury_recovery_001");
@@ -54,6 +56,29 @@ describe("InjuryService", () => {
     const recovered = executeEventCommand(adjusted, { commandId: "recovery-auto", type: "RESOLVE_EVENT", payload: { eventInstanceId: recoveryChoice!.eventInstanceId, choiceId: "auto_adjust" } });
     expect(solveRotationSeconds(roster, false, recovered.teams[recovered.userTeamId].rotationPlan)[playerId]).toBeGreaterThan(0);
     expect(recovered.teamNotifications).toContainEqual(expect.objectContaining({ title: "伤员回归", read: false }));
+  });
+
+  it.each([
+    { severity: "MINOR" as const, daysOut: 3, duration: "预计伤停约 3 天", expectedGames: 2 },
+    { severity: "SHORT" as const, daysOut: 14, duration: "预计伤停约 2 周", expectedGames: 13 },
+    { severity: "LONG" as const, daysOut: 60, duration: "预计伤停约 2 个月", expectedGames: 18 },
+    { severity: "SEASON_ENDING" as const, daysOut: 130, duration: "赛季报销", expectedGames: 18 },
+  ])("shows $duration and the actual remaining games in injury notices", ({ severity, daysOut, duration, expectedGames }) => {
+    const state = createCareer(`injury-notice-${severity}`);
+    const playerId = state.teams[state.userTeamId].playerIds[0];
+    state.schedule = state.schedule
+      .filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId)
+      .slice(0, 18)
+      .map((game, index) => ({ ...game, dateIndex: index + 1, status: "SCHEDULED" }));
+    const event = { ...majorEvent(playerId, state.userTeamId), severity, daysOut, gamesOut: 61 };
+    applyInjuryEvents(state, [event]);
+    const missedGames = estimatedInjuryMissedGames(state, state.players[playerId]);
+    expect(missedGames).toBe(expectedGames);
+    const notice = nextPendingEvent(state);
+    expect(notice?.description).toContain(`${duration}，预计缺席 ${expectedGames} 场`);
+    expect(notice?.description).not.toContain("61 场");
+    const resolved = executeEventCommand(state, { commandId: `injury-notice-${severity}`, type: "RESOLVE_EVENT", payload: { eventInstanceId: notice!.eventInstanceId, choiceId: "auto_adjust" } });
+    expect(resolved.teamNotifications?.[0].message).toContain(`${duration}，预计缺席 ${expectedGames} 场`);
   });
 
   it("keeps an injury decision pending until a manual rotation is saved", () => {
@@ -81,13 +106,13 @@ describe("InjuryService", () => {
     expect(resolved.teams[team.id].rotationPlan?.targetMinutes[playerId]).toBe(0);
   });
 
-  it("counts missed games and restores availability after the final missed game", () => {
+  it("counts missed games and restores availability after the final recovery day", () => {
     const state = createCareer("injury-recovery-test");
     const playerId = state.teams.ATL.playerIds[0];
     const event = majorEvent(playerId, "ATL");
     applyInjuryEvents(state, [event]);
     if (!state.players[playerId].injury) throw new Error("injury missing");
-    state.players[playerId].injury.gamesRemaining = 1;
+    state.players[playerId].injury.daysRemaining = 1;
     state.players[playerId].career = {
       seasonsPlayed: 0,
       totals: structuredClone(state.players[playerId].seasonStats),
@@ -98,12 +123,71 @@ describe("InjuryService", () => {
       careerInjuryGamesMissed: 0,
     };
 
-    advanceInjuriesAfterGames(state, ["ATL"], new Set());
+    recordInjuryMissedGames(state, ["ATL"]);
+    advanceInjuriesByDays(state, 1);
     expect(state.players[playerId].injury).toBeUndefined();
     expect(state.players[playerId].available).toBe(true);
     expect(state.players[playerId].health).toBe(100);
     expect(state.players[playerId].career?.careerInjuryGamesMissed).toBe(1);
     expect(availablePlayerCount(state, "ATL")).toBeGreaterThanOrEqual(8);
+  });
+
+  it("recovers on rest days without counting a missed game", () => {
+    const state = createCareer("injury-rest-day-recovery");
+    const playerId = state.teams.ATL.playerIds[0];
+    applyInjuryEvents(state, [majorEvent(playerId, "ATL")]);
+    const player = state.players[playerId];
+    if (!player.injury) throw new Error("injury missing");
+    player.injury.daysRemaining = 2;
+    advanceInjuriesByDays(state, 1);
+    expect(player.injury?.daysRemaining).toBe(1);
+    expect(player.available).toBe(false);
+    advanceInjuriesByDays(state, 1);
+    expect(player.injury).toBeUndefined();
+    expect(player.available).toBe(true);
+    expect(player.career?.careerInjuryGamesMissed ?? 0).toBe(0);
+  });
+
+  it("heals injuries across offseason free-agency days", () => {
+    const state = createCareer("injury-offseason-recovery");
+    state.league.currentPhase = "OFFSEASON_POST_DRAFT";
+    state.freeAgency = { opened: true, currentDay: 1, offers: {}, markets: {}, settledPlayerDay: {}, transactionLog: [] };
+    const playerId = state.teams.ATL.playerIds[0];
+    applyInjuryEvents(state, [majorEvent(playerId, "ATL")]);
+    if (!state.players[playerId].injury) throw new Error("injury missing");
+    state.players[playerId].injury.daysRemaining = 2;
+    const first = advanceFreeAgencyDay(state);
+    expect(first.players[playerId].injury?.daysRemaining).toBe(1);
+    const second = advanceFreeAgencyDay(first);
+    expect(second.players[playerId].injury).toBeUndefined();
+    expect(second.players[playerId].available).toBe(true);
+  });
+
+  it("uses the remaining offseason days when the manager closes free agency early", () => {
+    const state = createCareer("injury-early-market-close");
+    state.league.currentPhase = "OFFSEASON_POST_DRAFT";
+    state.freeAgency = { opened: true, currentDay: 1, offers: {}, markets: {}, settledPlayerDay: {}, transactionLog: [] };
+    const playerId = state.teams.ATL.playerIds[0];
+    applyInjuryEvents(state, [majorEvent(playerId, "ATL")]);
+    if (!state.players[playerId].injury) throw new Error("injury missing");
+    state.players[playerId].injury.daysRemaining = 30;
+    const closed = closeFreeAgency(state);
+    expect(closed.league.currentPhase).toBe("PRESEASON");
+    expect(closed.players[playerId].injury).toBeUndefined();
+  });
+
+  it("estimates missed games from scheduled dates while recovery follows days", () => {
+    const state = createCareer("injury-schedule-estimate");
+    const playerId = state.teams.ATL.playerIds[0];
+    applyInjuryEvents(state, [{ ...majorEvent(playerId, "ATL"), daysOut: 3 }]);
+    const player = state.players[playerId];
+    state.schedule = state.schedule.slice(0, 2).map((game, index) => ({
+      ...game, dateIndex: index === 0 ? 0 : 4, homeTeamId: "ATL", awayTeamId: "BOS", status: "SCHEDULED",
+    }));
+    expect(player.injury?.daysRemaining).toBe(3);
+    expect(estimatedInjuryMissedGames(state, player)).toBe(1);
+    advanceInjuriesByDays(state, 3);
+    expect(player.injury).toBeUndefined();
   });
 
   it("fills a sixth rotation spot when an injury removes one of six planned players", () => {

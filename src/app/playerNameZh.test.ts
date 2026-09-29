@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NBA_PLAYER_DATASET } from "../data/nbaPlayerDataset";
+import { RETIRED_LEGEND_TEMPLATES } from "../data/retiredLegendTemplates";
 import { CURRENT_NBA_ROSTER_BY_ID } from "../data/currentNbaRoster";
 import { REAL_2026_DRAFT } from "../data/real2026Draft";
 import { fictionalNameAt } from "../data/playerProfiles";
@@ -39,8 +40,9 @@ describe("playerNameZh", () => {
     const names = [
       ...NBA_PLAYER_DATASET.players.map((player) => [player.fullName, player.canonicalPlayerId] as const),
       ...NBA_PLAYER_DATASET.historicalTemplates.map((player) => [player.sourceName, undefined] as const),
+      ...RETIRED_LEGEND_TEMPLATES.map((player) => [player.sourceName, undefined] as const),
       ...REAL_2026_DRAFT.map((player) => [player.fullName, player.playerId] as const),
-      ...Array.from({ length: 64 * 64 }, (_, ordinal) => [fictionalNameAt("localization-audit", ordinal), undefined] as const),
+      ...Array.from({ length: 96 * 96 }, (_, ordinal) => [fictionalNameAt("localization-audit", ordinal), undefined] as const),
     ];
     for (const [name, id] of names) {
       expect(playerNameZh(name, id), name).toMatch(/\p{Script=Han}/u);

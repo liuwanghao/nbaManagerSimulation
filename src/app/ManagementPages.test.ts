@@ -34,13 +34,30 @@ describe("regular-season management pages", () => {
     expect(playerPerGame(90, 3)).toBe("30.0");
   });
 
+  it("shows high fatigue and low morale in the existing player row", () => {
+    const state = createCareer("management-player-status");
+    const team = state.teams[state.userTeamId];
+    const players = team.playerIds.map((id) => state.players[id]);
+    players[0].fatigue = 75;
+    players[0].morale = 40;
+    const markup = renderToStaticMarkup(createElement(ManagementOverview, {
+      team, players, record: state.standings[team.id], seasonId: state.league.seasonId,
+      rank: 1, overall: calculateTeamOverall(state, team.id).overall,
+      fit: calculateTeamFit(state, team.id), onOpenPlayer: () => {},
+    }));
+    const row = markup.match(new RegExp(`<tr[^>]*data-player-id="${players[0].id}"[^>]*>.*?</tr>`))?.[0];
+    expect(markup).toContain("<th scope=\"col\">疲劳</th><th scope=\"col\">士气</th>");
+    expect(row).toContain('class="manage-status-cell fatigued" title="疲劳 75，偏高"');
+    expect(row).toContain('class="manage-status-cell low-morale" title="士气 40，偏低"');
+  });
+
   it("shows cap breakdown and player contract terms without offering unsupported editing", () => {
     const state = createCareer("management-contracts");
     const players = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
     const markup = renderToStaticMarkup(createElement(ManagementContracts, {
-      players, sheet: getCapSheet(state, state.userTeamId), onOpenPlayer: () => {},
+      players, sheet: getCapSheet(state, state.userTeamId), seasonYear: state.league.seasonYear, onOpenPlayer: () => {},
     }));
-    for (const label of ["薪资进度", "帽下空间", "球员合同", "死钱", "薪资占位", "报价预留", "未满员费用"]) expect(markup).toContain(label);
+    for (const label of ["薪资进度", "帽下空间", "球员合同", "死钱", "薪资占位", "报价预留", "未满员费用", "最低工资差额"]) expect(markup).toContain(label);
     expect(markup).toContain('class="draft-cap-meter-track"');
     expect(markup).toContain('class="draft-cap-meter-fill"');
     for (const threshold of ["cap", "tax", "first", "second"]) expect(markup).toContain(`class="threshold-${threshold}"`);
@@ -53,7 +70,7 @@ describe("regular-season management pages", () => {
     const state = createCareer("management-waive");
     const players = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
     const markup = renderToStaticMarkup(createElement(ManagementContracts, {
-      players, sheet: getCapSheet(state, state.userTeamId), onOpenPlayer: () => {}, onWaive: async () => {},
+      players, sheet: getCapSheet(state, state.userTeamId), seasonYear: state.league.seasonYear, onOpenPlayer: () => {}, onWaive: async () => {},
     }));
     expect(markup.match(/class="manage-contract-waive"/g)).toHaveLength(players.length);
     expect(markup.match(/class="manage-contract-detail"/g)).toHaveLength(players.length);

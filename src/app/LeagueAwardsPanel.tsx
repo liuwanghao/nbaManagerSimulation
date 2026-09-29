@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { getAwardRace } from "../game/awards/AwardsService";
+import { hasOpeningMipBaselines } from "../game/awards/OpeningMipBaseline";
 import type { AwardType, Conference, GameState, PlayerSeasonStats, StandingRecord } from "../game/state/types";
 import { playerNameZh } from "./playerNameZh";
 import { awardLabel, conferenceLabel } from "./uiText";
@@ -29,7 +30,7 @@ export function LeagueAwardsPanel({ state, conferenceStandings, onOpenPlayer }: 
 
   return <div className="league-award-boards">
     {races.map(({ type, code, players }) => <section key={type} className="league-award-board" aria-label={`${code} ${awardLabel(type)}候选榜`}>
-      <header><span className="league-award-code">{code}</span><h3>{awardLabel(type)}</h3><small>候选前五</small></header>
+      <header><span className="league-award-code">{code}</span><h3>{awardLabel(type)}</h3><small>{type === "MIP" && hasOpeningMipBaselines(state) ? "首季模拟基线 · 候选前五" : "候选前五"}</small></header>
       <div className="league-award-columns"><span>#</span><span>球员 / 球队</span><span className="league-award-column-labels">{STATS.map(({ key, label }) => <span key={key}>{label}</span>)}</span></div>
       {players.length ? <ol>{players.map((player, index) => {
         const team = state.teams[player.teamId];
@@ -41,7 +42,7 @@ export function LeagueAwardsPanel({ state, conferenceStandings, onOpenPlayer }: 
           <span className="league-award-stats" aria-label="赛季场均数据">{STATS.map(({ key, label }) => <span key={key} title={label}><strong>{(player.seasonStats[key] / player.seasonStats.games).toFixed(1)}</strong></span>)}</span>
         </button></li>;
       })}</ol> : <p className="league-empty">{type === "MIP"
-        ? state.history.seasons.length === 0 ? "开局赛季缺少上赛季数据，下一赛季起开放评选。" : "暂无满足两季出场与进步门槛的球员。"
+        ? hasOpeningMipBaselines(state) ? "模拟基线候选尚未达到出场与进步门槛。" : state.history.seasons.length === 0 ? "开局赛季缺少上赛季数据，下一赛季起开放评选。" : "暂无满足两季出场与进步门槛的球员。"
         : "赛季开始后将显示候选球员。"}</p>}
     </section>)}
   </div>;

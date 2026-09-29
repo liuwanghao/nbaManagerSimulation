@@ -13,6 +13,7 @@ import { createExpansionCareer } from "../game/season/career";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { emptyPlayerSeasonStats, type GameState, type Player, type PlayerAttributes, type Position, type RotationRole, type TeamRole } from "../game/state/types";
 import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
+import { seedOpeningMipBaselines } from "../game/awards/OpeningMipBaseline";
 
 export interface HupuRosterPlayer {
   playerId?: string;
@@ -388,6 +389,7 @@ export function createExpansionCareerFromBundledDataset(careerSeed: string): Gam
 
   state.meta.dataVersion = `bundled.${NBA_PLAYER_DATASET.datasetVersion}+${CURRENT_NBA_ROSTER.rosterVersion}+fa.${NBA_2026_FREE_AGENTS.retrievedAt.slice(0, 10)}+salary.2026-27.0926.v3+retired.2026-09-24+service.2026.v2`;
   state.meta.gameVersion = "0.5.0";
+  seedOpeningMipBaselines(state);
   return state;
 }
 
@@ -427,5 +429,6 @@ export function createExpansionCareerFromHupu(careerSeed: string, snapshots: Hup
   const freshestUpdate = snapshots.map((snapshot) => snapshot.updatedAt).filter(Boolean).sort().at(-1) ?? "live";
   state.meta.dataVersion = `hupu.nba.live-roster.${freshestUpdate}+${NBA_PLAYER_DATASET.datasetVersion}+service.2026.v2`;
   state.meta.gameVersion = "0.5.0";
+  seedOpeningMipBaselines(state);
   return state;
 }

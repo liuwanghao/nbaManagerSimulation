@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { EXPANSION_BRAND_PRESETS } from "../data/expansionBrands";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
-import { chooseRightsPackage, createExpansionTeam, getSelectableExpansionPlayers, prepareExpansionTrade, resolveOptionPhase, selectExpansionPlayer, startExpansionDraft } from "../game/expansion/ExpansionService";
+import { chooseRightsPackage, confirmExpansionSummary, createExpansionTeam, getSelectableExpansionPlayers, prepareExpansionTrade, resolveOptionPhase, selectExpansionPlayer, startExpansionDraft } from "../game/expansion/ExpansionService";
 import { advanceRookieDraftAiPick, draftPlayer, getAvailableDraftProspects, prepareRookieDraft } from "../game/draft/DraftService";
 import { enterFreeAgency } from "../game/freeAgency/FreeAgencyService";
 import { rolloverLeagueYear } from "../game/contracts/ContractLifecycleService";
@@ -55,6 +55,8 @@ function createStage4Fixture(mode: string): GameState {
     if (!prospect || !visual.expansion) break;
     visual = selectExpansionPlayer(visual, prospect.id, visual.expansion.currentPickIndex + 1);
   }
+  if (mode === "expansion-summary") return visual;
+  visual = confirmExpansionSummary(visual);
   if (mode === "stage4-intro") return visual;
   visual = prepareRookieDraft(visual);
   if (mode === "rookie-draft") return visual;
@@ -81,7 +83,14 @@ function createStage4Fixture(mode: string): GameState {
 }
 
 function createFixturePreview(): GameState {
-  if (import.meta.env.DEV && ["stage4-intro", "rookie-draft", "post-draft", "qualifying-offer", "free-agency"].includes(fixtureMode() ?? "")) {
+  if (import.meta.env.DEV && fixtureMode() === "lottery") {
+    const future = createCareer(CAREER_SEED);
+    future.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    future.league.seasonYear = 2027;
+    future.league.seasonId = "2027-28";
+    return prepareRookieDraft(future);
+  }
+  if (import.meta.env.DEV && ["expansion-summary", "stage4-intro", "rookie-draft", "post-draft", "qualifying-offer", "free-agency"].includes(fixtureMode() ?? "")) {
     return createStage4Fixture(fixtureMode() as string);
   }
   if (import.meta.env.DEV && fixtureMode() === "preseason") {
@@ -203,7 +212,7 @@ function createFixturePreview(): GameState {
 export default function Bootstrap() {
   const loadingFixture = import.meta.env.DEV && fixtureMode() === "loading";
   const saveSlotsFixture = import.meta.env.DEV && fixtureMode() === "save-slots";
-  const qaFixture = fixtureMode() !== null && !loadingFixture && !saveSlotsFixture;
+  const qaFixture = import.meta.env.DEV && fixtureMode() !== null && !loadingFixture && !saveSlotsFixture;
   const introFixture = import.meta.env.DEV && fixtureMode() === "intro";
   const [screen, setScreen] = useState<"home" | "intro" | "game">(introFixture ? "intro" : qaFixture ? "game" : "home");
   const [initialState, setInitialState] = useState<GameState>(() => createFixturePreview());

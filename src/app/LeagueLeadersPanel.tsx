@@ -39,7 +39,7 @@ export function LeagueLeadersPanel({ state, onOpenPlayer }: { state: GameState; 
       {players.length ? <ol>{players.map((player, index) => <li key={player.id}>
         <button type="button" onClick={() => onOpenPlayer(player.id)} aria-label={`查看${playerNameZh(player.name, player.id)}的球员详情，场均${label}${perGame(player, key)}`}>
           <span className="league-stat-rank">{String(index + 1).padStart(2, "0")}</span>
-          <div className="league-stat-player"><PlayerPortrait player={player} portraitPath={player.portraitPath} className="league-stat-avatar" /><span className="league-stat-player-copy"><b>{playerNameZh(player.name, player.id)}</b><small className="league-stat-summary" title="场均得分 / 篮板 / 助攻">{perGame(player, "pts")} / {perGame(player, "reb")} / {perGame(player, "ast")}</small></span></div>
+          <div className="league-stat-player"><PlayerPortrait player={player} portraitPath={player.portraitPath} className="league-stat-avatar" /><span className="league-stat-player-copy"><b>{playerNameZh(player.name, player.id)}</b><small className="league-stat-summary" title="场均得分、篮板、助攻">{perGame(player, "pts")}分{perGame(player, "reb")}板{perGame(player, "ast")}助攻</small></span></div>
           <span className="league-stat-team">{state.teams[player.teamId].name}</span>
           <span className="league-stat-primary" aria-label={`场均${label}`}>
             <strong>{perGame(player, key)}</strong>

@@ -49,8 +49,8 @@ describe("leagueStatLeaders", () => {
       expect(board?.match(/class="gemini-prospect-avatar league-stat-avatar/gu)).toHaveLength(1);
       expect(board).toContain(`<span class="league-stat-team">${state.teams[player.teamId].name}</span>`);
       expect(board).toContain(`<strong>${value}</strong>`);
-      expect(board).toContain("21.0 / 9.0 / 6.0");
-      expect(board).toContain('title="场均得分 / 篮板 / 助攻"');
+      expect(board).toContain("21.0分9.0板6.0助攻");
+      expect(board).toContain('title="场均得分、篮板、助攻"');
       expect(board).not.toMatch(/<small>[分板助断帽]<\/small>/u);
       expect(board?.match(/<strong>/gu)).toHaveLength(1);
     }

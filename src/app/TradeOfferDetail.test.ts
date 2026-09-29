@@ -3,10 +3,33 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createCareer } from "../game/season/career";
 import { evaluateTradeOffer, generateTradeOffers } from "../game/trade/TradeService";
+import { tradePlayerValue } from "../game/trade/TradePlayerValue";
 import { playerNameZh } from "./playerNameZh";
 import { TradeOfferDetail } from "./TradeOfferDetail";
 
 describe("trade offer detail", () => {
+  it("shows the same season-adjusted player value used by offer evaluation", () => {
+    const state = createCareer("trade-detail-performance");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const playerId = state.teams[state.userTeamId].playerIds[5];
+    const quoted = generateTradeOffers(state, playerId, false);
+    const offer = quoted.tradeDesk.offers[0];
+    const player = quoted.players[playerId];
+    player.seasonStats = {
+      games: 25, seconds: 25 * 30 * 60, pts: 25 * 24,
+      fgm: 25 * 9, fga: 25 * 17, threePm: 25 * 3, threePa: 25 * 7,
+      ftm: 25 * 3, fta: 25 * 4, reb: 25 * 7, ast: 25 * 6,
+      stl: 25, blk: 25, tov: 25 * 2,
+    };
+    const evaluation = evaluateTradeOffer(quoted, offer.offerId);
+    const markup = renderToStaticMarkup(createElement(TradeOfferDetail, {
+      state: quoted, offer, evaluation, busy: false, onBack: () => {}, onAccept: () => {},
+    }));
+    expect(evaluation.outgoingAssetValue).toBeCloseTo(tradePlayerValue(player));
+    expect(markup).toContain(`估值 <b>${tradePlayerValue(player).toFixed(1)}</b>`);
+    expect(markup).toContain("赛季表现 +");
+  });
+
   it("shows the team impact preview with two asset columns", () => {
     const state = createCareer("trade-detail-impact");
     state.league.currentPhase = "REGULAR_PRE_DEADLINE";

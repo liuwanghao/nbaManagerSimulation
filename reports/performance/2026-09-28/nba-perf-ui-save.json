@@ -1,0 +1,36 @@
+[
+  {
+    "operation": "save1",
+    "ms": 1074,
+    "closed": true,
+    "longTasks": [
+      411,
+      182,
+      168,
+      175
+    ]
+  },
+  {
+    "operation": "save2",
+    "ms": 1413,
+    "closed": true,
+    "longTasks": [
+      198,
+      320,
+      151,
+      301,
+      173
+    ]
+  },
+  {
+    "operation": "load",
+    "ms": 1381,
+    "closed": true,
+    "longTasks": [
+      199,
+      55,
+      703,
+      350
+    ]
+  }
+]

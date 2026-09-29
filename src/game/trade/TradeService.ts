@@ -1,15 +1,19 @@
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
-import { corePlayerTradePremium, publicPlayerValue, tradeDraftPickValue } from "../ai/AIValueService";
+import { corePlayerTradePremium, tradeDraftPickValue } from "../ai/AIValueService";
+import { tradePlayerValue } from "./TradePlayerValue";
 import { assertPhaseAllowed, getRosterLimit } from "../policy/TransactionPolicyService";
 import { low32FromHash, stableHash } from "../random/hash";
 import type { DraftPickAsset, GameState, Player, TradeOffer } from "../state/types";
 import { calculateTeamFitForPlayers } from "../team/TeamFitService";
 import { validateSalaryMatch } from "./SalaryMatchValidator";
 import { reconcileRotationAfterRosterChange } from "../roster/RotationPlanService";
+import { isUntouchable, untouchablePlayerIds } from "./TradeAvailabilityService";
+import { playerTradeWaitingReason } from "./TradeTimingPolicy";
 
 export type TradeCommand =
   | { commandId: string; type: "SET_TRADE_ASSETS"; payload: TradeSelection }
   | { commandId: string; type: "GENERATE_TRADE_OFFERS"; payload: ({ playerId: string; refresh: boolean } | { playerIds: string[]; pickIds: string[]; refresh: boolean }) }
+  | { commandId: string; type: "GENERATE_TARGETED_TRADE_OFFERS"; payload: { targetPlayerIds: string[]; refresh?: boolean } }
   | { commandId: string; type: "ACCEPT_TRADE_OFFER"; payload: { offerId: string } };
 
 export interface TradePackage {
@@ -79,6 +83,8 @@ function validatedTradeSelection(input: GameState, selection: TradeSelection, re
     const player = input.players[id];
     if (!player || !input.teams[input.userTeamId].playerIds.includes(id) || player.teamId !== input.userTeamId) throw new Error("PLAYER_NOT_OWNED");
     if (player.contract.status !== "STANDARD" || player.contract.yearsRemaining <= 0 || player.contract.contractType === "EMERGENCY") throw new Error("PLAYER_NOT_TRADEABLE");
+    const waitingReason = playerTradeWaitingReason(input, player);
+    if (waitingReason) throw new Error(waitingReason);
   }
   validatePickRule(input, pickIds, input.userTeamId);
   return { playerIds, pickIds };
@@ -89,7 +95,7 @@ export function setTradeAssets(input: GameState, selection: TradeSelection): Gam
   if (!isTradeWindowOpen(input)) throw new Error("TRADE_PHASE_CLOSED");
   const { playerIds, pickIds } = validatedTradeSelection(input, selection, false);
   const state = structuredClone(input);
-  state.tradeDesk = { selectedPlayerId: playerIds[0], selectedPlayerIds: playerIds, selectedPickIds: pickIds, offers: [] };
+  state.tradeDesk = { inquiryMode: "ASSET", selectedPlayerId: playerIds[0], selectedPlayerIds: playerIds, selectedPickIds: pickIds, offers: [] };
   return state;
 }
 
@@ -101,7 +107,7 @@ function ownedPicksAfterTrade(state: GameState, trade: TradePackage, teamId: str
 }
 
 /** Validates both teams against the same projected post-trade roster and draft ledger. */
-export function validateTradePackage(state: GameState, trade: TradePackage): void {
+function validateTradePackageWithAvailability(state: GameState, trade: TradePackage, protectedPlayer: (id: string) => boolean): void {
   if (!isTradeWindowOpen(state)) throw new Error("TRADE_PHASE_CLOSED");
   if (!state.teams[trade.leftTeamId] || !state.teams[trade.rightTeamId] || trade.leftTeamId === trade.rightTeamId) throw new Error("TRADE_TEAM_INVALID");
   const leftAssets = [...trade.leftPlayerIds, ...trade.leftPickIds];
@@ -115,12 +121,12 @@ export function validateTradePackage(state: GameState, trade: TradePackage): voi
       const player = state.players[id];
       if (!player || !team.playerIds.includes(id) || player.teamId !== teamId) throw new Error("PLAYER_NOT_OWNED");
       if (player.contract.status !== "STANDARD" || player.contract.yearsRemaining <= 0 || player.contract.contractType === "EMERGENCY") throw new Error("PLAYER_NOT_TRADEABLE");
+      const waitingReason = playerTradeWaitingReason(state, player);
+      if (waitingReason) throw new Error(waitingReason);
     }
   }
   validatePickRule(state, trade.leftPickIds, trade.leftTeamId);
   validatePickRule(state, trade.rightPickIds, trade.rightTeamId);
-  validateSalaryMatch(state, trade.leftTeamId, trade.leftPlayerIds, trade.rightPlayerIds);
-  validateSalaryMatch(state, trade.rightTeamId, trade.rightPlayerIds, trade.leftPlayerIds);
   const rosterLimit = getRosterLimit(state.league.currentPhase);
   const leftSize = state.teams[trade.leftTeamId].playerIds.length - trade.leftPlayerIds.length + trade.rightPlayerIds.length;
   const rightSize = state.teams[trade.rightTeamId].playerIds.length - trade.rightPlayerIds.length + trade.leftPlayerIds.length;
@@ -129,6 +135,11 @@ export function validateTradePackage(state: GameState, trade: TradePackage): voi
   if (["REGULAR_PRE_DEADLINE", "REGULAR_SEASON"].includes(state.league.currentPhase) && (leftSize < 12 || rightSize < 12)) {
     throw new Error("ROSTER_BELOW_NBA_MINIMUM");
   }
+  for (const id of [...trade.leftPlayerIds, ...trade.rightPlayerIds]) {
+    if (protectedPlayer(id)) throw new Error("PLAYER_UNTOUCHABLE");
+  }
+  validateSalaryMatch(state, trade.leftTeamId, trade.leftPlayerIds, trade.rightPlayerIds);
+  validateSalaryMatch(state, trade.rightTeamId, trade.rightPlayerIds, trade.leftPlayerIds);
   if ([...trade.leftPickIds, ...trade.rightPickIds].some((id) => state.draftPicks[id].round === 1)) {
     const firstYear = firstTradablePickYear(state);
     const lastYear = state.league.seasonYear + BALANCE_CONFIG.trade.futurePickHorizonYears;
@@ -141,6 +152,10 @@ export function validateTradePackage(state: GameState, trade: TradePackage): voi
       }
     }
   }
+}
+
+export function validateTradePackage(state: GameState, trade: TradePackage): void {
+  validateTradePackageWithAvailability(state, trade, (id) => isUntouchable(state, id));
 }
 
 /** Applies a previously legal package to a mutable state. All fallible work precedes asset transfer. */
@@ -184,6 +199,46 @@ function candidatePlayerBundles(players: Player[], maxSize: number): string[][] 
   return result;
 }
 
+function candidatePickBundles(picks: DraftPickAsset[], highValue: boolean): DraftPickAsset[][] {
+  const firsts = picks.filter((pick) => pick.round === 1).slice(0, highValue ? 5 : 3);
+  const seconds = picks.filter((pick) => pick.round === 2).slice(0, 3);
+  const result: DraftPickAsset[][] = [[]];
+  result.push(...firsts.map((pick) => [pick]), ...seconds.map((pick) => [pick]));
+  for (let first = 0; first < firsts.length; first += 1) {
+    for (let second = first + 1; second < firsts.length; second += 1) {
+      result.push([firsts[first], firsts[second]]);
+      if (highValue) {
+        for (let third = second + 1; third < firsts.length; third += 1) {
+          result.push([firsts[first], firsts[second], firsts[third]]);
+          for (let fourth = third + 1; fourth < firsts.length; fourth += 1) {
+            result.push([firsts[first], firsts[second], firsts[third], firsts[fourth]]);
+          }
+        }
+      }
+    }
+  }
+  for (const first of firsts.slice(0, highValue ? 3 : 1)) {
+    for (const second of seconds.slice(0, 2)) result.push([first, second]);
+  }
+  return result;
+}
+
+function selectQuotedOffers(
+  ranked: Array<{ offer: TradeOffer; score: number }>,
+  pickSide: "userOutgoingPickIds" | "userIncomingPickIds",
+  highValue: boolean,
+): TradeOffer[] {
+  const count = BALANCE_CONFIG.trade.generatedOfferCount;
+  const selected = ranked.slice(0, count);
+  if (highValue && selected.length === count && !selected.some(({ offer }) => offer[pickSide].length > 1)) {
+    const multiPick = ranked.find(({ offer, score }) => offer[pickSide].length > 1
+      && score >= selected[count - 1].score - 6);
+    if (multiPick) selected[count - 1] = multiPick;
+  }
+  return selected.sort((a, b) => b.score - a.score || a.offer.offerId.localeCompare(b.offer.offerId))
+    .map(({ offer }) => offer);
+}
+
 export function generateTradeOffers(input: GameState, selectionOrPlayerId: string | TradeSelection, refresh: boolean): GameState {
   assertPhaseAllowed(input, "Generate trade offers", TRADE_PHASES);
   if (!isTradeWindowOpen(input)) throw new Error("TRADE_PHASE_CLOSED");
@@ -209,33 +264,36 @@ export function generateTradeOffers(input: GameState, selectionOrPlayerId: strin
   const myRoster = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]).filter(Boolean);
   const myFitBefore = calculateTeamFitForPlayers(myRoster).score;
   const outgoingPlayers = playerIds.map((id) => state.players[id]);
-  const outgoingValue = outgoingPlayers.reduce((sum, player) => sum + publicPlayerValue(player), 0)
+  const outgoingValue = outgoingPlayers.reduce((sum, player) => sum + tradePlayerValue(player), 0)
     + pickIds.reduce((sum, id) => sum + pickValue(id), 0);
   const outgoingSalary = outgoingPlayers.reduce((sum, player) => sum + player.contract.salary, 0);
   const penalty = BALANCE_CONFIG.trade.refreshPenaltyByInquiry[Math.min(count, BALANCE_CONFIG.trade.refreshPenaltyByInquiry.length - 1)];
   for (const team of teams) {
     const theirRoster = team.playerIds.map((id) => state.players[id]).filter(Boolean);
+    const protectedIds = new Set(untouchablePlayerIds(state, team.id));
     const theirFitBefore = calculateTeamFitForPlayers(theirRoster).score;
     const candidates = theirRoster
-      .filter((player) => player.contract.status === "STANDARD" && player.contract.yearsRemaining > 0 && player.contract.contractType !== "EMERGENCY")
+      .filter((player) => player.contract.status === "STANDARD" && player.contract.yearsRemaining > 0
+        && player.contract.contractType !== "EMERGENCY" && !protectedIds.has(player.id)
+        && !playerTradeWaitingReason(state, player))
       .sort((left, right) => Math.abs(left.contract.salary - outgoingSalary) - Math.abs(right.contract.salary - outgoingSalary)
-        || Math.abs(publicPlayerValue(left) - outgoingValue) - Math.abs(publicPlayerValue(right) - outgoingValue)
+        || Math.abs(tradePlayerValue(left) - outgoingValue) - Math.abs(tradePlayerValue(right) - outgoingValue)
         || left.id.localeCompare(right.id))
       .slice(0, Math.max(8, playerIds.length * 3));
     const possiblePicks = Object.values(state.draftPicks)
       .filter((pick) => pick.ownerTeamId === team.id && !pick.reservedByCommitmentId
         && pick.year >= firstTradablePickYear(state) && pick.year <= state.league.seasonYear + BALANCE_CONFIG.trade.futurePickHorizonYears)
       .sort((a, b) => a.year - b.year || a.id.localeCompare(b.id));
-    const pickOptions = [undefined, ...possiblePicks.filter((pick) => pick.round === 1).slice(0, 2), ...possiblePicks.filter((pick) => pick.round === 2).slice(0, 2)];
+    const pickOptions = candidatePickBundles(possiblePicks, outgoingValue >= 50);
     let best: { offer: TradeOffer; score: number } | null = null;
     const bundles = candidatePlayerBundles(candidates, Math.min(3, Math.max(1, playerIds.length + 1)));
     for (const incomingIds of bundles) {
       const incomingPlayers = incomingIds.map((id) => state.players[id]);
-      const incomingValue = incomingPlayers.reduce((sum, player) => sum + publicPlayerValue(player), 0);
-      for (const pick of pickOptions) {
-        if (!incomingIds.length && !pick) continue;
-        const incomingPickIds = pick ? [pick.id] : [];
-        const valueGap = outgoingValue - incomingValue - (pick ? pickValue(pick.id) : 0);
+      const incomingValue = incomingPlayers.reduce((sum, player) => sum + tradePlayerValue(player), 0);
+      for (const picks of pickOptions) {
+        if (!incomingIds.length && !picks.length) continue;
+        const incomingPickIds = picks.map((pick) => pick.id);
+        const valueGap = outgoingValue - incomingValue - picks.reduce((sum, pick) => sum + pickValue(pick.id), 0);
         const minimumReturn = Math.max(-4, corePlayerTradePremium(incomingPlayers, outgoingPlayers)) + penalty;
         if (valueGap < minimumReturn || valueGap > Math.max(14, outgoingValue * 0.65)) continue;
         const trade: TradePackage = {
@@ -243,7 +301,7 @@ export function generateTradeOffers(input: GameState, selectionOrPlayerId: strin
           leftPlayerIds: playerIds, rightPlayerIds: incomingIds,
           leftPickIds: pickIds, rightPickIds: incomingPickIds,
         };
-        try { validateTradePackage(state, trade); } catch { continue; }
+        try { validateTradePackageWithAvailability(state, trade, (id) => protectedIds.has(id)); } catch { continue; }
         const incomingSet = new Set(incomingIds);
         const theirFitDelta = calculateTeamFitForPlayers([
           ...theirRoster.filter((player) => !incomingSet.has(player.id)), ...outgoingPlayers,
@@ -260,6 +318,7 @@ export function generateTradeOffers(input: GameState, selectionOrPlayerId: strin
           offerId, inquiryKey, inquiryCount: count, counterpartyTeamId: team.id,
           userOutgoingPlayerIds: playerIds, userOutgoingPickIds: pickIds,
           userIncomingPlayerIds: incomingIds, userIncomingPickIds: incomingPickIds, status: "AVAILABLE",
+          playerValueSnapshot: Object.fromEntries([...outgoingPlayers, ...incomingPlayers].map((player) => [player.id, tradePlayerValue(player)])),
         };
         if (!best || score > best.score || (score === best.score && offer.offerId < best.offer.offerId)) best = { offer, score };
       }
@@ -269,8 +328,114 @@ export function generateTradeOffers(input: GameState, selectionOrPlayerId: strin
   if (!offers.length) throw new Error("NOT_ENOUGH_LEGAL_TRADE_OFFERS");
   offers.sort((a, b) => b.score - a.score || stableHash(seed, a.offer.offerId).localeCompare(stableHash(seed, b.offer.offerId)));
   state.tradeDesk = {
+    inquiryMode: "ASSET",
     selectedPlayerId: playerIds[0], selectedPlayerIds: playerIds, selectedPickIds: pickIds,
-    offers: offers.slice(0, BALANCE_CONFIG.trade.generatedOfferCount).map(({ offer }) => offer),
+    offers: selectQuotedOffers(offers, "userIncomingPickIds", outgoingValue >= 50),
+  };
+  return state;
+}
+
+/** Asks one opposing team to propose a legal return for the requested players. */
+export function generateTargetedTradeOffers(input: GameState, targetPlayerIds: string[], refresh = false): GameState {
+  assertPhaseAllowed(input, "Generate targeted trade offers", TRADE_PHASES);
+  if (!isTradeWindowOpen(input)) throw new Error("TRADE_PHASE_CLOSED");
+  if (!targetPlayerIds.length) throw new Error("TARGET_PLAYER_REQUIRED");
+  if (targetPlayerIds.length > 3) throw new Error("TOO_MANY_TARGET_PLAYERS");
+  if (hasDuplicate(targetPlayerIds)) throw new Error("DUPLICATE_TRADE_ASSET");
+  const targetIds = [...targetPlayerIds].sort();
+  const targetPlayers = targetIds.map((id) => input.players[id]);
+  const counterpartyId = targetPlayers[0]?.teamId;
+  if (!counterpartyId || counterpartyId === input.userTeamId || !input.teams[counterpartyId]
+    || targetPlayers.some((player) => !player || player.teamId !== counterpartyId || !input.teams[counterpartyId].playerIds.includes(player.id))) {
+    throw new Error("TARGET_TEAM_INVALID");
+  }
+  if (targetPlayers.some((player) => player.contract.status !== "STANDARD"
+    || player.contract.yearsRemaining <= 0 || player.contract.contractType === "EMERGENCY")) {
+    throw new Error("TARGET_PLAYER_NOT_TRADEABLE");
+  }
+  if (targetPlayers.some((player) => playerTradeWaitingReason(input, player))) throw new Error("TARGET_PLAYER_TRADE_WAITING_PERIOD");
+  const protectedIds = new Set(untouchablePlayerIds(input, counterpartyId));
+  if (targetIds.some((id) => protectedIds.has(id))) throw new Error("PLAYER_UNTOUCHABLE");
+
+  const state = structuredClone(input);
+  const inquiryKey = stableHash("targeted", targetIds);
+  if (refresh) state.tradeInquiryCount[inquiryKey] = (state.tradeInquiryCount[inquiryKey] ?? 0) + 1;
+  const count = state.tradeInquiryCount[inquiryKey] ?? 0;
+  const seed = stableHash(state.seeds.seasonSeed, "targeted_trade_offer", inquiryKey, count);
+  const myRoster = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]).filter(Boolean);
+  const theirRoster = state.teams[counterpartyId].playerIds.map((id) => state.players[id]).filter(Boolean);
+  const myFitBefore = calculateTeamFitForPlayers(myRoster).score;
+  const theirFitBefore = calculateTeamFitForPlayers(theirRoster).score;
+  const incomingPlayers = targetIds.map((id) => state.players[id]);
+  const incomingValue = incomingPlayers.reduce((sum, player) => sum + tradePlayerValue(player), 0);
+  const incomingSalary = incomingPlayers.reduce((sum, player) => sum + player.contract.salary, 0);
+  const penalty = BALANCE_CONFIG.trade.refreshPenaltyByInquiry[Math.min(count, BALANCE_CONFIG.trade.refreshPenaltyByInquiry.length - 1)];
+  const candidates = myRoster
+    .filter((player) => player.contract.status === "STANDARD" && player.contract.yearsRemaining > 0 && player.contract.contractType !== "EMERGENCY")
+    .filter((player) => !playerTradeWaitingReason(state, player))
+    .sort((left, right) => {
+      const rank = (player: Player) => Math.abs(player.contract.salary - incomingSalary) / Math.max(1, incomingSalary)
+        + Math.abs(tradePlayerValue(player) - incomingValue) / Math.max(1, incomingValue);
+      return rank(left) - rank(right) || left.id.localeCompare(right.id);
+    })
+    .slice(0, 12);
+  const possiblePicks = Object.values(state.draftPicks)
+    .filter((pick) => pick.ownerTeamId === state.userTeamId && !pick.reservedByCommitmentId
+      && pick.year >= firstTradablePickYear(state) && pick.year <= state.league.seasonYear + BALANCE_CONFIG.trade.futurePickHorizonYears)
+    .sort((a, b) => a.year - b.year || a.id.localeCompare(b.id));
+  const pickOptions = candidatePickBundles(possiblePicks, incomingValue >= 50);
+  const pickValues = new Map<string, number>();
+  const pickValue = (id: string): number => {
+    let value = pickValues.get(id);
+    if (value === undefined) { value = tradeDraftPickValue(state, state.draftPicks[id]); pickValues.set(id, value); }
+    return value;
+  };
+  const offers: Array<{ offer: TradeOffer; score: number }> = [];
+  const targetSet = new Set(targetIds);
+  for (const outgoingIds of candidatePlayerBundles(candidates, 3)) {
+    const outgoingPlayers = outgoingIds.map((id) => state.players[id]);
+    const outgoingValue = outgoingPlayers.reduce((sum, player) => sum + tradePlayerValue(player), 0);
+    for (const picks of pickOptions) {
+      if (!outgoingIds.length && !picks.length) continue;
+      const outgoingPickIds = picks.map((pick) => pick.id);
+      const totalOutgoingValue = outgoingValue + picks.reduce((sum, pick) => sum + pickValue(pick.id), 0);
+      const valueGap = totalOutgoingValue - incomingValue;
+      const minimumReturn = Math.max(-4, corePlayerTradePremium(incomingPlayers, outgoingPlayers)) + penalty;
+      if (valueGap < minimumReturn || valueGap > Math.max(14, totalOutgoingValue * 0.65)) continue;
+      const trade: TradePackage = {
+        leftTeamId: state.userTeamId, rightTeamId: counterpartyId,
+        leftPlayerIds: outgoingIds, rightPlayerIds: targetIds,
+        leftPickIds: outgoingPickIds, rightPickIds: [],
+      };
+      try { validateTradePackageWithAvailability(state, trade, (id) => protectedIds.has(id)); } catch { continue; }
+      const theirFitDelta = calculateTeamFitForPlayers([
+        ...theirRoster.filter((player) => !targetSet.has(player.id)), ...outgoingPlayers,
+      ]).score - theirFitBefore;
+      if (theirFitDelta < -8) continue;
+      const outgoingSet = new Set(outgoingIds);
+      const myFitDelta = calculateTeamFitForPlayers([
+        ...myRoster.filter((player) => !outgoingSet.has(player.id)), ...incomingPlayers,
+      ]).score - myFitBefore;
+      const offerId = stableHash(seed, counterpartyId, outgoingIds, outgoingPickIds, targetIds);
+      const variety = low32FromHash(offerId) / 0xffffffff * 3;
+      const score = -Math.abs(valueGap) + myFitDelta * 0.55 + theirFitDelta * 0.35 + variety;
+      offers.push({
+        offer: {
+          offerId, inquiryKey, inquiryCount: count, counterpartyTeamId: counterpartyId,
+          userOutgoingPlayerIds: outgoingIds, userOutgoingPickIds: outgoingPickIds,
+          userIncomingPlayerIds: targetIds, userIncomingPickIds: [], status: "AVAILABLE",
+          playerValueSnapshot: Object.fromEntries([...outgoingPlayers, ...incomingPlayers].map((player) => [player.id, tradePlayerValue(player)])),
+        },
+        score,
+      });
+    }
+  }
+  if (!offers.length) throw new Error("TARGET_TRADE_UNAVAILABLE");
+  offers.sort((a, b) => b.score - a.score || a.offer.offerId.localeCompare(b.offer.offerId));
+  state.tradeDesk = {
+    inquiryMode: "TARGET", targetPlayerIds: targetIds,
+    selectedPlayerIds: [], selectedPickIds: [],
+    offers: selectQuotedOffers(offers, "userOutgoingPickIds", incomingValue >= 50),
   };
   return state;
 }
@@ -299,6 +464,10 @@ export function acceptTradeOffer(input: GameState, offerId: string): GameState {
   }
   committed.status = "ACCEPTED";
   for (const entry of state.tradeDesk.offers) if (entry.offerId !== committed.offerId) entry.status = "REJECTED";
+  state.tradeDesk.selectedPlayerId = undefined;
+  state.tradeDesk.selectedPlayerIds = [];
+  state.tradeDesk.selectedPickIds = [];
+  state.tradeDesk.targetPlayerIds = [];
   return state;
 }
 
@@ -316,9 +485,9 @@ export function evaluateTradeOffer(state: GameState, offerId: string): TradeOffe
   const mine = state.teams[state.userTeamId];
   const outgoingSalary = outgoing.reduce((sum, player) => sum + player.contract.salary, 0);
   const incomingSalary = incoming.reduce((sum, player) => sum + player.contract.salary, 0);
-  const outgoingAssetValue = outgoing.reduce((sum, player) => sum + publicPlayerValue(player), 0)
+  const outgoingAssetValue = outgoing.reduce((sum, player) => sum + tradePlayerValue(player), 0)
     + offer.userOutgoingPickIds.reduce((sum, id) => sum + (state.draftPicks[id] ? tradeDraftPickValue(state, state.draftPicks[id]) : 0), 0);
-  const incomingAssetValue = incoming.reduce((sum, player) => sum + publicPlayerValue(player), 0)
+  const incomingAssetValue = incoming.reduce((sum, player) => sum + tradePlayerValue(player), 0)
     + offer.userIncomingPickIds.reduce((sum, id) => sum + (state.draftPicks[id] ? tradeDraftPickValue(state, state.draftPicks[id]) : 0), 0);
   if (!mine || !other) return { ...empty, outgoingSalary, incomingSalary, salaryDifference: Math.abs(outgoingSalary - incomingSalary), reason: "交易球队不存在" };
   if (outgoing.length !== offer.userOutgoingPlayerIds.length || incoming.length !== offer.userIncomingPlayerIds.length) return { ...empty, outgoingSalary, incomingSalary, reason: "球员资产已发生变化" };
@@ -370,12 +539,24 @@ export function evaluateTradeOffer(state: GameState, offerId: string): TradeOffe
       ROSTER_BELOW_NBA_MINIMUM: "交易后常规赛名单不能少于 12 人",
       PLAYER_NOT_OWNED: "球员归属已变化",
       PLAYER_NOT_TRADEABLE: "球员合同当前不可交易",
+      FREE_AGENT_TRADE_WAITING_PERIOD: "新签球员尚未到可交易日期",
+      ROOKIE_TRADE_WAITING_PERIOD: "新秀签约后 30 天内不可交易",
+      TARGET_PLAYER_TRADE_WAITING_PERIOD: "目标球员尚未到可交易日期",
+      PLAYER_UNTOUCHABLE: "对方将该球员列为非卖品，无法交易",
     } as Record<string, string>)[code] ?? (code || "交易校验失败");
     return result(false, reason);
   }
   const premium = corePlayerTradePremium(incoming, outgoing);
   if (premium > 0 && outgoingAssetValue - incomingAssetValue < premium) {
     return result(false, "对方核心球员换成较低评分球员，需要更高价值的回报");
+  }
+  const playerValueChanged = [...outgoing, ...incoming].some((player) => offer.playerValueSnapshot?.[player.id] !== undefined
+    && Math.abs(tradePlayerValue(player) - offer.playerValueSnapshot[player.id]) >= 0.05);
+  if (playerValueChanged) {
+    const refreshPenalty = BALANCE_CONFIG.trade.refreshPenaltyByInquiry[Math.min(offer.inquiryCount, BALANCE_CONFIG.trade.refreshPenaltyByInquiry.length - 1)];
+    if (outgoingAssetValue - incomingAssetValue < Math.max(-4, premium) + refreshPenalty) {
+      return result(false, "球员估值已变化，请重新获取报价");
+    }
   }
   return result(true);
 }
@@ -388,6 +569,8 @@ export function executeTradeCommand(state: GameState, command: TradeCommand): Ga
     ? setTradeAssets(state, command.payload)
     : command.type === "GENERATE_TRADE_OFFERS"
       ? generateTradeOffers(state, "playerId" in command.payload ? command.payload.playerId : command.payload, command.payload.refresh)
+      : command.type === "GENERATE_TARGETED_TRADE_OFFERS"
+        ? generateTargetedTradeOffers(state, command.payload.targetPlayerIds, command.payload.refresh)
       : acceptTradeOffer(state, command.payload.offerId);
   next.commandReceipts[command.commandId] = { payloadHash };
   return next;

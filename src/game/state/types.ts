@@ -86,6 +86,8 @@ export interface PlayerContract {
   optionByYear?: ContractYearOption[];
   signedTeamId?: string;
   signedPhase?: string;
+  /** In-game calendar date of this contract signing; absent on older saves. */
+  signedOn?: string;
   emergencyStatus?: "ACTIVE" | "PENDING_TERMINATION";
   emergencyDailySalary?: number;
   qualifyingOfferDecision?: "PENDING" | "TENDERED" | "DECLINED";
@@ -128,6 +130,7 @@ export interface PlayerCareerRecord {
   unemployedLeagueYears: number;
   careerInjuryGamesMissed: number;
   lastSeasonStats?: PlayerSeasonStats;
+  lastSeasonStatsSource?: "SYNTHETIC_OPENING";
   honors?: {
     allStar: number;
     mvp: number;
@@ -148,6 +151,9 @@ export interface PlayerCareerRecord {
 export interface PlayerInjury {
   injuryId: string;
   severity: InjurySeverity;
+  /** Calendar days until recovery. Older saves may only have gamesRemaining. */
+  daysRemaining?: number;
+  /** Display estimate retained for older saves and event consumers. */
   gamesRemaining: number;
   occurredSeasonId: string;
   occurredGameId: string;
@@ -160,6 +166,7 @@ export interface InjuryEvent {
   teamId: string;
   severity: InjurySeverity;
   gamesOut: number;
+  daysOut?: number;
   gameId: string;
   seasonId: string;
 }
@@ -181,6 +188,8 @@ export interface Player {
   serviceYears: number;
   serviceYearsSource?: "NBA_OFFICIAL_PROFILE" | "DOCUMENTED_DEBUT" | "AGE_ESTIMATE" | "GENERATED";
   serviceRosterDays?: number;
+  /** Accumulated free-agent market days without a qualifying active offer. */
+  freeAgentDemand?: { uncontestedDays: number };
   birdTeamId?: string | null;
   birdYears?: number;
   injuryRating: number;
@@ -299,6 +308,7 @@ export interface ExpansionState {
   currentPickIndex: number;
   lastNotice?: string;
   finalized: boolean;
+  summaryConfirmed?: boolean;
 }
 
 export interface RookieDraftPick {
@@ -316,6 +326,8 @@ export interface RookieDraftState {
   classPlayerIds: string[];
   revealedProspectIds?: string[];
   lotteryPresented?: boolean;
+  lotteryRevealComplete?: boolean;
+  lotteryRerollCount?: number;
   pickOrder: RookieDraftPick[];
   currentPickIndex: number;
   completed: boolean;
@@ -346,6 +358,7 @@ export interface CapState {
   capHolds: CapHold[];
   deadMoney: DeadMoneyCharge[];
   offerReservations: OfferReservation[];
+  salaryFloorShortfalls?: Array<{ teamId: string; seasonId: string; amount: number }>;
   emergencySalaryCharges?: Array<{
     id: string;
     playerId: string;
@@ -377,6 +390,8 @@ export interface FreeAgentOffer {
   rolePromised: PromisedRole;
   capReservation: number;
   utility: number;
+  /** Asking salary used for the last utility calculation; optional for older saves. */
+  pricedAgainstAsk?: number;
   status: FreeAgentOfferStatus;
   resolutionReason?: FreeAgentOfferResolutionReason;
   kind: "UFA_OFFER" | "RFA_OWN_TEAM_OFFER" | "RFA_OFFER_PROPOSAL";
@@ -395,6 +410,7 @@ export interface PlayerMarketWindow {
 export interface FreeAgencyState {
   opened: boolean;
   currentDay: number;
+  closeAfterPendingRfa?: boolean;
   offers: Record<string, FreeAgentOffer>;
   markets: Record<string, PlayerMarketWindow>;
   settledPlayerDay: Record<string, number>;
@@ -423,10 +439,14 @@ export interface TradeOffer {
   userOutgoingPickIds: string[];
   userIncomingPlayerIds: string[];
   userIncomingPickIds: string[];
+  /** Player values when this quote was generated; absent on older saves. */
+  playerValueSnapshot?: Record<string, number>;
   status: "AVAILABLE" | "ACCEPTED" | "REJECTED";
 }
 
 export interface TradeDeskState {
+  inquiryMode?: "ASSET" | "TARGET";
+  targetPlayerIds?: string[];
   selectedPlayerId?: string;
   selectedPlayerIds?: string[];
   selectedPickIds?: string[];
@@ -635,6 +655,29 @@ export interface ScheduleGame {
   winnerTeamId?: string;
 }
 
+export interface PostseasonSeries {
+  id: string;
+  conference: Conference | "FINALS";
+  round: "PLAY_IN" | "R1" | "SF" | "CF" | "FINALS";
+  teamAId: string;
+  teamBId: string;
+  winsA: number;
+  winsB: number;
+  winnerTeamId?: string;
+  bestOf: 1 | 7;
+  gameIds: string[];
+}
+
+export interface PostseasonState {
+  seasonId: string;
+  schedule: ScheduleGame[];
+  gameDetails: Record<string, GameResult>;
+  series: PostseasonSeries[];
+  /** Regular season ranking, with play-in winners replacing seeds 7 and 8 once known. */
+  seeds: Record<Conference, string[]>;
+  sevenEightLoserTeamIds: string[];
+}
+
 export interface StandingRecord {
   teamId: string;
   wins: number;
@@ -700,6 +743,7 @@ export interface FranchiseStatsState {
 
 export interface InjuryState {
   recentEvents: InjuryEvent[];
+  lastProcessedDateIndexByTeam?: Record<string, number>;
   pendingUserMajorInjury?: InjuryEvent;
   pendingAutoRotationAfterEmergency?: boolean;
   pendingEmergencyRoster?: {
@@ -758,6 +802,7 @@ export interface GameState {
   standings: Record<string, StandingRecord>;
   lightweightResults: GameResult[];
   userGameDetails: Record<string, GameResult>;
+  postseason?: PostseasonState;
   franchiseStats: FranchiseStatsState;
   history: {
     champions: Array<{ seasonId: string; teamId: string }>;

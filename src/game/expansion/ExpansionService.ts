@@ -37,7 +37,8 @@ export type ExpansionCommand =
   | { commandId: string; type: "PREPARE_EXPANSION_TRADE"; payload: Record<string, never> }
   | { commandId: string; type: "ACCEPT_EXPANSION_TRADE"; payload: { offerId: string } }
   | { commandId: string; type: "START_EXPANSION_DRAFT"; payload: Record<string, never> }
-  | { commandId: string; type: "SELECT_EXPANSION_PLAYER"; payload: { playerId: string; expectedPickNumber: number } };
+  | { commandId: string; type: "SELECT_EXPANSION_PLAYER"; payload: { playerId: string; expectedPickNumber: number } }
+  | { commandId: string; type: "CONFIRM_EXPANSION_SUMMARY"; payload: Record<string, never> };
 
 export interface CreateExpansionTeamInput {
   cityId: ExpansionCityId;
@@ -156,6 +157,7 @@ export function createExpansionTeam(state: GameState, input: CreateExpansionTeam
     picks: [],
     currentPickIndex: 0,
     finalized: false,
+    summaryConfirmed: false,
   };
   next.league.currentPhase = "EXPANSION_RIGHTS";
   validateExpansionState(next);
@@ -585,6 +587,7 @@ function finalizeExpansionDraftMutable(state: GameState): void {
   }
   for (const offer of expansion.tradeOffers) if (offer.status === "AVAILABLE") offer.status = "REJECTED";
   expansion.finalized = true;
+  expansion.summaryConfirmed = false;
   expansion.lastNotice = `${totalPicks} 次扩军选择全部完成，协议补偿已经结算。`;
   unlockAchievement(state, "EXPANSION_COMPLETE");
   enqueueEvent(state, "expansion_complete_001");
@@ -640,6 +643,17 @@ export function getSelectableExpansionPlayers(state: GameState): Player[] {
   const forcedCommitment = activeSelectCommitment(state.expansion, state.expansion.playerTeamId);
   if (forcedCommitment) return [state.players[forcedCommitment.targetPlayerId]].filter(Boolean);
   return selectablePlayers(state, state.expansion.playerTeamId);
+}
+
+export function confirmExpansionSummary(state: GameState): GameState {
+  ensurePhase(state, "ROOKIE_DRAFT_PENDING");
+  if (!state.expansion?.finalized) throw new Error("扩军选秀尚未完成");
+  const next = structuredClone(state);
+  if (!next.expansion!.summaryConfirmed) {
+    next.expansion!.summaryConfirmed = true;
+    next.expansion!.lastNotice = "扩军结果已确认，进入新秀选秀准备。";
+  }
+  return next;
 }
 
 export function getExpansionDraftCandidatePlayers(state: GameState): Player[] {
@@ -698,6 +712,7 @@ export function executeExpansionCommand(state: GameState, command: ExpansionComm
     case "ACCEPT_EXPANSION_TRADE": next = acceptExpansionTrade(state, command.payload.offerId); break;
     case "START_EXPANSION_DRAFT": next = startExpansionDraft(state); break;
     case "SELECT_EXPANSION_PLAYER": next = selectExpansionPlayer(state, command.payload.playerId, command.payload.expectedPickNumber); break;
+    case "CONFIRM_EXPANSION_SUMMARY": next = confirmExpansionSummary(state); break;
   }
   next.commandReceipts[command.commandId] = { payloadHash };
   validateExpansionState(next);

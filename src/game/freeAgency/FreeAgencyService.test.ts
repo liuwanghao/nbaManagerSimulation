@@ -7,12 +7,13 @@ import { getCapSheet } from "../cap/CapSheetService";
 import { executeDraftCommand, getAvailableDraftProspects } from "../draft/DraftService";
 import { executeExpansionCommand, getSelectableExpansionPlayers } from "../expansion/ExpansionService";
 import { stableHash, stableSerialize } from "../random/hash";
-import { createExpansionCareer } from "../season/career";
+import { createCareer, createExpansionCareer } from "../season/career";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { publicPlayerValue } from "../ai/AIValueService";
 import { executeRosterCommand } from "../roster/RosterService";
 import type { GameState } from "../state/types";
 import {
+  advanceFreeAgencyDay,
   executeFreeAgencyCommand,
   getFreeAgentContractTerms,
   getFreeAgentCustomOfferPreview,
@@ -37,6 +38,7 @@ function postDraftState(seed: string, bundled = false): GameState {
     const pick = (state.expansion?.currentPickIndex ?? 0) + 1;
     state = executeExpansionCommand(state, { commandId: `exp-${pick}`, type: "SELECT_EXPANSION_PLAYER", payload: { playerId: getSelectableExpansionPlayers(state)[0].id, expectedPickNumber: pick } });
   }
+  state = executeExpansionCommand(state, { commandId: "confirm-expansion-summary", type: "CONFIRM_EXPANSION_SUMMARY", payload: {} });
   state = executeDraftCommand(state, { commandId: "prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} });
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
@@ -49,11 +51,234 @@ function postDraftState(seed: string, bundled = false): GameState {
 }
 
 describe("Stage 4 free agency", () => {
+  it("does not repeatedly attempt AI offers when a team has no cap room", () => {
+    const state = createCareer("ai-fa-no-cap-room");
+    const team = state.teams.BOS;
+    const removedId = team.playerIds.pop();
+    if (!removedId) throw new Error("Expected a Boston roster player");
+    state.players[removedId].teamId = "FREE_AGENT";
+    state.players[removedId].contract.status = "UFA";
+    for (const playerId of team.playerIds) state.players[playerId].contract.salary = 30_000_000;
+    state.capState.capHolds = [];
+    expect(getCapSheet(state, team.id).availableCapSpace).toBeLessThan(0);
+    const first = advanceFreeAgencyDay(state);
+    const second = advanceFreeAgencyDay(first);
+    expect(Object.values(second.freeAgency!.offers).filter((offer) => offer.teamId === team.id)).toHaveLength(0);
+    expect(second.teams[team.id].playerIds).toHaveLength(team.playerIds.length);
+  });
+
+  it("settles the current day before an early close and withdraws only unresolved offers", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-early-close"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    state = executeFreeAgencyCommand(state, { commandId: "offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 1, year1Salary: 8_000_000, guaranteedPercent: 1, rolePromised: "ROTATION" } });
+    const offer = Object.values(state.freeAgency!.offers).find((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId);
+    if (!offer) throw new Error("User offer missing");
+    offer.utility = 100;
+    const closed = executeRosterCommand(state, { commandId: "close-early", type: "CLOSE_FREE_AGENCY", payload: {} });
+    expect(closed.freeAgency!.currentDay).toBe(state.freeAgency!.currentDay + 1);
+    expect(closed.freeAgency!.offers[offer.offerId].status).toBe("ACCEPTED");
+    expect(closed.players[player.id].teamId).toBe(state.userTeamId);
+    expect(closed.league.currentPhase).toBe("PRESEASON");
+    expect(Object.values(closed.freeAgency!.offers).every((entry) => entry.status !== "ACTIVE")).toBe(true);
+    expect(executeRosterCommand(closed, { commandId: "close-early", type: "CLOSE_FREE_AGENCY", payload: {} })).toBe(closed);
+  });
+
+  it("keeps an offer valid on expiresDay and expires it only on the next day", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-expiry-inclusive"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    state = executeFreeAgencyCommand(state, { commandId: "offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, years: 1, year1Salary: 8_000_000, guaranteedPercent: 1, rolePromised: "ROTATION" } });
+    const offer = Object.values(state.freeAgency!.offers).find((entry) => entry.playerId === player.id && entry.teamId === state.userTeamId);
+    if (!offer) throw new Error("User offer missing");
+    offer.expiresDay = 1;
+    state.freeAgency!.markets[player.id].decisionDeadline = 3;
+    for (const team of Object.values(state.teams)) {
+      if (team.id !== state.userTeamId) team.playerIds = Array.from({ length: LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum }, (_, index) => `blocked-${team.id}-${index}`);
+    }
+
+    const acceptedInput = structuredClone(state);
+    acceptedInput.freeAgency!.offers[offer.offerId].utility = 100;
+    const accepted = executeFreeAgencyCommand(acceptedInput, { commandId: "settle-expiry-day", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(accepted.freeAgency!.offers[offer.offerId].status).toBe("ACCEPTED");
+
+    state.freeAgency!.offers[offer.offerId].utility = 0;
+    state = executeFreeAgencyCommand(state, { commandId: "settle-day-one", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(state.freeAgency!.currentDay).toBe(2);
+    expect(state.freeAgency!.offers[offer.offerId].status).toBe("EXPIRED");
+    expect(state.capState.offerReservations.some((entry) => entry.offerId === offer.offerId)).toBe(false);
+  });
+
+  it("lets an own-team Bird UFA sign over the cap but keeps other UFA offers cap-limited", () => {
+    const state = executeFreeAgencyCommand(postDraftState("fa-bird-ufa"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
+    if (!player) throw new Error("UFA missing from test market");
+    player.birdTeamId = state.userTeamId;
+    player.birdYears = 4;
+    state.freeAgency!.markets[player.id].originalTeamId = state.userTeamId;
+    state.capState.capHolds.push({ playerId: player.id, teamId: state.userTeamId, amount: 10_000_000, type: "BIRD_UFA" });
+    for (const playerId of state.teams[state.userTeamId].playerIds) state.players[playerId].contract.salary = 20_000_000;
+    expect(getCapSheet(state, state.userTeamId).availableCapSpace).toBeLessThan(0);
+    const maxSalaryPercent = player.serviceYears >= 10 ? LEAGUE_FINANCE_CONFIG.maximumSalaryPercentages.tenPlusYears
+      : player.serviceYears >= 7 ? LEAGUE_FINANCE_CONFIG.maximumSalaryPercentages.sevenToNineYears
+        : LEAGUE_FINANCE_CONFIG.maximumSalaryPercentages.zeroToSixYears;
+    const draft = { years: 1, year1Salary: LEAGUE_FINANCE_CONFIG.salaryCap * maxSalaryPercent, guaranteedPercent: 1, rolePromised: "STARTER" as const };
+    expect(getFreeAgentCustomOfferPreview(state, player.id, draft).valid).toBe(true);
+    expect(getFreeAgentCustomOfferPreview(state, player.id, { ...draft, year1Salary: draft.year1Salary + 1 }).valid).toBe(false);
+    const submitted = executeFreeAgencyCommand(state, { commandId: "bird-offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...draft } });
+    expect(Object.values(submitted.freeAgency!.offers).some((offer) => offer.playerId === player.id && offer.teamId === state.userTeamId && offer.status === "ACTIVE")).toBe(true);
+    const birdOffer = Object.values(submitted.freeAgency!.offers).find((offer) => offer.playerId === player.id && offer.teamId === state.userTeamId);
+    if (!birdOffer) throw new Error("Bird offer missing");
+    birdOffer.utility = 100;
+    const signed = executeFreeAgencyCommand(submitted, { commandId: "settle-bird-offer", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(signed.players[player.id].teamId).toBe(state.userTeamId);
+    expect(signed.players[player.id].contract.salary).toBe(draft.year1Salary);
+    expect(signed.players[player.id].birdYears).toBe(4);
+
+    const withoutRights = structuredClone(state);
+    withoutRights.players[player.id].birdYears = LEAGUE_FINANCE_CONFIG.capHolds.birdEligibilityYears - 1;
+    expect(getFreeAgentCustomOfferPreview(withoutRights, player.id, draft).reason).toBe("可用薪资空间不足");
+    expect(() => executeFreeAgencyCommand(withoutRights, { commandId: "no-bird-offer", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...draft } })).toThrow(/Insufficient cap space/);
+    const withoutHold = structuredClone(state);
+    withoutHold.capState.capHolds = withoutHold.capState.capHolds.filter((hold) => hold.playerId !== player.id);
+    expect(getFreeAgentCustomOfferPreview(withoutHold, player.id, draft).reason).toBe("可用薪资空间不足");
+  });
+
+  it("settles day 120 exactly once and automatically ends the main market", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-day-120"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    state.freeAgency!.currentDay = 120;
+    for (const team of Object.values(state.teams)) {
+      if (team.id !== state.userTeamId) team.playerIds = Array.from({ length: LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum }, (_, index) => `blocked-${team.id}-${index}`);
+    }
+    state = executeFreeAgencyCommand(state, { commandId: "last-day", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(state.freeAgency!.currentDay).toBe(121);
+    expect(state.league.currentPhase).toBe("PRESEASON");
+    expect(Object.values(state.freeAgency!.offers).every((offer) => offer.status !== "ACTIVE")).toBe(true);
+    expect(executeFreeAgencyCommand(state, { commandId: "last-day", type: "ADVANCE_FA_DAY", payload: {} })).toBe(state);
+  });
+
+  it("waits for a day-120 RFA match decision before closing the main market", () => {
+    let state = executeFreeAgencyCommand(postDraftState("fa-last-day-rfa"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "RFA");
+    const bidder = Object.values(state.teams).find((team) => team.id !== state.userTeamId);
+    if (!player || !bidder) throw new Error("RFA or bidder missing from test market");
+    state.freeAgency!.currentDay = 120;
+    state.freeAgency!.markets[player.id] = { playerId: player.id, originalTeamId: state.userTeamId, marketWindowStartDay: 120, decisionDeadline: 120, marketWindowStatus: "OPEN" };
+    player.birdTeamId = state.userTeamId;
+    for (const team of Object.values(state.teams)) {
+      if (team.id !== state.userTeamId && team.id !== bidder.id) team.playerIds = Array.from({ length: LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum }, (_, index) => `blocked-${team.id}-${index}`);
+    }
+    const salary = LEAGUE_FINANCE_CONFIG.minimumSalary;
+    state.freeAgency!.offers.sheet = {
+      offerId: "sheet", playerId: player.id, teamId: bidder.id, createdDay: 120, expiresDay: 120,
+      years: 1, year1Salary: salary, totalValue: salary, guaranteedValue: salary,
+      rolePromised: "BENCH", capReservation: salary, utility: 100, status: "ACTIVE", kind: "RFA_OFFER_PROPOSAL",
+    };
+    state.capState.offerReservations.push({ offerId: "sheet", playerId: player.id, teamId: bidder.id, amount: salary });
+    for (let index = 0; index < BALANCE_CONFIG.ai.maxNewFreeAgentOffersPerTeamDay; index += 1) {
+      state.freeAgency!.offers[`skip-ai-${index}`] = { ...state.freeAgency!.offers.sheet, offerId: `skip-ai-${index}`, playerId: `unused-player-${index}`, status: "WITHDRAWN" };
+    }
+    state = executeFreeAgencyCommand(state, { commandId: "last-day", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(state.freeAgency!.currentDay).toBe(121);
+    expect(state.freeAgency!.closeAfterPendingRfa).toBe(true);
+    expect(state.league.currentPhase).toBe("OFFSEASON_POST_DRAFT");
+    expect(state.freeAgency!.pendingUserRfaDecision?.offerId).toBe("sheet");
+    state = executeFreeAgencyCommand(state, { commandId: "decline-match", type: "RESOLVE_USER_RFA", payload: { decision: "DECLINE" } });
+    expect(state.players[player.id].teamId).toBe(bidder.id);
+    expect(state.league.currentPhase).toBe("PRESEASON");
+    expect(state.freeAgency!.closeAfterPendingRfa).toBeUndefined();
+  });
+
+  it("pauses for two market days of RFA matching and preserves Bird years only if the original team matches", () => {
+    const state = executeFreeAgencyCommand(postDraftState("fa-rfa-bird-continuity"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const player = getFreeAgents(state).find((entry) => entry.contract.status === "RFA");
+    const bidder = Object.values(state.teams).find((team) => team.id !== state.userTeamId && team.playerIds.length < LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum);
+    if (!player || !bidder) throw new Error("RFA or bidder missing from test market");
+    state.freeAgency!.currentDay = 7;
+    state.freeAgency!.markets[player.id] = {
+      playerId: player.id, originalTeamId: state.userTeamId, marketWindowStartDay: 7,
+      decisionDeadline: 7, marketWindowStatus: "OPEN",
+    };
+    player.birdTeamId = state.userTeamId;
+    player.birdYears = 4;
+    state.capState.capHolds = state.capState.capHolds.filter((hold) => hold.playerId !== player.id);
+    state.capState.capHolds.push({ playerId: player.id, teamId: state.userTeamId, amount: 10_000_000, type: "RFA" });
+    const salary = LEAGUE_FINANCE_CONFIG.minimumSalary;
+    state.freeAgency!.offers.sheet = {
+      offerId: "sheet", playerId: player.id, teamId: bidder.id, createdDay: 7, expiresDay: 7,
+      years: 2, year1Salary: salary, totalValue: salary * 2, guaranteedValue: salary * 2,
+      rolePromised: "BENCH", capReservation: salary, utility: 100, status: "ACTIVE", kind: "RFA_OFFER_PROPOSAL",
+    };
+    state.capState.offerReservations.push({ offerId: "sheet", playerId: player.id, teamId: bidder.id, amount: salary });
+
+    const pending = executeFreeAgencyCommand(state, { commandId: "settle-seven", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(pending.freeAgency!.currentDay).toBe(8);
+    expect(pending.freeAgency!.pendingUserRfaDecision).toMatchObject({ playerId: player.id, offerId: "sheet", deadline: 9 });
+    expect(pending.freeAgency!.markets[player.id].matchingDeadline).toBe(9);
+    expect(() => executeFreeAgencyCommand(pending, { commandId: "skip-decision", type: "ADVANCE_FA_DAY", payload: {} })).toThrow(/pending RFA/);
+
+    const restored = JSON.parse(JSON.stringify(pending)) as GameState;
+    const matched = executeFreeAgencyCommand(restored, { commandId: "match-sheet", type: "RESOLVE_USER_RFA", payload: { decision: "MATCH" } });
+    expect(matched.players[player.id]).toMatchObject({ teamId: state.userTeamId, birdTeamId: state.userTeamId, birdYears: 4 });
+    const declined = executeFreeAgencyCommand(pending, { commandId: "decline-sheet", type: "RESOLVE_USER_RFA", payload: { decision: "DECLINE" } });
+    expect(declined.players[player.id]).toMatchObject({ teamId: bidder.id, birdTeamId: bidder.id, birdYears: 1 });
+
+    const legacy = structuredClone(pending);
+    legacy.freeAgency!.pendingUserRfaDecision!.deadline = legacy.freeAgency!.currentDay;
+    legacy.freeAgency!.markets[player.id].matchingDeadline = legacy.freeAgency!.currentDay;
+    expect(executeFreeAgencyCommand(legacy, { commandId: "legacy-match", type: "RESOLVE_USER_RFA", payload: { decision: "MATCH" } }).players[player.id].birdYears).toBe(4);
+    legacy.freeAgency!.pendingUserRfaDecision!.deadline -= 1;
+    legacy.freeAgency!.markets[player.id].matchingDeadline = legacy.freeAgency!.currentDay - 1;
+    expect(() => executeFreeAgencyCommand(legacy, { commandId: "invalid-match", type: "RESOLVE_USER_RFA", payload: { decision: "MATCH" } })).toThrow("RFA_MATCHING_STATE_INVALID");
+  });
+
+  it("keeps every same-day user RFA sheet pending until each is decided", () => {
+    const state = executeFreeAgencyCommand(postDraftState("fa-two-rfa-sheets"), { commandId: "open", type: "ENTER_FREE_AGENCY", payload: {} });
+    const players = getFreeAgents(state).filter((entry) => entry.contract.status === "RFA").slice(0, 2);
+    const bidders = Object.values(state.teams).filter((team) => team.id !== state.userTeamId && team.playerIds.length < LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum).slice(0, 2);
+    if (players.length !== 2 || bidders.length !== 2) throw new Error("Two RFAs and bidders required");
+    const salary = LEAGUE_FINANCE_CONFIG.minimumSalary;
+    state.freeAgency!.currentDay = 120;
+    players.forEach((player, index) => {
+      player.birdTeamId = state.userTeamId;
+      player.birdYears = 4;
+      state.freeAgency!.markets[player.id] = {
+        playerId: player.id, originalTeamId: state.userTeamId, marketWindowStartDay: 120,
+        decisionDeadline: 120, marketWindowStatus: "OPEN",
+      };
+      const offerId = `sheet-${index}`;
+      state.freeAgency!.offers[offerId] = {
+        offerId, playerId: player.id, teamId: bidders[index].id, createdDay: 120, expiresDay: 120,
+        years: 1, year1Salary: salary, totalValue: salary, guaranteedValue: salary,
+        rolePromised: "BENCH", capReservation: salary, utility: 100, status: "ACTIVE", kind: "RFA_OFFER_PROPOSAL",
+      };
+      state.capState.offerReservations.push({ offerId, playerId: player.id, teamId: bidders[index].id, amount: salary });
+    });
+    const settled = executeFreeAgencyCommand(state, { commandId: "settle-last-day", type: "ADVANCE_FA_DAY", payload: {} });
+    expect(settled.freeAgency!.currentDay).toBe(121);
+    expect(settled.freeAgency!.pendingUserRfaDecision).toBeDefined();
+    expect(players.map((player) => settled.freeAgency!.markets[player.id].marketWindowStatus)).toEqual(["RFA_MATCHING", "RFA_MATCHING"]);
+    expect(() => executeFreeAgencyCommand(settled, { commandId: "skip-both", type: "ADVANCE_FA_DAY", payload: {} })).toThrow(/pending RFA/);
+
+    const first = executeFreeAgencyCommand(settled, { commandId: "decide-first", type: "RESOLVE_USER_RFA", payload: { decision: "MATCH" } });
+    expect(first.league.currentPhase).toBe("OFFSEASON_POST_DRAFT");
+    expect(first.freeAgency!.pendingUserRfaDecision).toBeDefined();
+    expect(first.freeAgency!.pendingUserRfaDecision?.offerId).not.toBe(settled.freeAgency!.pendingUserRfaDecision?.offerId);
+    expect(() => executeFreeAgencyCommand(first, { commandId: "skip-second", type: "ADVANCE_FA_DAY", payload: {} })).toThrow(/pending RFA/);
+    const second = executeFreeAgencyCommand(first, { commandId: "decide-second", type: "RESOLVE_USER_RFA", payload: { decision: "DECLINE" } });
+    expect(second.freeAgency!.pendingUserRfaDecision).toBeUndefined();
+    expect(second.league.currentPhase).toBe("PRESEASON");
+    expect(players.map((player) => second.players[player.id].birdYears).sort()).toEqual([1, 4]);
+  });
+
   it("lets the rights team sign an elite RFA before opening night without cutting rotation veterans", () => {
     let state = executeFreeAgencyCommand(postDraftState("expansion-era-demo", true), {
       commandId: "opening-fa", type: "ENTER_FREE_AGENCY", payload: {},
     });
     const durenId = "nba:1631105";
+    state.players[durenId].birdTeamId = "DET";
+    state.players[durenId].birdYears = 4;
+    const durenBirdYears = state.players[durenId].birdYears;
     expect(state.freeAgency?.markets[durenId].originalTeamId).toBe("DET");
     expect(state.capState.capHolds).toContainEqual(expect.objectContaining({ playerId: durenId, teamId: "DET", type: "RFA" }));
     expect(state.teams.DET.playerIds).toHaveLength(14);
@@ -61,6 +286,7 @@ describe("Stage 4 free agency", () => {
       state = executeFreeAgencyCommand(state, { commandId: `opening-fa-${day}`, type: "ADVANCE_FA_DAY", payload: {} });
     }
     expect(state.players[durenId]).toMatchObject({ teamId: "DET", contract: { status: "STANDARD" } });
+    expect(state.players[durenId].birdYears).toBe(durenBirdYears);
     expect(Object.values(state.freeAgency?.offers ?? {}).some((offer) => offer.playerId === durenId
       && offer.teamId === "DET" && offer.kind === "RFA_OWN_TEAM_OFFER" && offer.status === "ACCEPTED")).toBe(true);
 
@@ -479,6 +705,7 @@ describe("Stage 4 free agency", () => {
     const older = { ...player, age: 33 };
 
     expect(getProjectedMarketSalary(younger)).toBeGreaterThan(getProjectedMarketSalary(older));
+    expect(getProjectedMarketSalary(younger, 2027)).toBeGreaterThan(getProjectedMarketSalary(younger, 2026));
   });
 
   it("keeps a 68-overall young player near the minimum instead of a star salary", () => {

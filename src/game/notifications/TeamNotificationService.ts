@@ -1,5 +1,6 @@
 import { stableHash } from "../random/hash";
 import type { GameState, TeamNotification } from "../state/types";
+import { estimatedInjuryMissedGames, injuryDaysRemaining, injuryDurationLabel } from "../simulation/injuryEstimate";
 
 const MAX_NOTIFICATIONS = 80;
 
@@ -29,6 +30,20 @@ function notificationMessage(message: string): string {
   let visible = message;
   while (effectSuffix.test(visible)) visible = visible.replace(effectSuffix, "");
   return visible;
+}
+
+function legacyInjuryNoticeMessage(state: GameState, notification: TeamNotification): string {
+  if (notification.category !== "SEASON" || !["核心球员受伤", "轮换球员受伤"].includes(notification.title)
+    || !/预计缺阵 \d+ 场。/u.test(notification.message)) return notification.message;
+  const player = state.teams[state.userTeamId].playerIds
+    .map((id) => state.players[id])
+    .find((candidate) => candidate?.injury && notification.message.startsWith(`${candidate.name}受伤，`));
+  if (!player?.injury) return notification.message;
+  const days = injuryDaysRemaining(player);
+  const games = estimatedInjuryMissedGames(state, player);
+  if (days === null || games === null) return notification.message;
+  return notification.message.replace(/预计缺阵 \d+ 场。/u,
+    `${injuryDurationLabel(player.injury.severity, days)}，预计缺席 ${games} 场。`);
 }
 
 export function addTeamNotification(state: GameState, notification: Omit<TeamNotification, "read">): void {
@@ -71,7 +86,7 @@ export function getTeamInboxItems(state: GameState): TeamInboxItem[] {
     category: "SEASON", seasonId: state.league.seasonId, title: "紧急名单待处理",
     message: `当前仅有 ${emergency.availableCount} 名可用球员，请在赛季页面补齐名单。`, date: notificationDate(state), read: false, pending: true,
   });
-  return [...pending, ...(state.teamNotifications ?? []).filter((entry) => !isSupersededExpansionNotice(entry)).map((entry) => ({ ...entry, message: notificationMessage(entry.message), pending: false }))];
+  return [...pending, ...(state.teamNotifications ?? []).filter((entry) => !isSupersededExpansionNotice(entry)).map((entry) => ({ ...entry, message: notificationMessage(legacyInjuryNoticeMessage(state, entry)), pending: false }))];
 }
 
 export function executeTeamNotificationCommand(input: GameState, command: TeamNotificationCommand): GameState {

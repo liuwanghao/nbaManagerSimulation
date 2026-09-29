@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
-import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
+import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 import {
-  getFreeAgentContractTerms, getFreeAgentCustomOfferPreview, getFreeAgentOfferPreview,
+  getCurrentFreeAgentAsk, getFreeAgentContractTerms, getFreeAgentCustomOfferPreview, getFreeAgentOfferPreview, getProjectedMarketSalary,
   type FreeAgentOfferDraft,
 } from "../game/freeAgency/FreeAgencyService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
@@ -50,10 +50,10 @@ export function FreeAgentOfferDialogContent({ state, playerId, draft, busy, onCh
   return <section className="fa-offer-dialog" role="dialog" aria-modal="true" aria-labelledby="fa-offer-dialog-title" aria-describedby="fa-offer-dialog-description" data-testid="fa-offer-dialog">
         <header><div><small>CONTRACT OFFER</small><h2 id="fa-offer-dialog-title">向 {playerNameZh(player.name, player.id)} 发起报价</h2><p id="fa-offer-dialog-description">{positionPairLabel(player.position, player.secondaryPosition)} · OVR {calculatePlayerOverall(player).toFixed(0)} · {player.age} 岁</p></div><button type="button" aria-label="关闭报价弹窗" disabled={busy} onClick={onClose}>×</button></header>
         <div className="fa-offer-dialog-scroll">
-          <section className="fa-offer-expectation"><div><b>球员期望合同</b><span>系统估算</span></div><p>只需填写首年薪资并选择涨幅，后续年度由系统自动计算。选项仅作用于最后一年：球队选项由球队决定且该年不计入保障金额，球员选项由球员决定。</p>{regularSeason && <p>报价会预留首年薪资；球员将在后续比赛日决定是否接受。</p>}</section>
+          <section className="fa-offer-expectation"><div><b>球员期望合同</b><span>系统估算</span></div><p>当前要价 {adaptiveMoneyLabel(getCurrentFreeAgentAsk(state, player))} · 参考估值 {adaptiveMoneyLabel(getProjectedMarketSalary(player, state.league.seasonYear))}</p><p>只需填写首年薪资并选择涨幅，后续年度由系统自动计算。选项仅作用于最后一年：球队选项由球队决定且该年不计入保障金额，球员选项由球员决定。</p>{regularSeason && <p>报价会预留首年薪资；球员将在下一日历日（包括休息日）决定是否接受。</p>}</section>
           <div className="fa-offer-controls">
             <label><span>合同年限</span><select data-testid="fa-offer-years" disabled={busy} value={draft.years} onChange={(event) => onChange({ years: Number(event.target.value), finalYearOption: Number(event.target.value) < 2 ? "NONE" : draft.finalYearOption })}>{yearOptions.map((years) => <option key={years} value={years}>{years} 年</option>)}</select></label>
-            <label><span>首年薪资</span><div className="fa-offer-money-input"><input data-testid="fa-offer-salary-1" aria-label="第一年报价，单位万美元" type="number" inputMode="numeric" min={Math.round(LEAGUE_FINANCE_CONFIG.minimumSalary / 10_000)} step={10} disabled={busy} value={Math.round(draft.year1Salary / 10_000)} onChange={(event) => onChange({ year1Salary: Math.max(0, Math.round(Number(event.target.value) * 10_000)) })} /><b>万美元</b></div></label>
+            <label><span>首年薪资</span><div className="fa-offer-money-input"><input data-testid="fa-offer-salary-1" aria-label="第一年报价，单位万美元" type="number" inputMode="numeric" min={Math.ceil(getSeasonFinanceConfig(state.league.seasonYear).minimumSalary / 10_000)} step={10} disabled={busy} value={Math.round(draft.year1Salary / 10_000)} onChange={(event) => onChange({ year1Salary: Math.max(0, Math.round(Number(event.target.value) * 10_000)) })} /><b>万美元</b></div></label>
             <label><span>每年涨幅</span><select data-testid="fa-offer-raise" disabled={busy} value={draft.annualRaiseRate ?? maxRaise} onChange={(event) => onChange({ annualRaiseRate: Number(event.target.value) })}>{raiseOptions.map((rate) => <option key={rate} value={rate}>{Math.round(rate * 100)}%</option>)}</select></label>
             <label><span>保障比例</span><div className="fa-offer-percent"><input data-testid="fa-offer-guarantee" type="number" inputMode="numeric" min={0} max={100} step={5} disabled={busy} value={Math.round(draft.guaranteedPercent * 100)} onChange={(event) => onChange({ guaranteedPercent: Math.max(0, Math.min(1, Number(event.target.value) / 100)) })} /><b>%</b></div></label>
             <label><span>末年选项</span><select data-testid="fa-offer-option" disabled={busy || draft.years < 2} value={draft.finalYearOption ?? "NONE"} onChange={(event) => onChange({ finalYearOption: event.target.value as ContractYearOption })}><option value="NONE">无选项</option><option value="TEAM_OPTION">球队选项</option><option value="PLAYER_OPTION">球员选项</option></select></label>

@@ -45,6 +45,7 @@ function updateCareerSnapshot(player: Player): void {
     career.seasonsPlayed += 1;
     sumStats(career.totals, player.seasonStats);
     career.lastSeasonStats = structuredClone(player.seasonStats);
+    delete career.lastSeasonStatsSource;
   }
   const overall = playerOverall(player);
   career.peakOverall = Math.max(career.peakOverall, overall);
@@ -85,6 +86,21 @@ function roleFactor(player: Player): number {
   return multipliers.default;
 }
 
+function seasonPerformanceFactor(player: Player, overall: number): number {
+  // Rollover runs before seasonStats is cleared. A career baseline can be synthetic,
+  // so only games actually played in the season being closed affect development.
+  const stats = player.seasonStats;
+  if (stats.games <= 0 || stats.seconds <= 0 || stats.pts + stats.reb + stats.ast + stats.stl + stats.blk + stats.tov <= 0) return 1;
+  const performanceConfig = cfg.development.performance;
+  const sampleWeight = Math.min(1, stats.seconds / (performanceConfig.fullWeightMinutes * 60));
+  const per36 = 36 * 60 / stats.seconds;
+  const impact = per36 * (stats.pts + stats.reb * 0.7 + stats.ast * 1.1
+    + (stats.stl + stats.blk) * 2 - stats.tov * 1.2);
+  const expected = performanceConfig.expectedImpactAt70 + (overall - 70) * performanceConfig.expectedImpactPerOverall;
+  const performance = Math.max(-1, Math.min(1, (impact - expected) / performanceConfig.impactRange));
+  return 1 + performance * sampleWeight * performanceConfig.maximumGrowthModifier;
+}
+
 function hiddenDevelopmentFields(state: GameState, player: Player, currentOverall: number): { potential: number; rate: number; volatility: number } {
   const rng = createRng(stableHash(state.seeds.careerSeed, "development-profile", player.id));
   const hiddenConfig = cfg.hiddenPotential;
@@ -103,7 +119,8 @@ function evolveAttributes(state: GameState, player: Player, trainingFocus?: Trai
   const iqFactor = cfg.development.iqBase + player.attributes.basketballIq / cfg.development.iqDivisor;
   const potentialGap = hidden.potential - before;
   const growthOpportunity = Math.max(cfg.development.potentialInfluenceMin, Math.min(cfg.development.potentialInfluenceMax, potentialGap / cfg.development.potentialGapDivisor));
-  const positiveBase = curve > 0 ? curve * hidden.rate * minutesFactor(player) * roleFactor(player) * healthFactor * iqFactor * growthOpportunity : 0;
+  const positiveBase = curve > 0 ? curve * hidden.rate * minutesFactor(player) * roleFactor(player) * healthFactor * iqFactor
+    * growthOpportunity * seasonPerformanceFactor(player, before) : 0;
   const negativeBase = curve < 0 ? curve * (cfg.development.regressionBase - player.injuryRating / cfg.development.regressionInjuryDivisor) : 0;
 
   for (const key of ATTRIBUTE_KEYS) {
@@ -149,6 +166,15 @@ function retirementProbability(player: Player): number {
   if (player.personality === "COMPETITIVE") probability -= retirement.competitiveReduction;
   if (player.age >= retirement.unemploymentAgeMinimum && career.unemployedGameDays >= retirement.unemploymentDaysThreshold) probability += retirement.unemploymentAddition;
   if (player.age >= retirement.unemploymentAgeMinimum && career.unemployedLeagueYears >= retirement.unemploymentYearsThreshold) probability = Math.max(probability, retirement.unemploymentProbabilityFloor);
+  const hasRecentPlayingTime = player.seasonStats.games >= retirement.competitiveVeteranMinimumGames
+    && player.seasonStats.seconds >= retirement.competitiveVeteranMinimumMinutes * 60;
+  const hasSignedStartingRole = player.contract.status === "STANDARD" && player.rotationRole === "STARTER";
+  if (overall >= retirement.competitiveVeteranOverallMinimum
+    && player.injuryRating >= retirement.lowInjuryRatingThreshold
+    && (hasSignedStartingRole || hasRecentPlayingTime)
+    && career.unemployedLeagueYears < retirement.unemploymentYearsThreshold) {
+    probability *= retirement.competitiveVeteranProbabilityMultiplier;
+  }
   return Math.max(retirement.probabilityMin, Math.min(
     player.age <= retirement.youngMaximumAge ? retirement.youngProbabilityMaximum : retirement.probabilityMax,
     probability,

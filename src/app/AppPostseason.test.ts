@@ -1,8 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { createCareer } from "../game/season/career";
+import { createCareer, enterPostseason } from "../game/season/career";
 import { rolloverLeagueYear } from "../game/contracts/ContractLifecycleService";
+import { stableHash } from "../game/random/hash";
+import { createRng } from "../game/random/xoshiro";
 import { playerNameZh } from "./playerNameZh";
 import App from "./App";
 
@@ -10,6 +12,8 @@ describe("season home after postseason", () => {
   it("offers postseason settlement when regular-season games are complete", () => {
     const state = createCareer("postseason-home-ready");
     state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].losses = 82;
+    for (const team of Object.values(state.teams)) if (team.conference === state.teams[state.userTeamId].conference && team.id !== state.userTeamId) state.standings[team.id].wins = 1;
     const winner = state.teams[state.userTeamId].playerIds[0];
     state.history.seasonAwards.push({ seasonId: state.league.seasonId, allStars: { EAST: [], WEST: [] }, winners: { MVP: winner } });
 
@@ -24,6 +28,26 @@ describe("season home after postseason", () => {
     for (const label of ["MVP", "DPOY", "ROY", "MIP", "6MOY"]) expect(markup).toContain(`class="season-award-watermark" aria-hidden="true">${label}</span>`);
     expect(markup).toContain("查看季后赛对阵图");
     expect(markup).not.toContain("class=\"season-results-bracket\"");
+  });
+
+  it("offers entry and shows a live postseason schedule and bracket for a qualified team", () => {
+    const state = createCareer("postseason-home-qualified");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].wins = 82;
+    const entryMarkup = renderToStaticMarkup(createElement(App, { initialState: state }));
+    const completionCard = entryMarkup.match(/class="season-command-complete[^"]*"[\s\S]*?<\/article>/u)?.[0];
+    expect(completionCard).toContain("进入季后赛");
+    expect(completionCard).not.toContain("结算季后赛");
+    expect(entryMarkup).not.toContain("结算季后赛");
+
+    const entered = enterPostseason(state);
+    expect(entered.history.seasonAwards.some((entry) => entry.seasonId === entered.league.seasonId)).toBe(true);
+    const markup = renderToStaticMarkup(createElement(App, { initialState: entered }));
+    expect(markup).toContain('aria-label="季后赛赛季中心"');
+    expect(markup).toContain('aria-label="季后赛对阵赛程"');
+    expect(markup).toContain('aria-label="季后赛对阵图"');
+    expect(markup).toContain("模拟下一场比赛");
+    expect(markup).not.toContain("结算剩余季后赛");
   });
 
   it("shows the championship and next-year action after settlement", () => {
@@ -59,6 +83,8 @@ describe("season home after postseason", () => {
     veteran.injuryRating = 20;
     veteran.rotationRole = "OUT";
     veteran.attributes = { shooting: 40, finishing: 40, playmaking: 40, perimeterDefense: 40, interiorDefense: 40, rebounding: 40, athleticism: 40, basketballIq: 40 };
+    state.seeds.seasonSeed = Array.from({ length: 100 }, (_, index) => `retiree-preview-${index}`)
+      .find((seed) => createRng(stableHash(seed, "retirement", veteran.id)).nextFloat() < 0.5)!;
     const next = rolloverLeagueYear(state);
     const retiredIds = next.playerLifecycle?.retiredPlayerIds ?? [];
     expect(retiredIds.length).toBeGreaterThan(0);
@@ -66,7 +92,9 @@ describe("season home after postseason", () => {
     const markup = renderToStaticMarkup(createElement(App, { initialState: next }));
     expect(markup).toContain("option-phase-shell");
     expect(markup).toContain('data-testid="season-overall-changes"');
-    expect(markup.match(/class="option-phase-overall-row"/gu)).toHaveLength(next.teams[next.userTeamId].playerIds.length);
+    const currentRosterIds = new Set(next.teams[next.userTeamId].playerIds);
+    const changedCurrentPlayers = next.playerLifecycle?.userTeamOverallChanges?.filter((entry) => currentRosterIds.has(entry.playerId) && entry.after !== entry.before) ?? [];
+    expect(markup.match(/class="option-phase-overall-row"/gu) ?? []).toHaveLength(changedCurrentPlayers.length);
     expect(markup).toContain(`本年度退役球员</h2>`);
     for (const id of retiredIds) {
       expect(markup).toContain(playerNameZh(next.players[id].name, id));

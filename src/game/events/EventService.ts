@@ -87,6 +87,7 @@ function sortQueue(state: GameState): void {
 
 function isInformationalEvent(event: EventInstance): boolean {
   return event.definitionId !== "franchise_season_opening_001"
+    && event.definitionId !== "trade_deadline_001"
     && event.choices.length === 1
     && event.choices[0].id === "acknowledge"
     && choicesForEvent(event).length === 1;

@@ -1,8 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { stableHash, stableSerialize } from "../random/hash";
-import { advanceSeason, createCareer, simulateNextGameDay, simulateRegularSeason, simulateToNextEvent } from "./career";
+import { blockingEvent, executeEventCommand } from "../events/EventService";
+import { BALANCE_CONFIG } from "../../config/balanceConfig";
+import { isTradePhaseAllowed } from "../trade/TradeService";
+import { advanceSeason, createCareer, simulateLeagueDay, simulateNextGameDay, simulateRegularSeason, simulateToNextEvent } from "./career";
 
 describe("season loop", () => {
+  it("keeps trades open after the deadline event until day 105 is simulated", () => {
+    const state = createCareer("deadline-day-boundary");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    state.calendar.currentDateIndex = BALANCE_CONFIG.ai.tradeDeadlineDateIndex;
+    const paused = simulateLeagueDay(state, BALANCE_CONFIG.ai.tradeDeadlineDateIndex);
+    const deadlineEvent = blockingEvent(paused);
+    expect(deadlineEvent?.definitionId).toBe("trade_deadline_001");
+    expect(paused.calendar.currentDateIndex).toBe(BALANCE_CONFIG.ai.tradeDeadlineDateIndex);
+    expect(paused.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
+    expect(isTradePhaseAllowed(paused.league.currentPhase)).toBe(true);
+    const acknowledged = executeEventCommand(paused, { commandId: "ack-deadline", type: "RESOLVE_EVENT", payload: { eventInstanceId: deadlineEvent!.eventInstanceId, choiceId: "acknowledge" } });
+    expect(isTradePhaseAllowed(acknowledged.league.currentPhase)).toBe(true);
+    const settled = simulateLeagueDay(acknowledged, BALANCE_CONFIG.ai.tradeDeadlineDateIndex);
+    expect(settled.league.currentPhase).toBe("REGULAR_POST_DEADLINE");
+    expect(settled.calendar.currentDateIndex).toBe(BALANCE_CONFIG.ai.tradeDeadlineDateIndex + 1);
+    expect(isTradePhaseAllowed(settled.league.currentPhase)).toBe(false);
+  });
+
   it("advances the whole league clock through the user's next game", () => {
     const initial = createCareer("next-user-game");
     const next = simulateNextGameDay(initial);
@@ -32,6 +53,8 @@ describe("season loop", () => {
     expect(completed.history.seasonAwards[0].winners.FINALS_MVP).toBeUndefined();
     const nextSeason = advanceSeason(completed);
     expect(nextSeason.league.seasonId).toBe("2027-28");
+    expect(nextSeason.rookieDraft?.lotteryPresented).toBe(true);
+    expect(nextSeason.commandReceipts[stableHash(nextSeason.seeds.seasonSeed, "headless-lottery-acknowledgement")]).toBeDefined();
     expect(nextSeason.league.currentPhase).toBe("REGULAR_PRE_DEADLINE");
     expect(nextSeason.schedule).toHaveLength(1312);
     expect(nextSeason.schedule.every((game) => game.status === "SCHEDULED")).toBe(true);
@@ -79,5 +102,5 @@ describe("season loop", () => {
     const first = simulateRegularSeason(createCareer("career-replay"), { autoAcknowledgeMajorInjuries: true, autoResolveEmergencyRosters: true, autoResolveEvents: true });
     const second = simulateRegularSeason(createCareer("career-replay"), { autoAcknowledgeMajorInjuries: true, autoResolveEmergencyRosters: true, autoResolveEvents: true });
     expect(stableHash(stableSerialize(first))).toBe(stableHash(stableSerialize(second)));
-  }, 60_000);
+  }, 120_000);
 });

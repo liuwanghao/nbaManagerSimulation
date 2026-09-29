@@ -29,7 +29,7 @@ function finishExpansion(seed: string, cityId: ExpansionCityId): GameState {
     const player = getSelectableExpansionPlayers(state)[0];
     state = executeExpansionCommand(state, { commandId: `exp-${pick}`, type: "SELECT_EXPANSION_PLAYER", payload: { playerId: player.id, expectedPickNumber: pick } });
   }
-  return state;
+  return executeExpansionCommand(state, { commandId: "confirm-expansion-summary", type: "CONFIRM_EXPANSION_SUMMARY", payload: {} });
 }
 
 function run(seed: string, cityId: ExpansionCityId): GameState {
@@ -70,6 +70,7 @@ function runSecondManagerLoop(input: GameState): GameState {
   }
   state = executeContractLifecycleCommand(state, { commandId: `finalize-${state.league.seasonId}`, type: "FINALIZE_OPTION_PHASE", payload: {} });
   state = executeDraftCommand(state, { commandId: `prepare-${state.league.seasonId}`, type: "PREPARE_ROOKIE_DRAFT", payload: {} });
+  state = executeDraftCommand(state, { commandId: `lottery-ack-${state.league.seasonId}`, type: "ACKNOWLEDGE_DRAFT_LOTTERY", payload: {} });
   while (state.league.currentPhase === "DRAFT") {
     const pick = state.rookieDraft?.pickOrder[state.rookieDraft.currentPickIndex];
     if (!pick) throw new Error(`${state.league.seasonId}: rookie draft pick missing`);

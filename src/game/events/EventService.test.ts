@@ -178,7 +178,7 @@ describe("data-driven event engine", () => {
   it("pauses on an injury until a rotation choice is made", () => {
     const state = createCareer("informational-injury");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
-    const event = enqueueEvent(state, "injury_depth_test_001", { player_id: player.id, player_name: "测试球员", games_out: "3" });
+    const event = enqueueEvent(state, "injury_depth_test_001", { player_id: player.id, player_name: "测试球员", injury_duration: "预计伤停约 1 周", games_out: "3" });
     expect(event?.status).toBe("PENDING");
     expect(blockingEvent(state)?.eventInstanceId).toBe(event?.eventInstanceId);
     expect(event?.choices.map((choice) => choice.id)).toEqual(["auto_adjust", "manual_adjust"]);
@@ -190,7 +190,7 @@ describe("data-driven event engine", () => {
       id: `event-${event?.eventInstanceId}`,
       category: "SEASON",
       title: "轮换球员受伤",
-      message: "测试球员受伤，预计缺阵 3 场。已自动调整轮换。",
+      message: "测试球员受伤，预计伤停约 1 周，预计缺席 3 场。已自动调整轮换。",
       read: false,
     }));
   });
@@ -236,7 +236,8 @@ describe("data-driven event engine", () => {
     const state = createCareer("all-acknowledgements");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
     const definitions = EVENT_DEFINITIONS.filter((definition) => definition.choices.length === 1
-      && definition.choices[0].id === "acknowledge" && definition.id !== "franchise_season_opening_001");
+      && definition.choices[0].id === "acknowledge"
+      && !["franchise_season_opening_001", "trade_deadline_001"].includes(definition.id));
     expect(definitions.length).toBeGreaterThan(40);
     for (const definition of definitions) {
       const event = enqueueEvent(state, definition.id, { player_id: player.id, player_name: player.name, games_out: "3" }, `${state.league.seasonId}:${definition.id}`);
@@ -306,15 +307,15 @@ describe("data-driven event engine", () => {
 
   it("queues separate injury decisions for two players on the same game day", () => {
     const state = createCareer("two-injury-notices");
-    const first = enqueueEvent(state, "injury_depth_test_001", { player_id: "first", player_name: "甲", games_out: "2" }, "2026-27:D20");
-    const second = enqueueEvent(state, "injury_depth_test_001", { player_id: "second", player_name: "乙", games_out: "5" }, "2026-27:D20");
+    const first = enqueueEvent(state, "injury_depth_test_001", { player_id: "first", player_name: "甲", injury_duration: "预计伤停约 1 周", games_out: "2" }, "2026-27:D20");
+    const second = enqueueEvent(state, "injury_depth_test_001", { player_id: "second", player_name: "乙", injury_duration: "预计伤停约 2 周", games_out: "5" }, "2026-27:D20");
     expect(first?.eventInstanceId).not.toBe(second?.eventInstanceId);
     expect(state.eventState.queue.map((item) => item.eventInstanceId).sort()).toEqual([first!.eventInstanceId, second!.eventInstanceId].sort());
     const firstResolved = executeEventCommand(state, { commandId: "injury-first", type: "RESOLVE_EVENT", payload: { eventInstanceId: first!.eventInstanceId, choiceId: "auto_adjust" } });
     const bothResolved = executeEventCommand(firstResolved, { commandId: "injury-second", type: "RESOLVE_EVENT", payload: { eventInstanceId: second!.eventInstanceId, choiceId: "auto_adjust" } });
     expect(bothResolved.teamNotifications?.map((item) => item.message)).toEqual([
-      "乙受伤，预计缺阵 5 场。已自动调整轮换。",
-      "甲受伤，预计缺阵 2 场。已自动调整轮换。",
+      "乙受伤，预计伤停约 2 周，预计缺席 5 场。已自动调整轮换。",
+      "甲受伤，预计伤停约 1 周，预计缺席 2 场。已自动调整轮换。",
     ]);
     expect(enqueueEvent(state, "injury_depth_test_001", { player_id: "first", player_name: "甲", games_out: "2" }, "2026-27:D20")).toBeUndefined();
   });

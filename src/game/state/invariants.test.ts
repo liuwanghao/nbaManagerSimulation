@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
+import { getSeasonFinanceConfig } from "../../config/leagueFinance";
 import { getCapSheet } from "../cap/CapSheetService";
 import { createCareer, simulateLeagueDay, simulateNextGameDay } from "../season/career";
 import type { GameState } from "./types";
@@ -15,13 +15,13 @@ function expectStateInvariants(state: GameState): void {
       expect(state.players[playerId]?.contract.status).not.toBe("RETIRED");
     }
     const cap = getCapSheet(state, team.id);
-    for (const component of [cap.activeContractSalary, cap.deadMoney, cap.capHolds,
+    for (const component of [cap.activeContractSalary, cap.deadMoney, cap.capHolds, cap.salaryFloorShortfall,
       cap.activeOfferReservations, cap.incompleteRosterCharges, cap.total, cap.availableCapSpace]) {
       expect(Number.isFinite(component), `${team.id} cap contains a nonfinite number`).toBe(true);
     }
-    expect(cap.total).toBe(cap.activeContractSalary + cap.deadMoney + cap.capHolds
+    expect(cap.total).toBe(cap.activeContractSalary + cap.deadMoney + cap.capHolds + cap.salaryFloorShortfall
       + cap.activeOfferReservations + cap.incompleteRosterCharges);
-    expect(cap.availableCapSpace).toBe(LEAGUE_FINANCE_CONFIG.salaryCap - cap.total);
+    expect(cap.availableCapSpace).toBe(getSeasonFinanceConfig(state.league.seasonYear).salaryCap - cap.total);
   }
   for (const player of Object.values(state.players)) {
     expect(Number.isFinite(player.age), `${player.id} age`).toBe(true);

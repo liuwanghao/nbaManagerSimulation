@@ -1,0 +1,48 @@
+{
+  "opened": 50,
+  "closed": 50,
+  "samples": [
+    {
+      "cycle": 0,
+      "heapMB": 84.00814723968506,
+      "documents": 2,
+      "nodes": 2153,
+      "jsEventListeners": 469
+    },
+    {
+      "cycle": 10,
+      "heapMB": 86.48389911651611,
+      "documents": 2,
+      "nodes": 2153,
+      "jsEventListeners": 469
+    },
+    {
+      "cycle": 20,
+      "heapMB": 85.00543308258057,
+      "documents": 2,
+      "nodes": 2153,
+      "jsEventListeners": 469
+    },
+    {
+      "cycle": 30,
+      "heapMB": 85.83414936065674,
+      "documents": 2,
+      "nodes": 2153,
+      "jsEventListeners": 469
+    },
+    {
+      "cycle": 40,
+      "heapMB": 85.09473133087158,
+      "documents": 2,
+      "nodes": 2153,
+      "jsEventListeners": 469
+    },
+    {
+      "cycle": 50,
+      "heapMB": 85.10668659210205,
+      "documents": 2,
+      "nodes": 2153,
+      "jsEventListeners": 469
+    }
+  ]
+}
