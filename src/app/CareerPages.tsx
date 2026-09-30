@@ -153,10 +153,15 @@ export function CareerPages({ state, activeTab, activeSlot, busy = false, onPrep
   useEffect(() => {
     if (activeTab !== "overview") return;
     let current = true;
-    void requestForLeaderboardFrame("list").catch(() => { /* The full list can retry when opened. */ });
-    setRankSnapshot((previous) => ({ ...previous, loading: true }));
-    void loadCareerRank(state).then(({ mine, notice }) => {
-      if (current) setRankSnapshot({ mine, notice, loading: false, error: false });
+    setRankSnapshot({ mine: null, notice: "", loading: true, error: false });
+    void loadCareerRank(state, { onCached: ({ mine, notice }) => {
+      if (current) setRankSnapshot({ mine, notice, loading: true, error: false });
+    } }).then(({ mine, notice }) => {
+      if (current) {
+        setRankSnapshot({ mine, notice, loading: false, error: false });
+        // Prefetch after syncing so a score submission cannot discard the prefetched list.
+        void requestForLeaderboardFrame("list").catch(() => { /* The full list can retry when opened. */ });
+      }
     }).catch((error) => {
       if (current) setRankSnapshot({ mine: null, notice: error instanceof Error ? error.message : "排名暂时无法加载", loading: false, error: true });
     });
