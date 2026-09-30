@@ -5768,6 +5768,28 @@ body:has(.terminal-secondary-panel[open]) { overflow: hidden; }
   font-weight: 800;
 }
 .save-drawer-dark { color: #000 !important; border: 0 !important; background: var(--accent-primary) !important; }
+.save-rebuild-confirm { display: grid; gap: 10px; margin-top: 6px; }
+.save-rebuild-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(244, 204, 121, .2);
+  border-left: 2px solid rgba(244, 204, 121, .65);
+  border-radius: var(--card-radius);
+  background: rgba(244, 204, 121, .055);
+}
+.save-rebuild-warning > svg { width: 16px; height: 16px; margin-top: 1px; flex: 0 0 16px; color: #f4cc79; }
+.save-rebuild-warning strong { display: block; color: #f4cc79; font-size: 12px; line-height: 1.5; }
+.save-rebuild-warning p { margin: 4px 0 0; color: #cbb38a; font-size: 11px; font-weight: 400; line-height: 1.6; }
+.save-rebuild-actions { display: grid; grid-template-columns: minmax(64px, .7fr) minmax(0, 1.6fr); gap: 8px; }
+.save-rebuild-actions > button { min-height: 44px; margin: 0; padding: 8px; border-radius: var(--card-radius); font-size: 12px; font-weight: 700; cursor: pointer; }
+.save-rebuild-cancel { color: #9db5cb; border: 1px solid rgba(120, 155, 184, .32); background: rgba(17, 34, 47, .75); box-shadow: none; }
+.save-rebuild-cancel:not(:disabled):hover { color: var(--accent-primary); border-color: var(--border-color); background: var(--bg-sub-card); }
+.save-rebuild-actions .save-drawer-primary { box-shadow: 0 0 6px rgba(0, 242, 254, .28) !important; }
+.save-rebuild-actions > button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }
+.save-rebuild-actions > button:disabled { opacity: .45; cursor: wait; }
+
 @media (min-width: 431px) {
   .postgame-page-header { padding-inline: max(20px, calc((100vw - 440px) / 2)); }
   .postgame-page-body.postgame-modal-body { width: min(100%, 440px); margin-inline: auto; padding-inline: 0; }

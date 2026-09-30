@@ -70,6 +70,12 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
   const [savingSlot, setSavingSlot] = useState<1 | 2 | 3 | null>(null);
   const [pendingRebuildSlot, setPendingRebuildSlot] = useState<1 | 2 | 3 | null>(null);
   const loadingInFlight = useRef(false);
+  const rebuildConfirmRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (pendingRebuildSlot === null) return;
+    rebuildConfirmRef.current?.scrollIntoView({ block: "nearest" });
+    rebuildConfirmRef.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+  }, [pendingRebuildSlot]);
   const actionBusy = busy || loadingSlot !== null || savingSlot !== null;
   const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
@@ -180,7 +186,16 @@ export function GameChrome({ phase, busy = false, dataLabel = "本地球员数�
               <div className="save-slot-card-heading"><b>▮ 槽位 0{slot}</b>{slot === activeSlot && <span>当前槽位</span>}</div>
               <div className="save-slot-summary"><b>{summary?.status === "UNAVAILABLE" ? "暂时无法读取" : summary?.status === "CORRUPTED" ? "存档损坏" : summary?.teamName ?? "空存档"}</b><small>{summary?.status === "UNAVAILABLE" ? "存储暂时不可用，请重试读取" : summary?.status === "CORRUPTED" ? "自动恢复失败，可重试读取或确认重建此槽位" : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存，可将当前进度写入此位置"}</small>{summary && !summary.status && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}</div>
               {drawerTab === "save"
-                ? pendingRebuildSlot === slot ? <><p role="alert">重建将覆盖此槽位的损坏进度，确认后无法恢复。</p><button disabled={actionBusy} onClick={() => setPendingRebuildSlot(null)}>取消</button><button className="save-drawer-primary" disabled={actionBusy} onClick={() => void writeSave(slot, true)}>确认重建并保存</button></>
+                ? pendingRebuildSlot === slot ? <div className="save-rebuild-confirm" ref={rebuildConfirmRef}>
+                    <div className="save-rebuild-warning" role="alert">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 10 18H2L12 3Z" /><path d="M12 9v5" /><circle cx="12" cy="17" r=".8" fill="currentColor" stroke="none" /></svg>
+                      <div><strong>重建前请确认</strong><p>此槽位的损坏进度将被覆盖，操作后无法恢复。</p></div>
+                    </div>
+                    <div className="save-rebuild-actions">
+                      <button type="button" className="save-rebuild-cancel" disabled={actionBusy} onClick={() => setPendingRebuildSlot(null)}>取消</button>
+                      <button type="button" className="save-drawer-primary" disabled={actionBusy} onClick={() => void writeSave(slot, true)}>确认重建并保存</button>
+                    </div>
+                  </div>
                   : <button className="save-drawer-primary" disabled={actionBusy || summary?.status === "UNAVAILABLE"} onClick={() => summary?.status === "CORRUPTED" ? setPendingRebuildSlot(slot) : void writeSave(slot)}>{summary?.status === "UNAVAILABLE" ? "读取不可用" : summary?.status === "CORRUPTED" ? "重建并保存" : slot === activeSlot ? "覆盖保存" : "存入此位置"}</button>
                 : <button className="save-drawer-dark" disabled={actionBusy} onClick={() => void readSave(slot)}>{loadingSlot === slot ? "正在读取…" : summary?.status ? "重试读取" : "读取此存档"}</button>}
             </article>;
