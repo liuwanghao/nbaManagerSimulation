@@ -263,8 +263,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   }, [activeTab, calendarMonth, currentCalendarDate, fiveGameAnimation?.completed, fiveGameAnimation?.frames, queuedEvent?.eventInstanceId]);
 
   useEffect(() => {
-    const expansionFlow = (["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
-      || state.league.currentPhase === "ROOKIE_DRAFT_PENDING" && Boolean(state.expansion?.finalized && !state.expansion.summaryConfirmed))
+    const expansionFlow = ["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
       && !(state.league.currentPhase === "OPTION_PHASE" && state.contractLifecycle);
     const stage4Flow = !expansionFlow && ["ROOKIE_DRAFT_PENDING", "OPTION_PHASE", "OFFSEASON_PRE_DRAFT", "DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON"].includes(state.league.currentPhase);
     window.render_game_to_text = () => {
@@ -860,26 +859,6 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     }
   };
 
-  const restoreExpansionCheckpoint = async () => {
-    if (busy) return;
-    const targetSlot = activeSlot;
-    setBusy(true);
-    try {
-      const checkpoint = await saveService?.loadCheckpoint(targetSlot, "pre-expansion-draft");
-      if (!checkpoint) {
-        setStatus("暂无扩军选秀前检查点");
-        return;
-      }
-      await persistState(checkpoint, targetSlot);
-      setState(checkpoint);
-      setStatus("已恢复扩军选秀前检查点");
-    } catch (error) {
-      setStatus(error instanceof Error ? humanizeUiText(error.message) : "检查点恢复失败，状态未改变");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const resolveSaveConflict = async (choice: "LOCAL" | "CLOUD") => {
     if (!saveService || !cloudStorage || !saveConflict) return;
     const conflictSlot = saveConflict.slotId;
@@ -915,10 +894,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     : null;
   const transitionErrorDialog = transitionError ? <div className="league-transition-error-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="league-transition-error-title"><div className="league-transition-error-card"><h2 id="league-transition-error-title">年度切换失败</h2><p>当前存档未切换。可以直接反馈此问题，或保留下面的错误信息。</p><code>{transitionError}</code><GameIssueFeedbackAction content={buildGameIssueFeedback({ kind: "年度切换失败", step: transitionStep, phase: state.league.currentPhase, seasonId: state.league.seasonId, slotId: activeSlot, error: transitionError })} /><button type="button" onClick={() => setTransitionError(null)}>关闭并返回</button></div></div> : null;
 
-  if ((["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
-    || state.league.currentPhase === "ROOKIE_DRAFT_PENDING" && Boolean(state.expansion?.finalized && !state.expansion.summaryConfirmed))
+  if (["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
     && !(state.league.currentPhase === "OPTION_PHASE" && state.contractLifecycle)) {
-    return <><ExpansionFlow state={state} busy={busy} status={status} onCommand={runExpansionCommand} onSave={save} onLoad={load} onLoadLatest={loadLatest} saveSlots={saveSlots} onRestoreCheckpoint={restoreExpansionCheckpoint} activeSlot={activeSlot} onSlotChange={changeActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{eventModal}{conflictModal}{transitionErrorDialog}</>;
+    return <><ExpansionFlow state={state} busy={busy} status={status} onCommand={runExpansionCommand} onSave={save} onLoad={load} onLoadLatest={loadLatest} saveSlots={saveSlots} activeSlot={activeSlot} onSlotChange={changeActiveSlot} onHome={onExitToHome} initialDrawerTab={openLoadDrawer ? "load" : undefined} />{eventModal}{conflictModal}{transitionErrorDialog}</>;
   }
 
   if (["ROOKIE_DRAFT_PENDING", "OPTION_PHASE", "OFFSEASON_PRE_DRAFT", "DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON"].includes(state.league.currentPhase)) {

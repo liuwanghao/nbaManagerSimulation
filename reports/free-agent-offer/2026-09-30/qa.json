@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "metrics": [
+    {
+      "width": 393,
+      "height": 852,
+      "overflow": false,
+      "errors": [],
+      "allMenusVisible": true,
+      "contractRules": true,
+      "keyboard": true,
+      "busy": true,
+      "outsideDismiss": true
+    },
+    {
+      "width": 375,
+      "height": 667,
+      "overflow": false,
+      "errors": [],
+      "allMenusVisible": true,
+      "contractRules": true,
+      "keyboard": true,
+      "busy": true,
+      "outsideDismiss": true
+    },
+    {
+      "width": 320,
+      "height": 568,
+      "overflow": false,
+      "errors": [],
+      "allMenusVisible": true,
+      "contractRules": true,
+      "keyboard": true,
+      "busy": true,
+      "outsideDismiss": true
+    }
+  ]
+}

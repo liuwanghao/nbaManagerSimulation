@@ -7050,8 +7050,15 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .fa-offer-expectation p { margin: 0; color: var(--text-sub); font-size: 8px; line-height: 1.55; }
 .fa-offer-controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; }
 .fa-offer-controls > label { display: grid; min-width: 0; gap: 5px; color: var(--text-sub); font-size: 8px; font-weight: 800; }
-.fa-offer-controls select,.fa-offer-controls input,.fa-offer-salary-editor input { width: 100%; min-width: 0; height: 38px; padding: 0 9px; color: #fff; border: 1px solid var(--border-color); border-radius: var(--sub-radius); outline: none; background: var(--bg-card); font-size: 10px; font-weight: 800; }
-.fa-offer-controls select:focus,.fa-offer-controls input:focus,.fa-offer-salary-editor input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(0,242,254,.1); }
+.fa-offer-controls input,.fa-offer-salary-editor input { width: 100%; min-width: 0; height: 38px; padding: 0 9px; color: #fff; border: 1px solid var(--border-color); border-radius: var(--sub-radius); outline: none; background: var(--bg-card); font-size: 10px; font-weight: 800; }
+.fa-offer-controls input:focus,.fa-offer-salary-editor input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(0,242,254,.1); }
+/* Share the market dropdown treatment while keeping the contract editor sizing. */
+.fa-offer-controls .trade-target-filter { --trade-cyan: var(--accent-primary); gap: 5px; }
+.fa-offer-controls .trade-target-filter-label { color: var(--text-sub); font-size: 8px; font-weight: 800; }
+.fa-offer-controls .trade-target-filter-trigger { height: 38px; padding: 0 9px; border-color: var(--border-color); border-radius: var(--sub-radius); background: var(--bg-card); font-size: 10px; font-weight: 800; }
+.fa-offer-controls .trade-target-filter-trigger[aria-expanded="true"] { border-color: var(--accent-primary); background: #102d43; }
+.fa-offer-controls .trade-target-filter-trigger:disabled { opacity: .45; cursor: not-allowed; }
+.fa-offer-controls .trade-target-filter-menu { width: 100%; }
 .fa-offer-percent { position: relative; }
 .fa-offer-percent input { padding-right: 24px; }
 .fa-offer-percent b { position: absolute; top: 50%; right: 9px; color: var(--accent-primary); font-size: 9px; transform: translateY(-50%); pointer-events: none; }
@@ -8029,27 +8036,6 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .fa-market-bottom-actions .fa-market-settle-button strong {
   font-size: var(--flow-secondary-action-font-size);
   font-weight: 900;
-}
-
-/* The expansion result is a required pause in the dark stage flow. */
-.expansion-shell .prototype-complete-screen .prototype-flow-heading,
-.expansion-shell .prototype-complete-screen .roster-summary > div {
-  color: var(--text-main);
-  border-color: var(--border-color);
-  background: var(--bg-sub-card);
-}
-.expansion-shell .prototype-complete-screen .prototype-flow-heading h2,
-.expansion-shell .prototype-complete-screen .prototype-section-bar b,
-.expansion-shell .prototype-complete-screen .roster-summary b { color: var(--text-main); }
-.expansion-shell .prototype-complete-screen .prototype-flow-heading p,
-.expansion-shell .prototype-complete-screen .prototype-section-bar span,
-.expansion-shell .prototype-complete-screen .roster-summary small { color: var(--text-sub); }
-.expansion-shell .prototype-complete-screen .roster-summary .summary-logo { flex: 0 0 48px; }
-.expansion-shell .prototype-complete-screen .prototype-sticky-action {
-  display: grid;
-  gap: 8px;
-  border-color: var(--border-color);
-  background: rgba(6, 9, 17, .96);
 }
 
 /* Events are focused decisions, separate from the team inbox. */

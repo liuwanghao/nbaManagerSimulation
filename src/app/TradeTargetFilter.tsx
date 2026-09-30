@@ -5,11 +5,16 @@ interface TradeTargetFilterProps<T extends string> {
   value: T;
   options: Array<{ value: T; label: string }>;
   onChange: (value: T) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+  testId?: string;
+  constrainToScrollContainer?: boolean;
 }
 
-export function TradeTargetFilter<T extends string>({ label, value, options, onChange }: TradeTargetFilterProps<T>) {
+export function TradeTargetFilter<T extends string>({ label, value, options, onChange, disabled = false, ariaLabel, testId, constrainToScrollContainer = false }: TradeTargetFilterProps<T>) {
   const [open, setOpen] = useState(false);
   const [opensUpward, setOpensUpward] = useState(false);
+  const [menuMaxHeight, setMenuMaxHeight] = useState(268);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const focusOnOpenRef = useRef(false);
@@ -17,7 +22,7 @@ export function TradeTargetFilter<T extends string>({ label, value, options, onC
   const selectedLabel = options.find((option) => option.value === value)?.label ?? options[0]?.label;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || disabled) return;
     if (focusOnOpenRef.current) {
       const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
       rootRef.current?.querySelectorAll<HTMLButtonElement>(".trade-target-filter-option")[selectedIndex]?.focus();
@@ -28,12 +33,33 @@ export function TradeTargetFilter<T extends string>({ label, value, options, onC
     };
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
-  }, [open, options, value]);
+  }, [open, options, value, disabled]);
+
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
 
   const openMenu = (focusSelected = false) => {
+    if (disabled) return;
     const bounds = rootRef.current?.getBoundingClientRect();
     const menuHeight = Math.min(options.length * 39 + 8, 268);
-    setOpensUpward(Boolean(bounds && window.innerHeight - bounds.bottom < menuHeight && bounds.top > window.innerHeight - bounds.bottom));
+    let top = 0;
+    let bottom = window.innerHeight;
+    if (constrainToScrollContainer) {
+      let ancestor = rootRef.current?.parentElement;
+      while (ancestor) {
+        if (/auto|scroll/.test(getComputedStyle(ancestor).overflowY)) {
+          const scrollBounds = ancestor.getBoundingClientRect();
+          top = Math.max(top, scrollBounds.top);
+          bottom = Math.min(bottom, scrollBounds.bottom);
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+    }
+    const below = bounds ? bottom - bounds.bottom : bottom;
+    const above = bounds ? bounds.top - top : 0;
+    const upward = below < menuHeight && above > below;
+    setOpensUpward(upward);
+    setMenuMaxHeight(Math.max(35, Math.min(268, (upward ? above : below) - 8)));
     focusOnOpenRef.current = focusSelected;
     setOpen(true);
   };
@@ -45,6 +71,7 @@ export function TradeTargetFilter<T extends string>({ label, value, options, onC
   return <div ref={rootRef} className="trade-target-filter" onBlur={(event) => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
   }} onKeyDown={(event) => {
+    if (disabled) return;
     if (event.key === "Escape" && open) {
       event.preventDefault();
       setOpen(false);
@@ -60,10 +87,10 @@ export function TradeTargetFilter<T extends string>({ label, value, options, onC
     }
   }}>
     <span className="trade-target-filter-label">{label}</span>
-    <button ref={triggerRef} type="button" className="trade-target-filter-trigger" aria-label={`按${label}筛选目标球员：${selectedLabel}`} aria-expanded={open} aria-controls={menuId} onClick={() => open ? setOpen(false) : openMenu()}>
+    <button ref={triggerRef} type="button" className="trade-target-filter-trigger" data-testid={testId} disabled={disabled} aria-label={ariaLabel ? `${ariaLabel}：${selectedLabel}` : `按${label}筛选目标球员：${selectedLabel}`} aria-expanded={open && !disabled} aria-controls={menuId} onClick={() => open ? setOpen(false) : openMenu()}>
       <span>{selectedLabel}</span><i aria-hidden="true" />
     </button>
-    {open && <div id={menuId} className={`trade-target-filter-menu${opensUpward ? " open-up" : ""}`} role="group" aria-label={`选择${label}`}>
+    {open && !disabled && <div id={menuId} className={`trade-target-filter-menu${opensUpward ? " open-up" : ""}`} style={{ maxHeight: menuMaxHeight }} role="group" aria-label={`选择${label}`}>
       {options.map((option) => <button type="button" key={option.value} className="trade-target-filter-option" aria-pressed={option.value === value} onClick={() => {
         onChange(option.value);
         setOpen(false);

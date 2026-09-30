@@ -692,7 +692,6 @@ function selectAiProspect(state: GameState, pick: RookieDraftPick, commitReplace
 export function prepareRookieDraft(input: GameState): GameState {
   assertPhaseAllowed(input, "Prepare rookie draft", ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT"]);
   if (input.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear && !input.expansion?.finalized) throw new Error("Expansion Draft must be finalized first");
-  if (input.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear && !input.expansion?.summaryConfirmed) throw new Error("请先确认扩军选秀结果摘要");
   const state = structuredClone(input);
   const draftSeed = stableHash(state.seeds.seasonSeed, "rookie_draft", state.league.seasonYear);
   const historicalByRank = historicalTemplatesForClass(state, draftSeed);

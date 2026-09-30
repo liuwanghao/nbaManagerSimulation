@@ -29,7 +29,7 @@ function finishExpansion(seed: string, cityId: ExpansionCityId): GameState {
     const player = getSelectableExpansionPlayers(state)[0];
     state = executeExpansionCommand(state, { commandId: `exp-${pick}`, type: "SELECT_EXPANSION_PLAYER", payload: { playerId: player.id, expectedPickNumber: pick } });
   }
-  return executeExpansionCommand(state, { commandId: "confirm-expansion-summary", type: "CONFIRM_EXPANSION_SUMMARY", payload: {} });
+  return state;
 }
 
 function run(seed: string, cityId: ExpansionCityId): GameState {

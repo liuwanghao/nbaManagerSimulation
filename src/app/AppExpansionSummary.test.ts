@@ -2,14 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { EXPANSION_BRAND_PRESETS } from "../data/expansionBrands";
-import { getCapSheet } from "../game/cap/CapSheetService";
 import { executeDraftCommand } from "../game/draft/DraftService";
 import { executeExpansionCommand, getSelectableExpansionPlayers } from "../game/expansion/ExpansionService";
 import { createExpansionCareer } from "../game/season/career";
 import { MemoryStorageAdapter } from "../platform/storage/StorageAdapter";
 import { SaveService } from "../storage/SaveService";
 import { playerNameZh } from "./playerNameZh";
-import { moneyLabel } from "./uiText";
 import App from "./App";
 
 function completedExpansion() {
@@ -30,52 +28,61 @@ function completedExpansion() {
   return state;
 }
 
-describe("mandatory expansion draft summary", () => {
-  it("shows both teams' rosters and finances before rookie draft preparation", () => {
+describe("direct rookie draft preparation after expansion", () => {
+  it("opens rookie preparation immediately and keeps the completed expansion roster recap", () => {
     const state = completedExpansion();
     expect(state.league.currentPhase).toBe("ROOKIE_DRAFT_PENDING");
+    expect(state.expansion?.finalized).toBe(true);
+    expect(state.expansion?.picks).toHaveLength(28);
     const markup = renderToStaticMarkup(createElement(App, { initialState: state }));
-    expect(markup).toContain('data-testid="expansion-draft-summary"');
-    expect(markup).toContain('data-testid="confirm-expansion-summary"');
-    expect(markup).toContain("重新进行扩军选秀");
-    expect(markup).not.toContain("进入新秀选秀大厅");
+    expect(markup).toContain("rookie-draft-prep-terminal");
+    expect(markup).toContain("进入新秀选秀大厅");
+    expect(markup).toContain("扩军选秀名单");
+    expect(markup).not.toContain('data-testid="expansion-draft-summary"');
+    expect(markup).not.toContain('data-testid="confirm-expansion-summary"');
+    expect(markup).not.toContain("重新进行扩军选秀");
     for (const teamId of [state.expansion!.playerTeamId, state.expansion!.aiTeamId]) {
       expect(markup).toContain(state.teams[teamId].fullName);
       expect(markup).toContain(`${state.teams[teamId].playerIds.length} 名球员`);
-      const cap = getCapSheet(state, teamId);
-      expect(markup).toContain(moneyLabel(cap.activeContractSalary));
-      expect(markup).toContain(moneyLabel(cap.total));
-      expect(markup).toContain(moneyLabel(cap.availableCapSpace));
-      for (const playerId of state.teams[teamId].playerIds) {
-        expect(markup).toContain(playerNameZh(state.players[playerId].name, playerId));
-      }
+    }
+    for (const playerId of state.teams[state.userTeamId].playerIds) {
+      expect(markup).toContain(playerNameZh(state.players[playerId].name, playerId));
     }
   });
 
-  it("requires a persisted confirmation before the first rookie draft and accepts repeated confirmation safely", () => {
+  it("starts the rookie draft without confirmation while still requiring expansion finalization", () => {
     const completed = completedExpansion();
     const prepare = { commandId: "summary-prepare", type: "PREPARE_ROOKIE_DRAFT" as const, payload: {} };
-    expect(() => executeDraftCommand(completed, prepare)).toThrow(/summary|摘要/ui);
-    const confirm = { commandId: "summary-confirm", type: "CONFIRM_EXPANSION_SUMMARY" as const, payload: {} };
+    expect(completed.expansion?.summaryConfirmed).toBe(false);
+    const prepared = executeDraftCommand(completed, prepare);
+    expect(prepared.league.currentPhase).toBe("DRAFT");
+    expect(prepared.expansion).toEqual(completed.expansion);
+    expect(prepared.expansion?.picks).toHaveLength(28);
+    expect([prepared.expansion!.playerTeamId, prepared.expansion!.aiTeamId].map((id) => prepared.teams[id].playerIds.length)).toEqual([14, 14]);
+    const unfinished = structuredClone(completed);
+    unfinished.expansion!.finalized = false;
+    expect(() => executeDraftCommand(unfinished, prepare)).toThrow(/finalized/ui);
+  });
+
+  it.each([false, undefined, true])("loads old saves with summaryConfirmed=%s directly into rookie preparation", async (summaryConfirmed) => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const completed = completedExpansion();
+    completed.expansion!.summaryConfirmed = summaryConfirmed;
+    await service.save(1, completed);
+    const loaded = await service.load(1);
+    expect(loaded?.league.currentPhase).toBe("ROOKIE_DRAFT_PENDING");
+    expect(loaded?.expansion?.picks).toEqual(completed.expansion?.picks);
+    const markup = renderToStaticMarkup(createElement(App, { initialState: loaded! }));
+    expect(markup).toContain("进入新秀选秀大厅");
+    expect(markup).not.toContain('data-testid="expansion-draft-summary"');
+    expect(executeDraftCommand(loaded!, { commandId: "loaded-prepare", type: "PREPARE_ROOKIE_DRAFT", payload: {} }).league.currentPhase).toBe("DRAFT");
+  });
+
+  it("still accepts a legacy confirmation command idempotently", () => {
+    const completed = completedExpansion();
+    const confirm = { commandId: "legacy-summary-confirm", type: "CONFIRM_EXPANSION_SUMMARY" as const, payload: {} };
     const confirmed = executeExpansionCommand(completed, confirm);
     expect(confirmed.expansion?.summaryConfirmed).toBe(true);
     expect(executeExpansionCommand(confirmed, confirm)).toBe(confirmed);
-    expect(executeDraftCommand(confirmed, prepare).league.currentPhase).toBe("DRAFT");
-  });
-
-  it("restores the required summary from a save and retains its confirmation", async () => {
-    const service = new SaveService(new MemoryStorageAdapter());
-    const completed = completedExpansion();
-    await service.save(1, completed);
-    const before = await service.load(1);
-    expect(before?.expansion?.summaryConfirmed).toBe(false);
-    expect(renderToStaticMarkup(createElement(App, { initialState: before! }))).toContain('data-testid="expansion-draft-summary"');
-    const confirmed = executeExpansionCommand(before!, { commandId: "summary-save-confirm", type: "CONFIRM_EXPANSION_SUMMARY", payload: {} });
-    await service.save(1, confirmed);
-    const after = await service.load(1);
-    expect(after?.expansion?.summaryConfirmed).toBe(true);
-    const markup = renderToStaticMarkup(createElement(App, { initialState: after! }));
-    expect(markup).toContain("进入新秀选秀大厅");
-    expect(markup).not.toContain('data-testid="expansion-draft-summary"');
   });
 });

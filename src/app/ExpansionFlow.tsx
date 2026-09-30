@@ -24,7 +24,6 @@ interface ExpansionFlowProps {
   onLoad: (slot?: 1 | 2 | 3) => Promise<boolean>;
   onLoadLatest: () => Promise<boolean>;
   saveSlots: SaveSlotSummary[];
-  onRestoreCheckpoint: () => Promise<void>;
   activeSlot: 1 | 2 | 3;
   onSlotChange: (slot: 1 | 2 | 3) => void;
   onHome?: () => void;
@@ -44,7 +43,7 @@ const CITY_PRESENTATION: Record<ExpansionCityId, { eyebrow: string; description:
   LVG: { eyebrow: "默认队名 · 幻影", description: "聚光灯照耀下的沙漠之城，即将迎来属于自己的篮球时代。从球队名称到冠军蓝图，一切从零开始，由你书写新的传奇。", className: "las-vegas" },
 };
 
-export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, onLoadLatest, saveSlots, onRestoreCheckpoint, activeSlot, onSlotChange, onHome, initialDrawerTab }: ExpansionFlowProps) {
+export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, onLoadLatest, saveSlots, activeSlot, onSlotChange, onHome, initialDrawerTab }: ExpansionFlowProps) {
   const phase = state.league.currentPhase;
   const spotlightPhase = ["EXPANSION_RIGHTS", "EXPANSION_DRAFT"].includes(phase);
   return (
@@ -61,7 +60,6 @@ export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, 
       {phase === "OPTION_PHASE" && <OptionPhase state={state} busy={busy} onCommand={onCommand} />}
       {phase === "EXPANSION_TRADE" && <TradeDesk state={state} busy={busy} onCommand={onCommand} />}
       {phase === "EXPANSION_DRAFT" && <ExpansionDraft state={state} busy={busy} onCommand={onCommand} />}
-      {phase === "ROOKIE_DRAFT_PENDING" && <StageSummary state={state} busy={busy} onCommand={onCommand} onRestoreCheckpoint={onRestoreCheckpoint} />}
 
       <footer>
         <label className="slot-picker">存档<select disabled={busy} value={activeSlot} onChange={(event) => onSlotChange(Number(event.target.value) as 1 | 2 | 3)}><option value={1}>{slotLabel(1)}</option><option value={2}>{slotLabel(2)}</option><option value={3}>{slotLabel(3)}</option></select></label>
@@ -439,26 +437,4 @@ function PlayerDetail({ state, player, onClose }: { state: GameState; player: Pl
       </section>
     </div>
   );
-}
-
-function StageSummary({ state, busy, onCommand, onRestoreCheckpoint }: Pick<ExpansionFlowProps, "state" | "busy" | "onCommand" | "onRestoreCheckpoint">) {
-  const expansion = state.expansion;
-  if (!expansion) return null;
-  return (
-    <section className="flow-card complete-card prototype-extended-flow prototype-complete-screen" data-testid="expansion-draft-summary">
-      <header className="prototype-flow-heading"><span className="prototype-flow-icon" aria-hidden="true">✓</span><div><span className="step-label">第三阶段完成</span><h2>扩军选秀完成</h2><p>28 名球员完成唯一归属，补偿资产已全部结算。</p></div><b className="prototype-flow-badge">名单完成</b></header>
-      <div className="prototype-section-bar"><b>两支扩军球队</b><span>下一阶段：新秀选秀</span></div>
-      <div className="roster-summary">{([expansion.playerTeamId, expansion.aiTeamId] as const).map((teamId) => {
-        const team = state.teams[teamId];
-        const cap = getCapSheet(state, teamId);
-        return <div key={teamId}><TeamLogo state={state} teamId={teamId} /><span><b>{team.fullName}</b><small>{team.playerIds.length} 名球员 · {expansion.picks.filter((pick) => pick.teamId === teamId).length} 次选择</small><small>阵容年薪 {money(cap.activeContractSalary)} · 工资帽占用 {money(cap.total)} · 剩余空间 {money(cap.availableCapSpace)}</small><details><summary>查看完整名单</summary><ol>{team.playerIds.map((playerId) => <li key={playerId}>{playerNameZh(state.players[playerId].name, state.players[playerId].id)} · {positionPairLabel(state.players[playerId].position, state.players[playerId].secondaryPosition)}</li>)}</ol></details></span></div>;
-      })}</div>
-      <div className="prototype-sticky-action"><button data-testid="confirm-expansion-summary" className="primary-cta" disabled={busy} onClick={() => void onCommand({ commandId: `confirm-expansion-summary-${state.league.seasonId}`, type: "CONFIRM_EXPANSION_SUMMARY", payload: {} })}>确认结果并进入新秀选秀 →</button><button className="secondary-cta" disabled={busy} onClick={onRestoreCheckpoint}>重新进行扩军选秀</button></div>
-    </section>
-  );
-}
-
-function TeamLogo({ state, teamId }: { state: GameState; teamId: ExpansionCityId }) {
-  const team = state.teams[teamId];
-  return <span className="summary-logo" style={{ background: `linear-gradient(145deg, ${team.primaryColor}, ${team.secondaryColor})` }}>{team.logoUrl ? <img src={team.logoUrl} alt="" /> : teamId}</span>;
 }
