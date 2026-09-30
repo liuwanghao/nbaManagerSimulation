@@ -1,0 +1,22 @@
+{
+  "score": 98,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [
+    "投稿入口恢复深底青色文字，位于邀请文案下方并占满整行；队徽压缩后展示大小不变。"
+  ],
+  "suggestions": [],
+  "reasoning": "393/375/320px布局和短屏滚动均通过检查，投稿及创建流程正常；256px队徽压缩前后在70px与210px对比图中细节清楚。",
+  "threshold": 90,
+  "threshold_pass": true,
+  "next_actions": [],
+  "reference_images": [
+    "reports/team-names/2026-09-30/theme-button/320.png",
+    "reports/image-loading/2026-09-30/team-creation-reference.png"
+  ],
+  "generated_screenshots": [
+    "reports/team-names/2026-09-30/full-width-post/seattle-393.png",
+    "reports/team-names/2026-09-30/full-width-post/create-visible-320.png",
+    "reports/image-loading/2026-09-30/logo-palette/compare.png"
+  ]
+}

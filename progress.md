@@ -2210,3 +2210,57 @@ Current request (2026-09-30): 清理 Git 中的旧发布包和构建产物，保
 - [x] 最新发布 ZIP 和当前 h5 保留在磁盘；.gitignore 排除生成目录，避免后续重复保存大产物。
 - [x] 保留源码提交历史、原远端配置和本地 hooks；GitHub 未推送，移除过时的本地远端跟踪引用，避免它重新保留旧对象。
 - [x] 临时仓库 fsck 通过，历史对象包从约 980 MiB 降至约 35.42 MiB；最新 ZIP 与全部原跟踪文件（忽略规则/记录除外）按 SHA-256 核验。仅修改仓库历史与维护记录，无游戏代码变更。
+
+Current request (2026-09-30): 先按图片加载分析建议，做一版优化；球队昵称暂不修改。
+
+- Plan: generate appropriately sized homepage/team-logo assets while preserving high-resolution share logo and existing saved team-logo paths; compress opening backdrop; remove retired portraits from startup and load the existing classic data script only when needed, preserving file:// compatibility, cache/deduplication/retry and poster behavior. Verify unit tests, production build, request timing/sequence, mobile screenshots and release ZIP.
+
+### 图片加载第一版 — complete
+
+- [x] 首页展示 Logo 1,863,365 → 112,850 bytes（660px WebP），favicon 9,978 bytes；两张扩军队徽 2,859,755 → 163,495 bytes（256px PNG），保留原存档路径与透明背景；开幕背景 1,841,132 → 152,944 bytes（WebP）。海报高清 Logo 保留，队徽/背景原图移至工具来源目录，避免进入发布包。
+- [x] 移除首页同步历史头像数据脚本，列表/详情/首发海报按需共用经典本地脚本，批准 ID 与内嵌 WebP 校验、并发合并、超时、失败重试、卸载及切换头像生命周期测试通过；不请求已从发布包移除的独立 WebP。
+- [x] 全量103文件/670项测试、TypeScript与生产构建通过；技能浏览器脚本、320/393px展示对比和历史头像/海报浏览器验证通过，file:// 首页无历史数据请求且经典异步脚本可解码全部87张头像。最终截图对比 visual-verdict 97/100 pass。
+- [x] 临时 QA 页面移除，ZIP覆盖，全部文件与h5逐项字节一致且CRC通过；摘要与资源体积记录在 `reports/image-loading/2026-09-30/`。未新增项目依赖，复用宿主已有Sharp生成优化图。
+- [ ] 未上传线上静态资源；真实虎扑WebView与CDN缓存/网络耗时仍待线上验证。本轮未修改球队命名。
+
+Current request (2026-09-30): 闲置资源移出打包目录，不删除原文件。
+
+- [x] 8 个旧 SVG 队徽、夺冠庆祝图及 2 张重复剧情图（共 11 个资源）移到 `tools/assets/unused/`，相对目录与原始字节保留，manifest 记录 SHA-256；README 说明用途与恢复方式。
+- [x] 从 Vite 必需资源检查删除 3 个闲置 JPG 路径，并更新静态包说明。球馆背景、开幕肖像、两张 PNG 队徽继续在 public/h5 中，逐项与源码一致。
+- [x] 改动前后 3 文件 / 27 项相关测试通过；类型检查、生产构建及 diff 检查通过。没有新依赖或游戏页面变更。
+- [x] 正式 ZIP 已覆盖，72 个文件、10999128 bytes；闲置资源及备份目录均未进入 ZIP 或资源清单，CRC 与逐项字节核验通过，SHA-256 `d43c38c3a7d850c2ee77cfdd8df90b01172c28188f81973d8581f708b83972ae`。
+
+Current request (2026-09-30): 球队名称改为按城市选择六个预设，增加创意队名社区投稿入口。
+
+- [x] 拉斯维加斯候选为闪电/幻影/毒蛇/皇家/霓虹/毒液，西雅图候选为超音速/翡翠/领航者/虎鲸/登山者/大脚怪；移除玩家自由队名输入和该UI的输入校验，三列按钮显示选中勾选并实时预览城市+队名，切换城市保留各自选择。已有存档和原游戏命名校验保持兼容。
+- [x] 下方增加邀请创意讨论文案与“投稿球队名字 ↗”，复用AI工坊871/篮球经理话题157696；原生登录校验后打开编辑器，预填城市、候选名单、建议名与寓意占位，由玩家编辑确认发布。未新增图片上传、依赖或网页自由命名输入。
+- [x] 投稿防重复、等待期间锁定城市/名字/创建、失败消息和离页Abort均已处理；短屏开启垂直滚动，确保提示和创建按钮可达。
+- [x] 41项定向测试、TypeScript/生产构建、差异检查通过；技能浏览器脚本及393×852/375×667/320×568模拟SDK检查通过，城市候选、预览、记忆、创建、投稿目标、未登录及等待防重复均正常。截图对比 visual-verdict 96/100 pass，记录在 `reports/team-names/2026-09-30/`。
+- [x] H5与正式ZIP已覆盖，全部文件逐项字节一致、CRC通过。
+- [ ] 本轮没有调用真实发帖接口，虎扑App内编辑器唤起待真机联调；未上传线上静态资源。
+
+Current request (2026-09-30): 拉斯维加斯默认队名改为闪电；投稿球队名字放在选择球队名称右侧最右。
+
+- [x] 更新 `expansionBrands.ts` 默认品牌名字/短名与 `ExpansionFlow.tsx` 初始选择、城市文案为闪电，保留preset ID、队徽及旧存档；幻影仍在六个候选中。
+- [x] 投稿按钮移动至队名标题行，通过flex布局靠最右；邀请讨论文案继续保留在候选下方。
+- [x] 默认名称相关三项回归断言同步更新，37项定向测试、TypeScript/生产构建、差异检查通过；393/375/320px浏览器验证默认选择、投稿按钮右对齐与垂直居中、无标题重叠、投稿等待防重复、未登录、创建球队均通过；visual-verdict 98/100 pass。
+- [x] H5与正式ZIP覆盖，全部文件与h5逐项字节一致，CRC通过。真实虎扑发帖编辑器仍需真机联调，本轮未上传线上。
+
+Current request (2026-09-30): 长期无人签约退役条件改为连续两年失业且年龄至少 38 岁。
+
+- [x] Config 升至 `balance.v19-unemployment-retirement-38`，失业加成/高概率门槛/老将保护统一使用 UFA+FREE_AGENT+年龄≥38+连续失业≥2年；删除年轻失业早退路径及首年失业天数加成参数。普通年龄衰退和严重伤病的退役规则保留。
+- [x] CURRENT_SPEC 同步。新测试先复现 26/32/34/35/37 岁提前因失业退役，修改后覆盖 37/38 岁、1/2年以及重新签约清零；4 文件 / 70 项测试通过。
+- [x] 固定种子扩军→首届选秀→常规赛/季后赛→第二年度选秀与自由市场的 headless 管理循环通过，生产构建及 diff 检查通过。tsx CLI 因 IPC 权限失败，使用 Node --import tsx 执行同一脚本成功。
+- [x] 覆盖发布 ZIP，72 个文件、10898756 bytes；新版本条件静态校验、CRC、逐项内容一致验证通过，闲置素材仍未入包；SHA-256 `52b05ec3d9e2330eb22d4757e1f832d9b37ec5586f6cefff31a63750b5b73cd7`。
+- [ ] 既有已退役球员不自动恢复；连续失业年数沿用每次切年仍为 UFA 的计数，未改成精确日数。未做浏览器或虎扑 App 实机验证。
+
+Current request (2026-09-30): 投稿球队名字恢复原样式，放在邀请文案下面整行显示；检查两张城市队徽大小并继续压缩。
+
+- [x] `ExpansionFlow.tsx` 将投稿按钮移回邀请文案下方；`styles.css` 恢复深底主题色文字，100%宽度。复用原投稿逻辑与短屏滚动，无新增依赖。
+- [x] `optimize_display_images.mjs` 从原图生成高质量调色板PNG，继续使用256×256及旧路径。西雅图75231→32953 bytes，拉斯维加斯88264→29582 bytes，合计再减61.75%；README和资源记录更新。70px与210px对比清晰。
+- [x] 37项定向测试、类型检查/生产构建、差异检查通过；393/375/320px移动浏览器确认整行按钮、图片解码、选择/记忆/预览、投稿防重复与未登录、创建成功。首轮QA在图片解码前检查而失败，增加显式等待后复测通过；技能脚本及截图检查通过，visual-verdict98/100。
+- [x] H5和正式ZIP更新，72文件与H5逐项字节一致、CRC通过；本轮未上传线上，未实测真实虎扑WebView与CDN耗时。
+
+Current request (2026-09-30): 重新打包 ZIP 覆盖。
+
+- [x] 重新完成TypeScript/生产构建，覆盖 `release/篮球经理_联盟扩军时代.zip`；72个文件与当前H5逐项字节一致，CRC通过。无源码变更，未上传线上。

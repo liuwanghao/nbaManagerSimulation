@@ -20,10 +20,8 @@ const W3C_NAMESPACE_URLS = [
   "http://www.w3.org/XML/1998/namespace",
 ];
 const REQUIRED_LOCAL_IMAGES = [
+  "retired-portraits/data.js",
   "story/opening-arena.jpg",
-  "story/championship-celebration.jpg",
-  "assets/story/opening-arena.jpg",
-  "assets/story/championship-celebration.jpg",
   ...PORTRAIT_ATLAS_STRIP_PATHS.map((path) => path.slice(2)),
 ];
 
@@ -48,6 +46,27 @@ function compactRuntimePlayerDatasetPlugin(): Plugin {
   };
 }
 
+function retiredPortraitDataPlugin(): Plugin {
+  return {
+    name: "retired-portrait-data",
+    buildStart() {
+      const portraitRoot = resolve("public/retired-portraits");
+      const portraits = readdirSync(portraitRoot).filter((path) => /^nba-\d+\.webp$/u.test(path)).sort();
+      const expected = BUNDLED_RETIRED_PORTRAIT_IDS.map((id) => `nba-${id}.webp`);
+      if (portraits.length !== expected.length || expected.some((path) => !portraits.includes(path))) {
+        throw new Error("Retired portrait assets do not match the approved bundled IDs");
+      }
+      const encoded = Object.fromEntries(portraits.map((path) => [
+        path.match(/^nba-(\d+)\.webp$/u)?.[1],
+        `data:image/webp;base64,${readFileSync(resolve(portraitRoot, path)).toString("base64")}`,
+      ]));
+      const source = `window.RETIRED_PORTRAIT_DATA=Object.freeze(${JSON.stringify(encoded)});\n`;
+      if (Buffer.byteLength(source) >= MAX_CODE_FILE_BYTES) throw new Error("Retired portrait data exceeds the 5 MiB upload limit");
+      writeFileSync(resolve(portraitRoot, "data.js"), source);
+    },
+  };
+}
+
 function classicStaticScript(): Plugin {
   let outputRoot = resolve("h5");
   return {
@@ -56,15 +75,6 @@ function classicStaticScript(): Plugin {
     enforce: "post",
     configResolved(config) {
       outputRoot = resolve(config.root, config.build.outDir);
-    },
-    buildStart() {
-      const portraitRoot = resolve("public/retired-portraits");
-      const portraits = readdirSync(portraitRoot).filter((path) => /^nba-\d+\.webp$/u.test(path)).sort();
-      const encoded = Object.fromEntries(portraits.map((path) => [
-        path.match(/^nba-(\d+)\.webp$/u)?.[1],
-        `data:image/webp;base64,${readFileSync(resolve(portraitRoot, path)).toString("base64")}`,
-      ]));
-      writeFileSync(resolve(portraitRoot, "data.js"), `window.RETIRED_PORTRAIT_DATA=Object.freeze(${JSON.stringify(encoded)});\n`);
     },
     transformIndexHtml(html) {
       return html
@@ -142,7 +152,7 @@ function classicStaticScript(): Plugin {
 
 export default defineConfig({
   base: "./",
-  plugins: [compactRuntimePlayerDatasetPlugin(), react(), classicStaticScript()],
+  plugins: [compactRuntimePlayerDatasetPlugin(), retiredPortraitDataPlugin(), react(), classicStaticScript()],
   worker: { plugins: () => [compactRuntimePlayerDatasetPlugin()] },
   build: {
     outDir: "h5",

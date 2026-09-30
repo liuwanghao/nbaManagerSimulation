@@ -1,0 +1,93 @@
+{
+  "ok": true,
+  "metrics": [
+    {
+      "fixture": "home",
+      "width": 393,
+      "overflow": false,
+      "images": [
+        {
+          "src": "./branding/home-logo-display.webp",
+          "loaded": true,
+          "width": 660,
+          "height": 660
+        }
+      ],
+      "errors": [],
+      "retiredPortraitRequested": false
+    },
+    {
+      "fixture": "team-creation",
+      "width": 393,
+      "overflow": false,
+      "images": [
+        {
+          "src": "./expansion-logos/seattle-default.png",
+          "loaded": true,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "src": "./expansion-logos/las-vegas-default.png",
+          "loaded": true,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "errors": [],
+      "retiredPortraitRequested": false
+    },
+    {
+      "fixture": "opening",
+      "width": 393,
+      "overflow": false,
+      "images": [],
+      "errors": [],
+      "retiredPortraitRequested": false
+    },
+    {
+      "fixture": "home",
+      "width": 320,
+      "overflow": false,
+      "images": [
+        {
+          "src": "./branding/home-logo-display.webp",
+          "loaded": true,
+          "width": 660,
+          "height": 660
+        }
+      ],
+      "errors": [],
+      "retiredPortraitRequested": false
+    },
+    {
+      "fixture": "team-creation",
+      "width": 320,
+      "overflow": false,
+      "images": [
+        {
+          "src": "./expansion-logos/seattle-default.png",
+          "loaded": true,
+          "width": 256,
+          "height": 256
+        },
+        {
+          "src": "./expansion-logos/las-vegas-default.png",
+          "loaded": true,
+          "width": 256,
+          "height": 256
+        }
+      ],
+      "errors": [],
+      "retiredPortraitRequested": false
+    },
+    {
+      "fixture": "opening",
+      "width": 320,
+      "overflow": false,
+      "images": [],
+      "errors": [],
+      "retiredPortraitRequested": false
+    }
+  ]
+}

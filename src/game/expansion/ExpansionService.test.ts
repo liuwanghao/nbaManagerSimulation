@@ -125,7 +125,7 @@ describe("Stage 3 expansion flow", () => {
     expect(state.teams.SEA.logoUrl).toBe("./expansion-logos/seattle-default.png");
     expect(state.teams.LVG.logoUrl).toBe("./expansion-logos/las-vegas-default.png");
     expect(state.teams.SEA.fullName).toBe("西雅图超音速");
-    expect(state.teams.LVG.fullName).toBe("拉斯维加斯幻影");
+    expect(state.teams.LVG.fullName).toBe("拉斯维加斯闪电");
   });
 
   it("uses the submitted team name instead of the city preset name", () => {
@@ -144,13 +144,13 @@ describe("Stage 3 expansion flow", () => {
     });
     expect(state.teams.SEA.name).toBe("雨城先锋");
     expect(state.teams.SEA.fullName).toBe("西雅图雨城先锋");
-    expect(state.teams.LVG.fullName).toBe("拉斯维加斯幻影");
+    expect(state.teams.LVG.fullName).toBe("拉斯维加斯闪电");
   });
 
   it("uses the Seattle default name when Las Vegas is player-controlled", () => {
     const state = createTeam("stage3-seattle-ai-default", "LVG");
     expect(state.teams.SEA.fullName).toBe("西雅图超音速");
-    expect(state.teams.LVG.fullName).toBe("拉斯维加斯幻影");
+    expect(state.teams.LVG.fullName).toBe("拉斯维加斯闪电");
   });
 
   it("atomically settles options and opens draft preparation after the rights choice", () => {

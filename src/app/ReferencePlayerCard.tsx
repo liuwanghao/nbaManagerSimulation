@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
 import type { Player } from "../game/state/types";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { playerNameZh } from "./playerNameZh";
-import { portraitSpriteMeta } from "./portraitSprite";
+import { usePlayerPortrait } from "./PlayerPortrait";
 import { playerRatingStyle } from "./playerRatingColor";
 import { measurementLabel, moneyLabel } from "./uiText";
 
@@ -29,26 +28,11 @@ const PERSONALITY_LABELS: Record<Player["personality"], string> = {
 export function ReferencePlayerCard({ player, teamName }: { player: Player; teamName: string }) {
   const displayName = playerNameZh(player.name, player.id);
   const overall = calculatePlayerOverall(player);
-  const portrait = portraitSpriteMeta(player.id, player.portraitPath);
-  const [portraitUnavailable, setPortraitUnavailable] = useState(!portrait);
-  useEffect(() => {
-    if (!portrait) {
-      setPortraitUnavailable(true);
-      return;
-    }
-    let cancelled = false;
-    const image = new Image();
-    image.onload = () => {
-      if (!cancelled) setPortraitUnavailable(false);
-    };
-    image.onerror = () => { if (!cancelled) setPortraitUnavailable(true); };
-    image.src = portrait.source;
-    return () => { cancelled = true; };
-  }, [portrait?.index, portrait?.source]);
+  const { showPortrait, style: portraitStyle } = usePlayerPortrait(player.id, player.portraitPath);
   return (
     <article className="reference-player-card" data-player-id={player.id}>
       <header className="reference-player-header">
-        <div className={`reference-player-portrait ${portraitUnavailable ? "portrait-fallback" : "portrait-sprite"}`} aria-hidden="true" style={portraitUnavailable ? undefined : portrait?.style} />
+        <div className={`reference-player-portrait ${showPortrait ? "portrait-sprite" : "portrait-fallback"}`} aria-hidden="true" style={showPortrait ? portraitStyle : undefined} />
         <div>
           <h2 className="reference-player-name">{displayName}</h2>
           <div className="reference-player-team">

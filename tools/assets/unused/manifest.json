@@ -1,0 +1,49 @@
+{
+  "originalRoot": "public",
+  "files": {
+    "expansion-logos/lvg-desert-comets.svg": {
+      "bytes": 424,
+      "sha256": "6e15c27894f6c7c613d095041ab34a2117482737f33deb404542eca15a727ef3"
+    },
+    "expansion-logos/lvg-neon-pulse.svg": {
+      "bytes": 399,
+      "sha256": "5014b28007c11df814a221eaf996853fddc9b0a3abcc9a259def03f0fac6b70e"
+    },
+    "expansion-logos/lvg-silver-mirage.svg": {
+      "bytes": 399,
+      "sha256": "d866716f9f66fc434b993844684f9862b3544cc72962cd06fb9112252a1d734b"
+    },
+    "expansion-logos/lvg-voltage.svg": {
+      "bytes": 400,
+      "sha256": "03ae878bfbe6226b1d511fcf7162cadd9a180b9581b65e7019445c2025eaa66d"
+    },
+    "expansion-logos/sea-emerald-tide.svg": {
+      "bytes": 394,
+      "sha256": "a74caeca63901bf468f0af666ed3501c8951f1c661566bca59a9f4d283041c4f"
+    },
+    "expansion-logos/sea-evergreens.svg": {
+      "bytes": 328,
+      "sha256": "888b7c6fe771b36959dc0906e0cf0f5b1d2b0673be8c001646c1e8df036657d5"
+    },
+    "expansion-logos/sea-sound-orcas.svg": {
+      "bytes": 467,
+      "sha256": "809d4b46cf86677b587a63938da096c78ed469c55a9b18f3d13878753e9f3df5"
+    },
+    "expansion-logos/sea-tempest.svg": {
+      "bytes": 341,
+      "sha256": "420626d7c52943763e4beb09e6e7b00fcac548314343172cb51a84c53750ff7d"
+    },
+    "story/championship-celebration.jpg": {
+      "bytes": 227480,
+      "sha256": "a70a06412bdbb6f1af552c77ea39c29b66f0c25c4675271edaf3a2be0f620859"
+    },
+    "assets/story/championship-celebration.jpg": {
+      "bytes": 227480,
+      "sha256": "a70a06412bdbb6f1af552c77ea39c29b66f0c25c4675271edaf3a2be0f620859"
+    },
+    "assets/story/opening-arena.jpg": {
+      "bytes": 197710,
+      "sha256": "93ffebb9fd3849badec24926c08db5034f484fdff3baee3c43250f4be39ce2b1"
+    }
+  }
+}

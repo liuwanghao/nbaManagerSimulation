@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
-import { EXPANSION_BRAND_PRESETS, EXPANSION_CITY_NAMES } from "../data/expansionBrands";
+import { EXPANSION_BRAND_PRESETS, EXPANSION_CITY_NAMES, EXPANSION_TEAM_NAME_OPTIONS } from "../data/expansionBrands";
 import { LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 import { getCapSheet } from "../game/cap/CapSheetService";
-import { getExpansionDraftCandidatePlayers, getSelectableExpansionPlayers, isExpansionDraftSelectionWithinSalaryLimit, normalizeAndValidateTeamName, type ExpansionCommand } from "../game/expansion/ExpansionService";
+import { getExpansionDraftCandidatePlayers, getSelectableExpansionPlayers, isExpansionDraftSelectionWithinSalaryLimit, type ExpansionCommand } from "../game/expansion/ExpansionService";
 import type { ExpansionCityId, ExpansionPackage, GameState, Player } from "../game/state/types";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { GameChrome } from "./GameChrome";
@@ -14,6 +14,7 @@ import { ReferencePlayerCard } from "./ReferencePlayerCard";
 import type { SaveSlotSummary } from "../storage/SaveService";
 import { EXPANSION_POSITION_FILTERS, findExpansionDraftPlayers, findNextSelectableTeamId, getCurrentRosterPositionCounts, getCurrentRosterPositionSummary, getCurrentTeamRoster, getRecentExpansionPickBroadcasts, matchesExpansionPosition, type ExpansionPlayerSort, type ExpansionPositionFilter } from "./expansionDraftView";
 import { PlayerListFilters } from "./PlayerListFilters";
+import { openTeamNameContribution } from "./teamNameContribution";
 
 interface ExpansionFlowProps {
   state: GameState;
@@ -39,8 +40,8 @@ const EXPANSION_SORT_OPTIONS: Array<{ value: ExpansionPlayerSort; label: string;
 ];
 const packageLabel = (packageId?: ExpansionPackage): string => packageId === "A" ? "权益方案甲" : packageId === "B" ? "权益方案乙" : "尚未选择";
 const CITY_PRESENTATION: Record<ExpansionCityId, { eyebrow: string; description: string; className: string }> = {
-  SEA: { eyebrow: "默认队名 · 超音速", description: "篮球热情从未离开这座城市。如今，西雅图迎来重返联盟的机会，球队的名字、标志与未来，都将由你亲手定义。", className: "seattle" },
-  LVG: { eyebrow: "默认队名 · 幻影", description: "聚光灯照耀下的沙漠之城，即将迎来属于自己的篮球时代。从球队名称到冠军蓝图，一切从零开始，由你书写新的传奇。", className: "las-vegas" },
+  SEA: { eyebrow: "默认队名 · 超音速", description: "篮球热情从未离开这座城市。如今，西雅图迎来重返联盟的机会，选择球队名称，带领新军创造属于你的传奇。", className: "seattle" },
+  LVG: { eyebrow: "默认队名 · 闪电", description: "聚光灯照耀下的沙漠之城，即将迎来属于自己的篮球时代。从球队名称到冠军蓝图，一切从零开始，由你书写新的传奇。", className: "las-vegas" },
 };
 
 export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, onLoadLatest, saveSlots, activeSlot, onSlotChange, onHome, initialDrawerTab }: ExpansionFlowProps) {
@@ -73,22 +74,32 @@ export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, 
 
 function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "state" | "busy" | "onCommand">) {
   const [cityId, setCityId] = useState<ExpansionCityId>("SEA");
-  const [teamName, setTeamName] = useState("");
+  const [namesByCity, setNamesByCity] = useState<Record<ExpansionCityId, string>>({ SEA: "超音速", LVG: "闪电" });
+  const [posting, setPosting] = useState(false);
+  const [postNotice, setPostNotice] = useState("");
+  const postController = useRef<AbortController | null>(null);
+  useEffect(() => () => { postController.current?.abort(); }, []);
   const selectedBrand = EXPANSION_BRAND_PRESETS[cityId][0];
-  const exampleName = selectedBrand.teamName;
-  const normalizedName = teamName.trim();
-  let teamNameError = "";
-  if (normalizedName) {
-    try {
-      normalizeAndValidateTeamName(teamName, state, cityId);
-    } catch (error) {
-      teamNameError = error instanceof Error ? error.message : "球队名称不可用";
-    }
-  }
-  const teamNameValid = Boolean(normalizedName) && !teamNameError;
+  const teamName = namesByCity[cityId];
+  const locked = busy || posting;
 
-  const chooseCity = (nextCity: ExpansionCityId) => {
-    setCityId(nextCity);
+  const contributeName = async () => {
+    if (busy || postController.current) return;
+    const controller = new AbortController();
+    postController.current = controller;
+    setPosting(true);
+    setPostNotice("");
+    try {
+      await openTeamNameContribution(cityId, controller.signal);
+      if (!controller.signal.aborted) setPostNotice("已打开投稿编辑器，填写你的队名和创意后即可发布。");
+    } catch (error) {
+      if (!controller.signal.aborted) setPostNotice(error instanceof Error ? error.message : "投稿编辑器暂时无法打开，请稍后再试。");
+    } finally {
+      if (!controller.signal.aborted) {
+        postController.current = null;
+        setPosting(false);
+      }
+    }
   };
 
   return (
@@ -96,7 +107,7 @@ function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "stat
       <header className="city-choice-heading">
         <div className="step-label">步骤 01/04 · 建立球队</div>
         <h2>选择扩军城市</h2>
-        <p className="flow-intro">选择你的主场和固定队徽，球队名称由你亲自决定。</p>
+        <p className="flow-intro">选择你的主场和队徽，再为新军挑选一个名字。</p>
       </header>
 
       <div className="city-showcase" role="group" aria-label="选择扩军城市">
@@ -104,7 +115,7 @@ function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "stat
           const brand = EXPANSION_BRAND_PRESETS[id][0];
           const presentation = CITY_PRESENTATION[id];
           const selected = cityId === id;
-          return <button type="button" key={id} className={`city-choice-card ${presentation.className}${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => chooseCity(id)}>
+          return <button type="button" key={id} className={`city-choice-card ${presentation.className}${selected ? " selected" : ""}`} aria-pressed={selected} disabled={locked} onClick={() => { setCityId(id); setPostNotice(""); }}>
             <span className="city-card-copy">
               <small>{presentation.eyebrow}</small>
               <b>{EXPANSION_CITY_NAMES[id]}</b>
@@ -116,15 +127,20 @@ function TeamCreation({ state, busy, onCommand }: Pick<ExpansionFlowProps, "stat
         })}
       </div>
 
-      <label className="field-label" htmlFor="team-name">02 为球队命名</label>
-      <p className="team-name-hint">城市名会自动添加；这里只填写队名后半部分，例如“{exampleName}”。</p>
-      <input id="team-name" className="team-name-input" value={teamName} maxLength={20} placeholder={`请输入队名的后半部分，例如${exampleName}`} autoComplete="off" aria-invalid={Boolean(teamNameError)} aria-describedby="team-name-guidance team-name-preview" onChange={(event) => setTeamName(event.target.value)} />
-      <div id="team-name-preview" className="team-name-preview" aria-live="polite"><span>完整队名预览</span><strong>{EXPANSION_CITY_NAMES[cityId]}{normalizedName || "球队名"}</strong></div>
-      <div id="team-name-guidance" className={`team-name-guidance${teamNameError ? " error" : teamNameValid ? " valid" : ""}`} aria-live="polite">
-        {teamNameError ? <><b>名称不可用</b><span>{teamNameError}</span></> : teamNameValid ? <><b>✓ 名称可用</b><span>创建后仍可在球队管理中查看。</span></> : <><b>命名规则</b><span>2～20 个字符，可用中文、英文字母、数字、空格、- 或 '，但不能只输入数字。</span></>}
+      <div className="team-name-heading">
+        <div id="team-name-label" className="field-label">02 选择球队名称</div>
       </div>
+      <div className="team-name-options" role="group" aria-labelledby="team-name-label">
+        {EXPANSION_TEAM_NAME_OPTIONS[cityId].map((name) => <button type="button" key={name} className={teamName === name ? "selected" : ""} aria-pressed={teamName === name} disabled={locked} onClick={() => setNamesByCity((previous) => ({ ...previous, [cityId]: name }))}><span>{name}</span>{teamName === name && <b aria-hidden="true">✓</b>}</button>)}
+      </div>
+      <div id="team-name-preview" className="team-name-preview" aria-live="polite"><span>完整队名预览</span><strong>{EXPANSION_CITY_NAMES[cityId]}{teamName}</strong></div>
+      <div className="team-name-contribution">
+        <p>如果你有更好、更有创意的名字，欢迎到话题下讨论。</p>
+        <button className="team-name-post-button" type="button" disabled={locked} onClick={() => void contributeName()}>{posting ? "正在打开…" : "投稿球队名字 ↗"}</button>
+      </div>
+      {postNotice && <p className="team-name-post-notice" role="status">{postNotice}</p>}
 
-      <button className="primary-cta" disabled={busy || !teamNameValid} onClick={() => onCommand({
+      <button className="primary-cta" disabled={locked} onClick={() => onCommand({
         commandId: "stage3-create-team",
         type: "CREATE_EXPANSION_TEAM",
         payload: { cityId, presetId: selectedBrand.presetId, teamName, primaryColor: selectedBrand.primaryColor, secondaryColor: selectedBrand.secondaryColor },

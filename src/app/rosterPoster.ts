@@ -1,9 +1,9 @@
-import { BUNDLED_RETIRED_PORTRAIT_IDS } from "../data/retiredLegendPortraitIds";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { LINEUP_POSITIONS } from "../game/roster/RotationPlanService";
 import type { Player, Position, Team, TeamRotationPlan } from "../game/state/types";
 import { playerNameZh } from "./playerNameZh";
 import { portraitSpriteMeta } from "./portraitSprite";
+import { loadRetiredPortrait, retiredPortraitId } from "./retiredPortraitLoader";
 
 export interface RosterPosterData {
   team: Pick<Team, "fullName">;
@@ -66,20 +66,12 @@ function loadImage(source: string, label: string): Promise<HTMLImageElement> {
   });
 }
 
-const retiredPortraitIds = new Set<string>(BUNDLED_RETIRED_PORTRAIT_IDS);
 interface PortraitSource { source: string; column?: number }
 
-function portraitSource(row: RosterPosterRow): PortraitSource | null {
-  const retiredId = row.portraitPath?.match(/^\.\/retired-portraits\/nba-(\d+)\.webp$/u)?.[1];
-  if (retiredId && retiredPortraitIds.has(retiredId)) {
-    const inline = typeof window !== "undefined"
-      ? (window as Window & { RETIRED_PORTRAIT_DATA?: Record<string, string> }).RETIRED_PORTRAIT_DATA?.[retiredId]
-      : undefined;
-    return {
-      source: inline && /^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/u.test(inline)
-        ? inline
-        : `${import.meta.env.BASE_URL}retired-portraits/nba-${retiredId}.webp`,
-    };
+async function portraitSource(row: RosterPosterRow): Promise<PortraitSource | null> {
+  if (retiredPortraitId(row.portraitPath)) {
+    const source = await loadRetiredPortrait(row.portraitPath);
+    return source ? { source } : null;
   }
   if (!row.portraitPath?.match(/^\.\/player-portraits\/nba-\d+\.png$/u)) return null;
   const sprite = portraitSpriteMeta(row.playerId, row.portraitPath);
@@ -107,7 +99,7 @@ export async function renderRosterPoster(data: RosterPosterData): Promise<Blob> 
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("当前设备无法生成首发五虎图片。");
-  const sources = rows.map(portraitSource);
+  const sources = await Promise.all(rows.map(portraitSource));
   // Cache only within this export: teammates in one atlas share a single load.
   const images = new Map<string, Promise<HTMLImageElement | null>>();
   const portraits = sources.map((source) => {

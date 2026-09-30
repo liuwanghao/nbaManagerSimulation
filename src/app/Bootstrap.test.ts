@@ -20,7 +20,7 @@ describe("Bootstrap fixture routing", () => {
     (fixture) => {
       const markup = renderAtFixture(fixture, false);
       expect(markup).toContain('class="launcher-shell home-screen"');
-      expect(markup).toContain('src="./branding/home-logo-cutout.png"');
+      expect(markup).toContain('src="./branding/home-logo-display.webp"');
       expect(markup).toContain('data-testid="start-new-game"');
     },
   );

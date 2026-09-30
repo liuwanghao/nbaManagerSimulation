@@ -8,7 +8,7 @@ interface SeasonOpeningScreenProps {
 
 export function SeasonOpeningScreen({ seasonId, teamName, rosterCount, busy, onEnter }: SeasonOpeningScreenProps) {
   return <main className="season-opening-screen" data-testid="season-opening-screen" aria-labelledby="season-opening-title">
-    <div className="season-opening-photo" style={{ backgroundImage: 'url("./story/season-opening-portrait.png")' }} aria-hidden="true" />
+    <div className="season-opening-photo" style={{ backgroundImage: 'url("./story/season-opening-portrait.webp")' }} aria-hidden="true" />
     <div className="season-opening-shade" aria-hidden="true" />
     <section className="season-opening-content">
       <span className="season-opening-kicker">{seasonId} · 常规赛开幕</span>

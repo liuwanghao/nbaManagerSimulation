@@ -1,5 +1,5 @@
 export const BALANCE_CONFIG = {
-  version: "balance.v18-draft-sleeper-rarity",
+  version: "balance.v19-unemployment-retirement-38",
   freeAgency: {
     offerValidDays: 3,
     decisionWindowDays: 3,
@@ -233,7 +233,6 @@ export const BALANCE_CONFIG = {
       earlyCareerMaximumAge: 34,
       youngMaximumAge: 30,
       earlyCareerInjuryGamesMissed: 82,
-      earlyCareerUnemploymentYears: 2,
       youngProbabilityMaximum: 0.02,
       ageProbability: [
         { minimumAge: 40, probability: 0.86 },
@@ -254,8 +253,7 @@ export const BALANCE_CONFIG = {
       lowInjuryRatingThreshold: 50,
       lowInjuryRatingAddition: 0.08,
       competitiveReduction: 0.025,
-      unemploymentAgeMinimum: 32,
-      unemploymentDaysThreshold: 180,
+      unemploymentAgeMinimum: 38,
       unemploymentAddition: 0.05,
       unemploymentYearsThreshold: 2,
       unemploymentProbabilityFloor: 0.92,

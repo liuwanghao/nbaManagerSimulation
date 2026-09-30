@@ -344,24 +344,69 @@ describe("PlayerDevelopmentService", () => {
     expect(retires.playerLifecycle?.retiredPlayerIds).toContain(player.id);
   });
 
-  it("allows retirement after two unemployed league years before age 31", () => {
-    const state = lifecycleState("unemployed-young-retirement");
+  it.each([26, 32, 34, 35, 37])("does not force a healthy %i-year-old to retire after two unemployed years", (age) => {
+    const state = lifecycleState(`unemployed-under-38-${age}`);
     const player = state.players[state.teams.SEA.playerIds[0]];
     state.teams.SEA.playerIds = state.teams.SEA.playerIds.filter((id) => id !== player.id);
     player.teamId = "FREE_AGENT";
     player.contract.status = "UFA";
-    player.birthDate = "1999-01-01";
+    player.birthDate = `${2027 - age}-01-01`;
     player.ageSource = "GENERATED_BIRTH_DATE";
     player.injuryRating = 80;
+    player.rotationRole = "BENCH";
+    player.attributes = { shooting: 60, finishing: 60, playmaking: 60, perimeterDefense: 60, interiorDefense: 60, rebounding: 60, athleticism: 60, basketballIq: 60 };
     player.career = {
       seasonsPlayed: 1, totals: structuredClone(player.seasonStats), peakOverall: 70, peakImpact: 70,
       unemployedGameDays: 180, unemployedLeagueYears: 1, careerInjuryGamesMissed: 0,
     };
-    state.seeds.seasonSeed = seasonSeedWithRetirementRoll(player.id, 0, 0.001);
+    state.seeds.seasonSeed = seasonSeedWithRetirementRoll(player.id, age <= 34 ? 0 : 0.8, age <= 34 ? 0.001 : 0.9);
 
     const next = processOffseasonPlayerLifecycle(state);
+    expect(next.players[player.id].age).toBe(age);
     expect(next.players[player.id].career?.unemployedLeagueYears).toBe(2);
-    expect(next.playerLifecycle?.retiredPlayerIds).toContain(player.id);
+    expect(next.playerLifecycle?.retiredPlayerIds).not.toContain(player.id);
+  });
+
+  it.each([1, 2])("requires both age 38 and two unemployed years for the unemployment retirement floor (years=%i)", (years) => {
+    const state = lifecycleState(`unemployed-age-38-${years}`);
+    const player = state.players[state.teams.SEA.playerIds[0]];
+    state.teams.SEA.playerIds = state.teams.SEA.playerIds.filter((id) => id !== player.id);
+    player.teamId = "FREE_AGENT";
+    player.contract.status = "UFA";
+    player.birthDate = "1989-01-01";
+    player.ageSource = "GENERATED_BIRTH_DATE";
+    player.injuryRating = 80;
+    player.rotationRole = "BENCH";
+    player.attributes = { shooting: 60, finishing: 60, playmaking: 60, perimeterDefense: 60, interiorDefense: 60, rebounding: 60, athleticism: 60, basketballIq: 60 };
+    player.career = {
+      seasonsPlayed: 1, totals: structuredClone(player.seasonStats), peakOverall: 70, peakImpact: 70,
+      unemployedGameDays: (years - 1) * 180, unemployedLeagueYears: years - 1, careerInjuryGamesMissed: 0,
+    };
+    state.seeds.seasonSeed = seasonSeedWithRetirementRoll(player.id, 0.9, 0.91);
+
+    const next = processOffseasonPlayerLifecycle(state);
+    expect(next.players[player.id].age).toBe(38);
+    expect(next.players[player.id].career?.unemployedLeagueYears).toBe(years);
+    expect(next.playerLifecycle?.retiredPlayerIds.includes(player.id)).toBe(years === 2);
+  });
+
+  it("clears unemployment retirement risk when a veteran signs again", () => {
+    const state = lifecycleState("reemployed-veteran-retirement");
+    const player = state.players[state.teams.SEA.playerIds[0]];
+    player.birthDate = "1989-01-01";
+    player.ageSource = "GENERATED_BIRTH_DATE";
+    player.injuryRating = 80;
+    player.rotationRole = "BENCH";
+    player.career = {
+      seasonsPlayed: 1, totals: structuredClone(player.seasonStats), peakOverall: 70, peakImpact: 70,
+      unemployedGameDays: 540, unemployedLeagueYears: 3, careerInjuryGamesMissed: 0,
+    };
+    state.seeds.seasonSeed = seasonSeedWithRetirementRoll(player.id, 0.9, 0.91);
+
+    const next = processOffseasonPlayerLifecycle(state);
+    expect(next.players[player.id].career?.unemployedGameDays).toBe(0);
+    expect(next.players[player.id].career?.unemployedLeagueYears).toBe(0);
+    expect(next.playerLifecycle?.retiredPlayerIds).not.toContain(player.id);
   });
 
   it("continues to evaluate an older contracted player for retirement", () => {

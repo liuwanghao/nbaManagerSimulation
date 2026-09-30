@@ -327,7 +327,7 @@ export default function Bootstrap() {
         : launcherLoading ? `正在读取槽位 0${launcherLoading.slice(-1)}…` : "";
     return <main className="launcher-shell home-screen" style={{ backgroundImage: 'linear-gradient(180deg, rgba(2, 6, 16, .28) 0%, rgba(2, 6, 16, .7) 47%, rgba(2, 6, 16, .96) 100%), url("./story/opening-arena.jpg")' }}>
       <section className="launcher-center">
-        <div className="launcher-mark"><img src="./branding/home-logo-cutout.png" alt="" /></div>
+        <div className="launcher-mark"><img src="./branding/home-logo-display.webp" alt="" width={660} height={660} fetchPriority="high" decoding="async" /></div>
         <h1>篮球经理：联盟扩军时代</h1>
         <p>管理扩军新星，改写职业篮球历史版图</p>
       </section>

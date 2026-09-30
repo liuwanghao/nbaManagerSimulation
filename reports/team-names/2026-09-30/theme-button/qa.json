@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "metrics": [
+    {
+      "width": 393,
+      "background": "rgb(0, 242, 254)",
+      "color": "rgb(3, 20, 25)",
+      "primaryBackground": "rgb(0, 242, 254)",
+      "rightAligned": true,
+      "overflow": false,
+      "errors": []
+    },
+    {
+      "width": 320,
+      "background": "rgb(0, 242, 254)",
+      "color": "rgb(3, 20, 25)",
+      "primaryBackground": "rgb(0, 242, 254)",
+      "rightAligned": true,
+      "overflow": false,
+      "errors": []
+    }
+  ]
+}

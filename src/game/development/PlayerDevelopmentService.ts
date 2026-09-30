@@ -180,10 +180,11 @@ function retirementProbability(player: Player): number {
   if (player.age <= retirement.earlyCareerMaximumAge) {
     const severeInjury = player.injuryRating < retirement.lowInjuryRatingThreshold
       && career.careerInjuryGamesMissed >= retirement.earlyCareerInjuryGamesMissed;
-    const longUnemployment = player.teamId === "FREE_AGENT" && player.contract.status === "UFA"
-      && career.unemployedLeagueYears >= retirement.earlyCareerUnemploymentYears;
-    if (!severeInjury && !longUnemployment) return 0;
+    if (!severeInjury) return 0;
   }
+  const longUnemployment = player.teamId === "FREE_AGENT" && player.contract.status === "UFA"
+    && player.age >= retirement.unemploymentAgeMinimum
+    && career.unemployedLeagueYears >= retirement.unemploymentYearsThreshold;
   const overall = playerOverall(player);
   let probability = retirement.ageProbability.find((band) => player.age >= band.minimumAge)?.probability
     ?? retirement.ageProbability.at(-1)?.probability
@@ -193,15 +194,17 @@ function retirementProbability(player: Player): number {
   if (player.rotationRole === "STARTER") probability -= retirement.starterReduction;
   if (player.injuryRating < retirement.lowInjuryRatingThreshold) probability += retirement.lowInjuryRatingAddition;
   if (player.personality === "COMPETITIVE") probability -= retirement.competitiveReduction;
-  if (player.age >= retirement.unemploymentAgeMinimum && career.unemployedGameDays >= retirement.unemploymentDaysThreshold) probability += retirement.unemploymentAddition;
-  if (player.age >= retirement.unemploymentAgeMinimum && career.unemployedLeagueYears >= retirement.unemploymentYearsThreshold) probability = Math.max(probability, retirement.unemploymentProbabilityFloor);
+  if (longUnemployment) {
+    probability += retirement.unemploymentAddition;
+    probability = Math.max(probability, retirement.unemploymentProbabilityFloor);
+  }
   const hasRecentPlayingTime = player.seasonStats.games >= retirement.competitiveVeteranMinimumGames
     && player.seasonStats.seconds >= retirement.competitiveVeteranMinimumMinutes * 60;
   const hasSignedStartingRole = player.contract.status === "STANDARD" && player.rotationRole === "STARTER";
   if (overall >= retirement.competitiveVeteranOverallMinimum
     && player.injuryRating >= retirement.lowInjuryRatingThreshold
     && (hasSignedStartingRole || hasRecentPlayingTime)
-    && career.unemployedLeagueYears < retirement.unemploymentYearsThreshold) {
+    && !longUnemployment) {
     probability *= retirement.competitiveVeteranProbabilityMultiplier;
   }
   return Math.max(retirement.probabilityMin, Math.min(

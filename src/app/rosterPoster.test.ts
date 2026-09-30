@@ -151,17 +151,48 @@ describe("renderRosterPoster", () => {
     expect(crops[0].slice(5)).toEqual([210, 375, 148, 148]);
   });
 
-  it.each([true, false])("uses a trusted retired portrait from inline data or local file (inline=%s)", async (inline) => {
+  it.each([true, false])("waits for trusted retired inline data (preloaded=%s)", async (preloaded) => {
     const mock = canvasMock();
     const data = fixture();
     const retiredId = BUNDLED_RETIRED_PORTRAIT_IDS[0];
     starter(data).portraitPath = `./retired-portraits/nba-${retiredId}.webp`;
     const payload = "data:image/webp;base64,AAAA";
-    if (inline) vi.stubGlobal("window", { RETIRED_PORTRAIT_DATA: { [retiredId]: payload } });
-    await renderRosterPoster(data);
-    expect(mock.sources).toContain(inline ? payload : `${import.meta.env.BASE_URL}retired-portraits/nba-${retiredId}.webp`);
+    const scripts: Array<{ onload?: () => void; remove: () => void }> = [];
+    vi.stubGlobal("window", preloaded ? { RETIRED_PORTRAIT_DATA: { [retiredId]: payload } } : {});
+    if (!preloaded) {
+      const createElement = document.createElement;
+      vi.stubGlobal("document", {
+        createElement: (tag: string) => tag === "script" ? { remove: vi.fn() } : createElement(tag),
+        head: { appendChild: (script: typeof scripts[number]) => { scripts.push(script); } },
+      });
+    }
+    const pending = renderRosterPoster(data);
+    if (!preloaded) {
+      expect(scripts).toHaveLength(1);
+      expect(mock.canvas.toBlob).not.toHaveBeenCalled();
+      Object.assign(window, { RETIRED_PORTRAIT_DATA: { [retiredId]: payload } });
+      scripts[0].onload?.();
+    }
+    await pending;
+    expect(mock.sources).toContain(payload);
+    expect(mock.sources.some((source) => source.includes("retired-portraits/nba-"))).toBe(false);
     expect(mock.context.drawImage).toHaveBeenCalledTimes(2);
     expect(mock.context.drawImage.mock.calls.every((args) => args.length === 5)).toBe(true);
+  });
+
+  it("exports a default portrait after lazy data loading fails", async () => {
+    const mock = canvasMock();
+    const data = fixture();
+    starter(data).portraitPath = `./retired-portraits/nba-${BUNDLED_RETIRED_PORTRAIT_IDS[0]}.webp`;
+    vi.stubGlobal("window", {});
+    const createElement = document.createElement;
+    vi.stubGlobal("document", {
+      createElement: (tag: string) => tag === "script" ? { remove: vi.fn() } : createElement(tag),
+      head: { appendChild: (script: { onerror: () => void }) => { queueMicrotask(() => script.onerror()); } },
+    });
+    expect(await renderRosterPoster(data)).toBe(mock.blob);
+    expect(mock.sources).toEqual([`${import.meta.env.BASE_URL}branding/home-logo-cutout.png`]);
+    expect(mock.context.arc).toHaveBeenCalledTimes(10);
   });
 
   it("ignores remote, arbitrary inline and unknown retired portrait paths", async () => {
@@ -174,8 +205,8 @@ describe("renderRosterPoster", () => {
     starter(data, "PF").portraitPath = `./retired-portraits/nba-${retiredId}.webp`;
     vi.stubGlobal("window", { RETIRED_PORTRAIT_DATA: { [retiredId]: "https://example.com/portrait.webp" } });
     await renderRosterPoster(data);
-    expect(mock.sources).toEqual(expect.arrayContaining([`${import.meta.env.BASE_URL}retired-portraits/nba-${retiredId}.webp`, `${import.meta.env.BASE_URL}branding/home-logo-cutout.png`]));
-    expect(mock.sources).toHaveLength(2);
+    expect(mock.sources).toEqual([`${import.meta.env.BASE_URL}branding/home-logo-cutout.png`]);
+    expect(mock.sources).toHaveLength(1);
     expect(mock.sources.every((source) => !source.startsWith("https:") && !source.startsWith("data:"))).toBe(true);
   });
 

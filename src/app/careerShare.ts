@@ -13,7 +13,7 @@ type PostEditorBridge = { openPostEditor: (params: {
 }) => Promise<PostEditorResponse> };
 type UploadBridge = { uploadFile: (params: { file: Blob; filename: string }) => Promise<{ downloadUrl?: string }> };
 
-const CAREER_POST_DESTINATION = {
+export const CAREER_POST_DESTINATION = {
   topicId: "871",
   tagId: "157696",
   topicName: "AI工坊",

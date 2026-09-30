@@ -1,0 +1,20 @@
+[
+  {
+    "name": "seattle-default",
+    "width": 256,
+    "height": 256,
+    "beforeBytes": 75231,
+    "afterBytes": 32953,
+    "reductionPercent": 56.2,
+    "sha256": "5dc3958c21b6ed718b9da534079c9683b259192291f186beccd5d224f353ec05"
+  },
+  {
+    "name": "las-vegas-default",
+    "width": 256,
+    "height": 256,
+    "beforeBytes": 88264,
+    "afterBytes": 29582,
+    "reductionPercent": 66.48,
+    "sha256": "fcd8fc62d514746636a7b143f6c63ed45fcff36de22a93d2946a8f3fa9acf2b1"
+  }
+]

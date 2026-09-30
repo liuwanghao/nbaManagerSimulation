@@ -6877,10 +6877,10 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .feedback-dialog-submit { min-height: 42px; color: #031419; border: 1px solid var(--accent-primary); border-radius: 0; background: var(--accent-primary); font-size: 12px; font-weight: 900; cursor: pointer; }
 .feedback-dialog-submit:disabled { cursor: default; opacity: .45; }
 
-/* Keep city selection and team naming on one mobile screen. */
+/* Let shorter screens scroll through name choices and contribution notices. */
 .team-creation-shell {
   display: flex;
-  overflow-y: hidden;
+  overflow-y: auto;
   flex-direction: column;
   padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
@@ -6904,7 +6904,18 @@ img[src*="expansion-logos/"] { border-radius: 50%; }
 .team-creation-shell .city-card-status { font-size: 8px; }
 .team-creation-shell .team-creation-card > .field-label { margin: 8px 0 4px; }
 .team-creation-shell .team-name-hint { margin: 2px 0 4px; color: #a9c5d6; font-size: 10px; line-height: 1.4; }
-.team-creation-shell .team-name-input { min-height: 42px; }
+.team-name-heading { margin: 8px 0 4px; }
+.team-name-heading > .field-label { min-width: 0; margin: 0; color: var(--accent-primary); }
+.team-creation-shell .team-name-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.team-name-options > button { display: flex; min-width: 0; min-height: 38px; padding: 7px 10px; align-items: center; justify-content: center; gap: 5px; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 0; background: var(--bg-sub-card); font-size: 11px; font-weight: 800; cursor: pointer; }
+.team-name-options > button.selected { color: var(--accent-primary); border-color: var(--accent-primary); background: #102d43; }
+.team-name-options > button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.team-name-options > button:disabled,.team-name-post-button:disabled { opacity: .45; cursor: not-allowed; }
+.team-name-contribution { display: grid; margin: 7px 0 10px; gap: 5px; }
+.team-name-contribution p { margin: 0; color: var(--text-sub); font-size: 10px; line-height: 1.5; }
+.team-name-post-button { width: 100%; min-height: 36px; padding: 7px 10px; color: var(--accent-primary); border: 1px solid var(--border-color); border-radius: 0; background: var(--bg-sub-card); font-size: 11px; font-weight: 800; cursor: pointer; }
+.team-name-post-notice { margin: 0 0 8px; color: var(--accent-primary); font-size: 10px; line-height: 1.5; }
+
 .team-creation-shell .team-name-preview { margin-top: 5px; padding: 6px 8px; }
 .team-creation-shell .team-name-guidance { margin-top: 5px; margin-bottom: 8px; padding: 6px 8px; color: #a9c5d6; font-size: 9px; line-height: 1.45; }
 .team-creation-shell .team-creation-card > .primary-cta { min-height: 44px; margin-top: auto; }
