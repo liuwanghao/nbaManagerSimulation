@@ -12,3 +12,6 @@ output/
 .env.*
 !.env.example
 /credentials.json
+/h5/
+/release/
+/h5.zip
