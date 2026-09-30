@@ -13,10 +13,6 @@ export function coachingMoraleRewardKey(state: GameState, afterGameId: string): 
   return `nba-coaching-morale:${stableHash(state.seeds.careerSeed, state.league.seasonId, afterGameId)}`;
 }
 
-export function coachingFatigueRewardKey(state: GameState, afterGameId: string): string {
-  return `nba-coaching-fatigue:${stableHash(state.seeds.careerSeed, state.league.seasonId, afterGameId)}`;
-}
-
 export function coachingPregameRewardKey(state: GameState, gameId: string): string {
   return `nba-coaching-pregame:${stableHash(state.seeds.careerSeed, state.league.seasonId, gameId)}`;
 }

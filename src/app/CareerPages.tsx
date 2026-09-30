@@ -10,7 +10,8 @@ import {
 import { getFranchiseLeaders } from "../game/career/FranchiseStats";
 import type { AchievementId, GameResult, GameState } from "../game/state/types";
 import { careerPostDraft, openCareerPostEditor } from "./careerShare";
-import { loadCareerRank, type ManagerRank } from "./leaderboardClient";
+import { renderCareerPoster } from "./careerPoster";
+import { loadCareerRank, requestForLeaderboardFrame, type ManagerRank } from "./leaderboardClient";
 import type { LeaderboardSaveSlot } from "./leaderboardReturn";
 import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import { awardLabel } from "./uiText";
@@ -151,6 +152,7 @@ export function CareerPages({ state, activeTab, activeSlot, onPrepareLeaderboard
   useEffect(() => {
     if (activeTab !== "overview") return;
     let current = true;
+    void requestForLeaderboardFrame("list").catch(() => { /* The full list can retry when opened. */ });
     setRankSnapshot((previous) => ({ ...previous, loading: true }));
     void loadCareerRank(state).then(({ mine, notice }) => {
       if (current) setRankSnapshot({ mine, notice, loading: false, error: false });
@@ -158,15 +160,26 @@ export function CareerPages({ state, activeTab, activeSlot, onPrepareLeaderboard
       if (current) setRankSnapshot({ mine: null, notice: error instanceof Error ? error.message : "排名暂时无法加载", loading: false, error: true });
     });
     return () => { current = false; };
-  }, [activeTab, activeSlot, state.gmCareer.dynastyScore]);
+  }, [activeTab, activeSlot, state.gmCareer.dynastyScore, state.league.seasonId, state.userTeamId, overview.level]);
 
   async function handleShareCareer() {
     if (openingPostRef.current) return;
     openingPostRef.current = true;
     setIsOpeningPost(true);
-    setShareStatus("正在打开虎扑发帖编辑器…");
+    setShareStatus("正在读取全服排名…");
     try {
-      await openCareerPostEditor(careerPostDraft(state, overview, records, latestMilestone?.label));
+      let globalRank: number | null | undefined;
+      try {
+        const { mine, notice } = await loadCareerRank(state);
+        globalRank = mine?.rank ?? null;
+        setRankSnapshot({ mine, notice, loading: false, error: false });
+      } catch (error) {
+        setRankSnapshot({ mine: null, notice: error instanceof Error ? error.message : "排名暂时无法加载", loading: false, error: true });
+      }
+      setShareStatus("正在生成分享海报…");
+      const poster = await renderCareerPoster(state, overview, latestMilestone?.label, globalRank);
+      setShareStatus("正在上传海报并打开虎扑发帖编辑器…");
+      await openCareerPostEditor(careerPostDraft(state, overview, records, latestMilestone?.label), poster);
       setShareStatus("发帖编辑器已打开，请确认内容后发布。");
     } catch (error) {
       setShareStatus(error instanceof Error ? error.message : "发帖编辑器暂时无法打开，请稍后重试。");
@@ -209,14 +222,14 @@ export function CareerPages({ state, activeTab, activeSlot, onPrepareLeaderboard
         })();
       }}>
         <span className="career-leaderboard-heading"><small>GLOBAL RANK · 全服总榜</small><b>经理排行榜</b></span>
-        <span className="career-leaderboard-position"><small>我的排名</small><b aria-live="polite">{rankSnapshot.loading ? "正在读取…" : rankSnapshot.error ? "排名暂不可用" : rankSnapshot.mine ? `第 ${rankSnapshot.mine.rank.toLocaleString("zh-CN")} 名` : "暂未上榜"}</b></span>
+        <span className="career-leaderboard-position"><small>我的排名</small><b aria-live="polite">{rankSnapshot.loading && !rankSnapshot.mine ? "正在读取…" : rankSnapshot.error ? "排名暂不可用" : rankSnapshot.mine ? `第 ${rankSnapshot.mine.rank.toLocaleString("zh-CN")} 名` : "暂未上榜"}</b></span>
         <span className="career-leaderboard-meta"><em>当前存档 {overview.dynastyScore.toLocaleString("zh-CN")} 分 · 总冠军 {overview.championships} 座</em><em>{rankSnapshot.notice || "按账号最高王朝积分排名"}</em></span>
         <strong>查看完整榜单 <i aria-hidden="true">↗</i></strong>
       </a>
       {leaderboardStatus && <p className="career-share-status" role="status" aria-live="polite">{leaderboardStatus}</p>}
       <div className="career-share-strip league-section-card">
-        <div><small>生涯战报</small><b>把这段执教故事分享给 JRs</b><span>自动带上王朝积分 {overview.dynastyScore}、战绩与荣誉，发帖前可编辑</span></div>
-        <button type="button" onClick={handleShareCareer} disabled={isOpeningPost}>{isOpeningPost ? "正在打开…" : "一键发帖分享 ↗"}</button>
+        <div><small>生涯战报</small><b>把这段执教故事分享给 JRs</b><span>海报带应用 Logo、经理称号、全服排名与战绩，发帖前可编辑</span></div>
+        <button type="button" onClick={handleShareCareer} disabled={isOpeningPost}>{isOpeningPost ? "正在处理…" : "一键发帖分享 ↗"}</button>
         {shareStatus && <p className="career-share-status" role="status" aria-live="polite">{shareStatus}</p>}
       </div>
       <div className="career-overview-secondary league-section-card" aria-label="生涯经营数据">

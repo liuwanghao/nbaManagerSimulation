@@ -9,7 +9,9 @@ type PostEditorBridge = { openPostEditor: (params: {
   tagName: string;
   title: string;
   content: string;
+  imageUrl: string;
 }) => Promise<PostEditorResponse> };
+type UploadBridge = { uploadFile: (params: { file: Blob; filename: string }) => Promise<{ downloadUrl?: string }> };
 
 const CAREER_POST_DESTINATION = {
   topicId: "871",
@@ -36,9 +38,28 @@ export function careerPostDraft(state: GameState, overview: CareerOverview, reco
   };
 }
 
-export async function openCareerPostEditor(draft: ReturnType<typeof careerPostDraft>): Promise<void> {
-  const bridge = (window as Window & { ColorboxAI?: { request?: { bbs?: PostEditorBridge } } }).ColorboxAI?.request?.bbs;
+export async function openPosterPostEditor(
+  draft: { title: string; content: string },
+  poster: Blob,
+  kind: "career" | "roster" = "career",
+  onStage?: (stage: "uploading" | "opening") => void,
+): Promise<void> {
+  const sdk = (window as Window & { ColorboxAI?: { request?: { bbs?: PostEditorBridge }; oss?: UploadBridge } }).ColorboxAI;
+  const bridge = sdk?.request?.bbs;
   if (!bridge?.openPostEditor) throw new Error("请在虎扑 App 内打开游戏后使用发帖分享。");
-  const response = await bridge.openPostEditor({ ...CAREER_POST_DESTINATION, ...draft });
-  if (response.code !== 200) throw new Error(response.message || "发帖编辑器暂时无法打开，请稍后重试。");
+  if (!sdk?.oss?.uploadFile) throw new Error("图片上传暂不可用，请在虎扑 App 内重试。");
+  if (!poster.size) throw new Error("海报生成失败，请重试。");
+  if (poster.size > 10 * 1024 * 1024) throw new Error("海报超过 10MB，暂时无法上传。");
+  onStage?.("uploading");
+  const uploaded = await sdk.oss.uploadFile({ file: poster, filename: `basketball-manager-${kind}-${Date.now()}.png` });
+  let imageUrl: URL;
+  try { imageUrl = new URL(uploaded?.downloadUrl ?? ""); } catch { throw new Error("海报上传失败，请重试。"); }
+  if (imageUrl.protocol !== "https:" || !imageUrl.hostname) throw new Error("海报上传失败，请重试。");
+  onStage?.("opening");
+  const response = await bridge.openPostEditor({ ...CAREER_POST_DESTINATION, ...draft, imageUrl: imageUrl.href });
+  if (response?.code !== 200) throw new Error(response?.message || "发帖编辑器暂时无法打开，请稍后重试。");
+}
+
+export async function openCareerPostEditor(draft: ReturnType<typeof careerPostDraft>, poster: Blob): Promise<void> {
+  return openPosterPostEditor(draft, poster);
 }

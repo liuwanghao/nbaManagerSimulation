@@ -34,15 +34,23 @@ describe("retired legend portraits", () => {
   });
 
   it("only advertises portraits that exist and match the recorded hash", () => {
-    expect(BUNDLED_RETIRED_PORTRAIT_IDS).toHaveLength(90);
+    expect(BUNDLED_RETIRED_PORTRAIT_IDS).toHaveLength(87);
     expect(new Set(BUNDLED_RETIRED_PORTRAIT_IDS)).toEqual(new Set(portraitManifest.portraits
-      .filter((entry) => entry.qualityStatus === "approved" && entry.sha256)
+      .filter((entry) => "source" in entry && entry.qualityStatus === "approved" && entry.sha256)
       .map((entry) => entry.nbaPlayerId)));
     for (const entry of portraitManifest.portraits) {
       if (!("sha256" in entry) || !entry.sha256) continue;
       const path = new URL(`../../public/retired-portraits/nba-${entry.nbaPlayerId}.webp`, import.meta.url);
+      if (!("source" in entry)) {
+        expect(existsSync(path), entry.name).toBe(false);
+        continue;
+      }
       expect(existsSync(path), entry.name).toBe(true);
       expect(createHash("sha256").update(readFileSync(path)).digest("hex"), entry.name).toBe(entry.sha256);
     }
+  });
+
+  it("does not publish a portrait attribution page", () => {
+    expect(existsSync(new URL("../../public/retired-portrait-attributions.html", import.meta.url))).toBe(false);
   });
 });

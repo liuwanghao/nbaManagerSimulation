@@ -37,7 +37,7 @@ const ROSTER: readonly LegendEntry[] = [
   ["76970", "John Havlicek", "约翰·哈夫利切克", "SF", "DEFENDER"],
   ["76979", "Elvin Hayes", "埃尔文·海耶斯", "PF", "INTERIOR"],
   ["947", "Allen Iverson", "阿伦·艾弗森", "SG", "SCORER"],
-  ["77142", "Magic Johnson", "魔术师约翰逊", "PG", "CREATOR"],
+  ["77142", "Magic Johnson", "埃尔文·约翰逊", "PG", "CREATOR"],
   ["77196", "Sam Jones", "萨姆·琼斯", "SG", "SCORER"],
   ["893", "Michael Jordan", "迈克尔·乔丹", "SG", "SCORER"],
   ["467", "Jason Kidd", "杰森·基德", "PG", "CREATOR"],

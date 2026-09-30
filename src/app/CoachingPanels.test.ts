@@ -51,6 +51,7 @@ describe("coaching intervention panels", () => {
     expect(fiveGameReviewView(offerCoachingReview(state, ids))).toBeUndefined();
     const playerId = state.teams[state.userTeamId].playerIds[0];
     state.players[playerId].morale = 38;
+    state.players[playerId].fatigue = 75;
     const offered = offerCoachingReview(state, ids);
     const html = renderToStaticMarkup(createElement(FiveGameReviewPanel, { state: offered, busy: false, onApply: noOp }));
     expect(html).toContain("近五场 5 胜 0 负");
@@ -59,10 +60,10 @@ describe("coaching intervention panels", () => {
     expect(html).toContain("鼓舞全队</span><small>激励视频 · 每人士气 +1");
     expect(html.indexOf("随机鼓舞两人")).toBeLessThan(html.indexOf("鼓舞全队"));
     expect(html).not.toContain("恢复高疲劳");
-    expect(html).not.toContain("激励视频 · 每人疲劳 −1");
+    expect(html).not.toContain("减轻全队疲劳");
   });
 
-  it("offers the full-team fatigue video only when someone is highly fatigued", () => {
+  it("does not offer a review when only fatigue is high", () => {
     const state = createCareer("coaching-ui-fatigue-video");
     const games = state.schedule.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId)
       .sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id));
@@ -71,10 +72,8 @@ describe("coaching intervention panels", () => {
     state.players[state.teams[state.userTeamId].playerIds[0]].fatigue = 75;
     const offered = offerCoachingReview(state, games.slice(0, 5).map((game) => game.id));
     const html = renderToStaticMarkup(createElement(FiveGameReviewPanel, { state: offered, busy: false, onApply: noOp }));
-    expect(html).toContain("减轻全队疲劳</span><small>激励视频 · 每人疲劳 −1");
-    expect(html).toContain("恢复高疲劳");
-    expect(html).not.toContain("激励视频 · 每人士气 +1");
-    expect(html).not.toContain("随机鼓舞两人");
+    expect(fiveGameReviewView(offered)).toBeUndefined();
+    expect(html).toBe("");
   });
 
   it("lets a lone morale video fill the row when fewer than two players can gain morale", () => {

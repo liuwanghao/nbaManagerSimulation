@@ -1,5 +1,95 @@
 Original prompt: 那就按照你的开发计划执行吧
 
+Current request (2026-09-30): 首页按钮图标再小一点。
+
+### 首页图标二次缩小 — complete
+
+- [x] 首页三个 SVG 按钮图标从 24×24px 缩到 20×20px；图案、按钮行为与配色保持不变。
+- [x] TypeScript/生产构建通过；Playwright 在 393×852 与 375×667 视口确认三个图标均为 20×20px，截图可见、无横向溢出和页面错误。
+- [x] 发布 ZIP 已覆盖，80 个文件与 `h5/` 逐项哈希一致，CRC 校验通过。
+
+Current request (2026-09-30): 选秀前交易控制台的高度与点击“搜索目标球员”后的高度一致。
+
+### 选秀前交易控制台高度统一 — complete
+
+- [x] 复现 393×852 下我方筹码/搜索目标球员模式弹窗高度分别为 495/733px，375×667 下分别为 495/574px。
+- [x] 将选秀前交易弹窗固定为原搜索模式的 `min(86dvh,760px)` 高度，交易控制台填满弹窗，目标球员列表在控制台内部滚动；市场页样式不变。
+- [x] 同场景复测 393×852 两模式弹窗均 733px、控制台均 731px；375×667 两模式弹窗均 574px、控制台均 572px。已检查两模式截图，标题和切换按钮保持可见。
+- [x] Bootstrap/交易相关 24 项测试、TypeScript/生产构建通过；发布 ZIP 已覆盖，80 个文件与 `h5/` 逐项哈希一致，CRC 校验通过。
+- [ ] iPhone Safari 真机尚未检查。
+
+Current request (2026-09-30): 首页三个图标使用 `/Users/uwa/Downloads/gemini-code-1790736150185.html` 的设计，并按追加要求缩小一点。
+
+### 首页操作图标替换与缩小 — complete
+
+- [x] 按参考 HTML 的 SVG 路径替换“开始新游戏 / 读取存档 / 继续上次进度”图标；深色按钮使用参考青色，青色主按钮使用深色图标保证对比度。
+- [x] 图标尺寸由参考稿的 28px 调整为 24px，保留按钮文案、布局和操作。
+- [x] Bootstrap 7 项测试、TypeScript/生产构建通过；Playwright 在 393×852 与 375×667 视口确认三图标均为 24×24px、无横向溢出和页面错误，并检查截图。
+- [x] 发布 ZIP 已覆盖，80 个文件与 `h5/` 逐项哈希一致，CRC 校验通过。
+- [ ] iPhone Safari 真机尚未检查。
+
+Current request (2026-09-30): 选秀前交易的“选择我方筹码” UI 与市场交易页统一。
+
+### 选秀前交易样式统一 — complete
+
+- [x] 两处已共用 `TradeDesk` 和 `TradeAssetPicker`；差异来自选秀前弹窗缺少市场页的 `.market-hub` 样式作用域。给选秀前弹窗加入该作用域，并保留弹窗最大高度与内部滚动。
+- [x] Playwright Before/After 截图核对主筹码卡片：选秀前由圆角发光改为市场交易的直角扁平样式；筹码弹窗选秀权图标也改为直角。
+- [x] 393×852 移动视口验证位置筛选、选择球员与选秀权、确认后汇总为“1 名球员 · 1 枚签”；无横向溢出和控制台错误。
+- [x] 28 项定向测试、TypeScript/生产构建通过；发布 ZIP 已覆盖，80 个文件与 `h5/` 逐项哈希一致，CRC 校验通过。
+- [ ] iPhone Safari 真机尚未检查。
+
+Current request (2026-09-30): 修正球员卡片与自由球员签约页面中相同显示 OVR 不同颜色，并检查其他页面。
+
+### 球员 OVR 颜色一致性 — complete
+
+- [x] 根因：颜色档位使用未取整的实际 OVR，展示值使用 `toFixed(0)`；79.5 显示为 80 时仍可能按 70 档着色。颜色函数统一按显示整数判断。
+- [x] 常规赛自由球员名单和球队管理球员总评从固定橙色改为共享颜色规则；休赛期自由球员签约、球员详情、轮换、交易、选秀等已有共享规则的页面一并受边界修复覆盖。
+- [x] 定向 46 项及全量 604 项测试、TypeScript/生产构建通过；Playwright 临时页面实测 79.5 与 80.49 均显示 80，且自由球员列表、球员详情和球队管理表均呈现同一橙色。
+- [x] 发布 ZIP 已覆盖；166 个文件与 `h5/` 构建目录逐项哈希一致，CRC 校验通过。
+- [ ] 真机 Safari 尚未检查。
+
+Current request (2026-09-30): 将魔术师约翰逊的中文显示名改为“埃尔文·约翰逊”。
+
+### 退役传奇球员名称校正 — complete
+
+- [x] 保留 `Magic Johnson` 与 `nba:77142` 的存档身份，只修正退役传奇中文名映射；旧存档经现有名称渲染流程显示新名称。
+- [x] 名称映射与传奇模板 7 项测试、TypeScript/生产构建通过；构建包确认包含新名称且不含旧名称。
+- [x] 发布 ZIP 已覆盖并通过逐文件哈希与 CRC 校验。
+
+Current request (2026-09-30): 优化首页“开始新游戏 / 读取存档 / 继续上次进度”按钮图标。
+
+### 首页操作图标统一 — complete
+
+- [x] 用本地内嵌 SVG 替换 CSS 三角形、实心文件夹和字体旋转符号；统一为 22px 图标，主按钮深色、次按钮主色。
+- [x] Bootstrap 7 项测试、TypeScript/生产构建通过；Playwright 在 393×852 与 375×667 实测三个图标可见且无横向溢出、页面错误。
+- [x] 已检查 393×852 页面截图，发布 ZIP 已覆盖并通过逐文件哈希与 CRC 校验。
+
+Current request (2026-09-30): “进入季后赛”按钮铺满卡片，“结算剩余季后赛”按钮改为主色。
+
+### 季后赛操作按钮样式 — complete
+
+- [x] 常规赛完成卡中的“进入季后赛”铺满卡片内容宽度；本队淘汰后的“结算剩余季后赛”使用 `--accent-primary` 填充。
+- [x] 季后赛页面 11 项测试、TypeScript/生产构建、ZIP 逐文件哈希与 CRC 校验通过；发布 ZIP 已覆盖。
+- [ ] 本机 Playwright Chromium 与应用内 `file://` 访问仍受沙箱权限阻止，本轮未做真实画面检查。
+
+Current request (2026-09-30): 第 10 名进入附加赛后，本队首场被自动模拟并可能立即显示赛程结束。
+
+### 附加赛入场误模拟 — complete
+
+- [x] 复现第 10 种子在 `ENTER_POSTSEASON` 中首场被自动打完的错误；入口改为仅创建季后赛赛程。
+- [x] 回归测试覆盖第 10 种子入场时首场待赛、页面出现“模拟下一场比赛”，以及玩家主动点击后该场才结束。
+- [x] 季后赛定向测试 13 项、TypeScript/生产构建、ZIP 逐文件哈希与 CRC 校验通过；发布 ZIP 已覆盖。
+- [ ] 旧存档中已被模拟并保存的附加赛结果不自动回滚，需读取进入季后赛前的存档重玩。
+
+Current request (2026-09-30): 近 5 场赛后复盘移除恢复疲劳的选择。
+
+### 五场赛后复盘选项调整 — complete
+
+- [x] 移除“恢复高疲劳”“减轻全队疲劳”及专属球员选择 UI、命令和视频凭证；保留两种士气干预。
+- [x] 仅疲劳偏高、士气无需改善时不生成复盘机会；独立的体能预警事件保持原行为。
+- [x] 生产构建、98 文件/599 项测试、发布 ZIP 逐文件哈希与 CRC 校验通过，已覆盖 `release/篮球经理_联盟扩军时代.zip`。
+- [ ] Playwright Chromium 启动被 macOS MachPort 沙箱权限阻止；应用内浏览器也禁止访问本地 `file://`，本轮未完成真实画面检查。
+
 Current request (2026-09-29): 按已测性能问题实施优化，保留规则与存档兼容，并做同场景 Before/After。
 
 ### 性能专项优化 — 已完成本轮
@@ -2008,3 +2098,87 @@ Current request (2026-09-29): 修复不带 `careerSlot` 打开游戏时直接进
 - [x] 新增旧会话标记回归测试；Bootstrap 与 CareerPages 共 11 项测试、TypeScript、生产构建和 ZIP CRC 校验通过。
 - [x] 已覆盖 `release/篮球经理_联盟扩军时代.zip`。
 - [ ] 本机 Playwright Chromium 启动被 MachPort 权限拒绝；Codex 内置浏览器拒绝本地 file URL，因此本轮未完成页面截图验证。
+
+Current request (2026-09-30): 将球员疲劳、士气从赛季概览移到阵容轮换球员卡片，保持卡片高度。
+
+- [x] 赛季概览移除疲劳、士气两列；轮换卡片完整显示“疲劳 xx”“士气 xx”，异常值沿用高亮阈值。
+- [x] OVR 移到球员信息右侧并占姓名、位置两行；球员卡片保持 65px。
+- [x] 定向测试 17 项、生产构建通过；Playwright 截图及真实 320px 视口测得 15 张卡片均为 65px，状态行无溢出。
+
+Current request (2026-09-30): 生涯完整排行榜中，我的排名用球队 Logo、球队名称和称号；前 100 名显示虎扑头像昵称、球队、当前赛季和称号，并优化加载速度。
+
+### 生涯排行榜资料与加载优化
+
+- Plan: preserve highest-score/tie rules; replace serial rank requests with submit response, parallelize public/personal loading, deduplicate and briefly cache reads, prefetch top100 from career; update identity presentation with existing DOM-safe text/image patterns.
+- Added native getUserInfo profile enrichment, account-isolated 30s rank/sync cache, 15s top100 cache, in-flight merging and public-cache race protection. First career sync uses one POST on the new API; legacy API falls back to GET. Failed sync retains rank and remains retryable.
+- Complete leaderboard shows team logo/name/title in mine, and JR avatar/nickname plus team/season/title in rows. Public list renders independently of score sync; manual refresh and retry remain available. Local expansion logo paths resolve from the leaderboard directory; missing/broken avatars have text fallbacks.
+- Backend: full ranked submit response, parallel tie-count queries, 15s public cache and generation guard; mirrored profile migrations retain highest score, original score timestamp and 1-minute score cooldown while updating latest career profile.
+- Verification: full game suite 98 files/612 tests passed; latest focused suite 15 tests passed; backend suite 12 tests passed. Playwright verified widths 393/375/320 with no overflow/page errors, public list before 1.6s sync finishes, 100 rows, refresh, retry recovery. Native skill client verified warm career -> embedded list with calls remaining 2 (no additional cloud requests); visual verdict pass 96/100.
+- Production build/typecheck passed. Fixed the existing raw-HTML build guard to match complete React branch structure with identifier backreferences, preserving exactly-two-branches fail-closed behavior; verified renamed identifiers and malformed branch rejection. Final production browser smoke has no page/console errors. Release ZIP rebuilt, all 81 files byte-equal to h5 and CRC valid; QA fixture removed.
+- Remaining: SQL not executed against PostgreSQL; no remote deployment or real App latency measurement performed. Existing account profile fields are filled when the player next syncs through the updated client.
+
+Current request (2026-09-30): 管理概览增加“阵容发帖交流”，生成带应用 Logo 的阵容图片并一键虎扑发帖。
+
+- [x] 入口位于球队阵容能力下方、球员赛季概览上方；移动端全宽按钮。
+- [x] 本地 Canvas 生成 1080px 宽阵容 PNG，包含应用 Logo、球队摘要、五位置首发及完整替补名单、能力值与目标分钟；伤停缺位标明“暂无安排”，长文字截断，图片随名单长度增高。
+- [x] 复用生涯海报的 SDK 上传与发帖流程，预填 AI 工坊 / 篮球经理话题；分享前校验登录态和自定义队名内容，上传只接受 HTTPS CDN URL。
+- [x] 防重复点击、分阶段状态、失败预览保留、离页取消后续唤起与预览 URL 清理已实现。
+- [x] 全量 100 文件 / 631 项测试通过；最后修改后的定向 4 文件 / 29 项测试、TypeScript 生产构建、静态审查和差异空白检查通过。
+- [ ] 虎扑 App 内真实登录、图片上传与编辑器唤起待宿主环境联调；本轮按工作区 runbook 限制未运行浏览器/截图自测。
+
+Current request (2026-09-30): 生涯战报海报放大称号、增加全服排名并移除预览海报按钮。
+
+- [x] 经理称号由与赛季共行的 32px 改为独立 54px 加粗金色行；海报保持 1080 × 1350。
+- [x] 王朝积分旁增加全服排名，发帖时通过现有 loadCareerRank 读取账号排名；暂未上榜和读取失败分别明确显示，不影响后续分享。长排名缩小字号保留完整数字，注明按账号最高积分排名。
+- [x] 删除预览按钮、专用处理函数及样式，保留一键发帖及生成后海报展示。
+- [x] 编辑前 5 项基础回归通过；编辑后 4 文件 / 27 项相关测试、TypeScript 生产构建与差异空白检查通过，H5 已更新。
+- [ ] 本轮遵守工作区 runbook 限制，未进行浏览器视觉截图或虎扑 App 真实发帖联调。
+
+Current request (2026-09-30): 打包 ZIP 覆盖。
+
+- [x] TypeScript 与 H5 生产构建通过，覆盖 `release/篮球经理_联盟扩军时代.zip`。
+- [x] 81 个文件与 H5 构建逐项字节比对一致，ZIP CRC 校验通过；包含阵容发帖交流与生涯海报全服排名，已移除预览海报按钮。
+- [x] ZIP 大小 15,919,259 bytes，SHA-256 `2893f22bc63dc03ee9edc06d8249fbd376c21521681c453776ac9dd3c6918bd9`。
+
+Current request (2026-09-30): 我的排名队标圆框、称号右置放大；荣耀前三金银铜色区分并降低高度；前100称号放积分下方；诊断真实虎扑资料及待同步占位原因。
+
+- Changed `public/leaderboard/index.html`: both team-logo frame and image clip are circular; own title moved right at 14px. Preserved podium background gradient, differentiated gold/silver/bronze borders/background tints/medals/points, reduced mobile podium to 131px. Row title moved to a right-aligned column below points.
+- Changed `leaderboardClient.ts` and its tests: native identity lookup now explicitly fails instead of silently submitting a generic nickname when SDK/nickname is unavailable. Old API personal responses are enriched only with the current user's native profile and local career fields; actual cloud profile support remains clearly marked unavailable. Rendering merges the personal profile into both podium and top100 regardless of request completion order.
+- Read-only live public API check returned HTTP200, one entry, core rank fields only: avatarUrl/teamName/teamLogo/seasonId/title absent. Existing deployed SQL updates the nickname only on score improvement. This confirms old backend/migration is the cause of historical nickname/missing profile placeholders; getUserInfo cannot fetch other leaderboard users' profiles.
+- Focused app tests 17/17; backend tests 12/12; typecheck/build passed. Browser QA covers 320/375/393px, 100 rows, three medal colors, right-side 14px title, circular logo, points-above-title layout, own profile merging even when personal data returns before public data, and compatibility with the old deployed service. Native skill client shows warm career/embedded reuse still has two total cloud calls. Visual verdict 97/100 pass; screenshots in reports/leaderboard/2026-09-30/polish.
+- Temporary QA fixture removed. No remote write or deployment. The pre-existing profile migration/function still need deployment; other players' previously unrecorded profiles require their own updated client synchronization.
+
+Current request (2026-09-30): 金色和铜色比较接近，需要优化区分。
+
+- [x] 荣耀前三第一名改为明亮金黄（文字 #ffe079、边框 #c8a03c、渐变底色 #50431b）；第三名改为偏红铜（文字 #df9979、边框 #aa5c44、渐变底色 #4a2925），保留原渐变风格与银色卡片。
+- [x] TypeScript/生产构建通过；浏览器在 320/375/393px 确认三种边框不同、131px 卡片高度、无横向溢出与页面错误；已检查截图，visual-verdict 97/100 pass。
+- [x] 已运行原生游戏浏览器技能脚本并移除临时 QA 页面；本次只修改颜色，无逻辑或接口变化。
+
+Current request (2026-09-30): 阵容分享只保留按钮，移到保存轮换方案左边，改为“晒出首发五虎”，图片显示五名首发的位置、头像和能力。
+
+- [x] 移除概览分享卡片及全部专用样式/文案；轮换保存栏增加左侧单个按钮，右侧保留保存轮换方案。
+- [x] 分享读取当前未保存的轮换草稿，只绘制 PG/SG/SF/PF/C 五人，图片保留应用 Logo；本地图集头像按列裁剪，历史头像支持内嵌资源，无头像或加载失败使用默认人像。
+- [x] 删除替补、分钟和球队摘要等旧海报内容，发帖草稿只包含球队/赛季和五名首发的位置/姓名/能力；缺失审核结果与明确审核未通过分开提示，继续严格阻止未获通过的上传。
+- [x] 防重复点击、分享中锁定轮换编辑、离页停止后续唤起、预览 URL 清理及图片失败后预览保留均已实现。
+- [x] 海报 21 项、其余定向 40 项测试通过；全量 101 文件 / 655 项测试、TypeScript、生产构建、静态结构及差异检查通过。
+- [x] 已覆盖正式 ZIP，81 个文件逐项字节比对和 CRC 校验通过，SHA-256 `60518256571ee7396cf3a1d46038e8a7d040e0ca4398da37fd8ba531926bfea3`。
+- [ ] 按工作区 runbook 限制未做浏览器截图；真实虎扑上传和发帖编辑器唤起仍待宿主环境联调。
+
+Current request (2026-09-30): 晒出首发五虎增加同款箭头，生涯战报一键发帖后不再显示页面预览图。
+
+- [x] 首发分享按钮改为“晒出首发五虎 ↗”，与一键发帖分享同款。
+- [x] 删除生涯海报预览 DOM、预览状态、Object URL 创建/释放和专用样式；后台海报生成、图片上传与发帖流程保留。
+- [x] 相关 4 文件 / 30 项测试、TypeScript 生产构建、静态检查和差异检查通过；已覆盖正式 ZIP，81 文件 CRC 与逐项字节校验通过，SHA-256 `995d8a31da3cff43e1f3e3ed49f01b4dcdaf6879be0e331274c4a124101cc635`。
+- [ ] 本轮未做虎扑 App 实机联调或浏览器截图。
+
+Current request (2026-09-30): 用户明确授权“那就部署一下吧”，部署排行榜云端资料升级。
+
+- [x] 官方 CloudBase MCP 执行迁移 `20260930000002_leaderboard_profiles`，任务 `task-abeb4433` 成功；更新现有 `activity_api`，北京时间 12:04:34 Active / code success。保留四条正式路由、鉴权与安全域名配置。
+- [x] 线上验证资料字段、完整排名提交响应、同分更新资料、低分保留最高分与积分达到时间、账号隔离、未登录 401、跨域预检 204、公开接口隐藏 PUID 均通过。
+- [x] 两个专用测试账号已清理，残留测试记录 0；原有玩家数量 1，积分与达到时间指纹在部署前后及测试清理后均为 `503763ac7738a07c5baccf471e4ae545`。最终公开接口只返回原有记录。
+- [x] 部署记录与最终核对保存在 `reports/leaderboard/2026-09-30/deployment/`，活动 manifest 与 README 已更新。无静态 H5 上传；旧玩家资料在各自下一次客户端同步时补齐，真实虎扑 App 资料读取仍依赖宿主环境。
+
+Current request (2026-09-30): 再次打包 ZIP 覆盖。
+
+- [x] 最新 TypeScript 和生产构建通过，覆盖 `release/篮球经理_联盟扩军时代.zip`；81 文件逐项一致与 ZIP CRC 校验通过。
+- [x] 包内包含“晒出首发五虎 ↗”，生涯预览图已移除；大小 15,918,288 bytes，SHA-256 `8c5e3f1a62e347fcaf9325d50c42f5483908c0c9e1f401254ff5450b7210f22c`。

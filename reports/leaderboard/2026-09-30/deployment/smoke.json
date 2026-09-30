@@ -1,0 +1,30 @@
+{
+  "startedAt": "2026-09-30T04:07:18.957Z",
+  "checks": {
+    "health": true,
+    "publicProfileFields": true,
+    "anonymousRequestsDenied": true,
+    "cors": true,
+    "authenticatedGatewayRead": true,
+    "authenticatedSubmitWithFullRank": true,
+    "serverDerivedTitle": true,
+    "userIsolation": true,
+    "sameScoreUpdatesProfile": true,
+    "lowerScorePreservesBestAndUpdatesProfile": true,
+    "publicAggregatesAndHidesPuid": true,
+    "directFunctionRequiresContext": true
+  },
+  "publicReadTimingsMs": [
+    63,
+    73,
+    50
+  ],
+  "testUsers": [
+    "e2e-puid-profile-377b9ec8-A",
+    "e2e-puid-profile-377b9ec8-B"
+  ],
+  "cleanupRequired": false,
+  "playerCountBeforeTests": 1,
+  "ok": true,
+  "cleanupConfirmed": true
+}

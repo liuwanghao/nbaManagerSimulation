@@ -2,10 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { getCapSheet } from "../game/cap/CapSheetService";
+import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { createCareer, standingsForConference } from "../game/season/career";
 import { calculateTeamFit } from "../game/team/TeamFitService";
 import { calculateTeamOverall } from "../game/team/TeamRatingService";
 import { ManagementContracts, ManagementDraftPicks, ManagementOverview, playerPerGame } from "./ManagementPages";
+import { PLAYER_RATING_COLORS } from "./playerRatingColor";
 
 describe("regular-season management pages", () => {
   it("shows team information and each player's season data, with dashes before games are played", () => {
@@ -19,6 +21,9 @@ describe("regular-season management pages", () => {
       fit: calculateTeamFit(state, team.id), onOpenPlayer: () => {},
     }));
     expect(markup).toContain("球员赛季概览");
+    expect(markup).not.toContain("阵容发帖交流");
+    expect(markup).not.toContain("晒出首发五虎");
+    expect(markup).not.toContain("manage-roster-share");
     expect(markup).toContain('aria-label="按主位置筛选球员赛季数据"');
     expect(markup).toContain(`<b>全部</b><small>${players.length}</small>`);
     for (const position of ["PG", "SG", "SF", "PF", "C"]) {
@@ -34,7 +39,7 @@ describe("regular-season management pages", () => {
     expect(playerPerGame(90, 3)).toBe("30.0");
   });
 
-  it("shows high fatigue and low morale in the existing player row", () => {
+  it("keeps fatigue and morale out of the season overview table", () => {
     const state = createCareer("management-player-status");
     const team = state.teams[state.userTeamId];
     const players = team.playerIds.map((id) => state.players[id]);
@@ -46,9 +51,23 @@ describe("regular-season management pages", () => {
       fit: calculateTeamFit(state, team.id), onOpenPlayer: () => {},
     }));
     const row = markup.match(new RegExp(`<tr[^>]*data-player-id="${players[0].id}"[^>]*>.*?</tr>`))?.[0];
-    expect(markup).toContain("<th scope=\"col\">疲劳</th><th scope=\"col\">士气</th>");
-    expect(row).toContain('class="manage-status-cell fatigued" title="疲劳 75，偏高"');
-    expect(row).toContain('class="manage-status-cell low-morale" title="士气 40，偏低"');
+    expect(markup).not.toContain('<th scope="col">疲劳</th>');
+    expect(markup).not.toContain('<th scope="col">士气</th>');
+    expect(row).not.toContain("manage-status-cell");
+  });
+
+  it("uses the shared OVR color for the displayed roster rating", () => {
+    const state = createCareer("management-rating-color");
+    const team = state.teams[state.userTeamId];
+    const players = team.playerIds.map((id) => state.players[id]);
+    players[0].overallAdjustment = (players[0].overallAdjustment ?? 0) + 79.5 - calculatePlayerOverall(players[0]);
+    const markup = renderToStaticMarkup(createElement(ManagementOverview, {
+      team, players, record: state.standings[team.id], seasonId: state.league.seasonId,
+      rank: 1, overall: calculateTeamOverall(state, team.id).overall,
+      fit: calculateTeamFit(state, team.id), onOpenPlayer: () => {},
+    }));
+    const row = markup.match(new RegExp(`<tr[^>]*data-player-id="${players[0].id}"[^>]*>.*?</tr>`))?.[0];
+    expect(row).toContain(`<strong class="player-rating-tone" style="--player-rating-color:${PLAYER_RATING_COLORS.excellent}">80</strong>`);
   });
 
   it("shows cap breakdown and player contract terms without offering unsupported editing", () => {

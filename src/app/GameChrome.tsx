@@ -174,18 +174,17 @@ function TeamInboxDrawer({ notifications, players, attentionCount, unreadIds, bu
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
+  const markRead = (item: TeamInboxItem) => {
+    if (!busy && !item.pending && !item.read) void onMarkRead?.([item.id]);
+  };
   return <div className="team-inbox-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="team-inbox-panel" id="team-inbox-panel" role="dialog" aria-label="球队通知">
-      <header><div><h2>通知</h2><span>{attentionCount ? `${attentionCount} 条未读或待处理` : "暂无待处理消息"}</span></div><button type="button" autoFocus aria-label="关闭球队通知" onClick={onClose}>×</button></header>
-      <div className="team-inbox-list">{notifications.length ? notifications.map((item) => <article className={`team-inbox-item${item.pending ? " pending" : item.read ? " read" : " unread"}`} key={item.id}>
+      <header><div className="team-inbox-heading"><h2>通知</h2><span>{attentionCount ? `${attentionCount} 条未读或待处理` : "暂无待处理消息"}</span></div><div className="team-inbox-header-actions">{unreadIds.length > 0 && <button className="team-inbox-read-all" type="button" disabled={busy} onClick={() => void onMarkRead?.(unreadIds)}>全部标为已读</button>}<button className="team-inbox-close" type="button" autoFocus aria-label="关闭球队通知" onClick={onClose}>×</button></div></header>
+      <div className="team-inbox-list">{notifications.length ? notifications.map((item) => <article className={`team-inbox-item${item.pending ? " pending" : item.read ? " read" : " unread"}`} key={item.id} role={!item.pending && !item.read ? "button" : undefined} tabIndex={!item.pending && !item.read ? 0 : undefined} aria-disabled={!item.pending && !item.read ? busy : undefined} aria-label={!item.pending && !item.read ? `标为已读：${item.title}` : undefined} aria-describedby={!item.pending && !item.read ? `team-inbox-message-${item.id}` : undefined} onClick={() => markRead(item)} onKeyDown={(event) => { if (!item.pending && !item.read && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); markRead(item); } }}>
         <div><small>{item.category === "FREE_AGENCY" ? "自由市场" : item.category === "SEASON" ? "赛季" : "球队"} · {item.date ? <time dateTime={item.date}>{item.date}</time> : "日期未记录"}</small><em>{item.pending ? "待处理" : item.read ? "已读" : "未读"}</em></div>
-        <h3>{localizePlayerNamesInText(item.title, players)}</h3><p>{item.playerName && item.playerId ? `${playerNameZh(item.playerName, item.playerId)} · ` : ""}{localizePlayerNamesInText(humanizeUiText(item.message), players)}</p>
-        {(item.pending || !item.read) && <div className="team-inbox-actions">
-          {item.pending && <button type="button" disabled={busy} onClick={() => onHandlePending(item)}>去处理</button>}
-          {!item.pending && !item.read && <button type="button" className="secondary" disabled={busy} onClick={() => void onMarkRead?.([item.id])}>标为已读</button>}
-        </div>}
+        <h3>{localizePlayerNamesInText(item.title, players)}</h3><p id={`team-inbox-message-${item.id}`}>{item.playerName && item.playerId ? `${playerNameZh(item.playerName, item.playerId)} · ` : ""}{localizePlayerNamesInText(humanizeUiText(item.message), players)}</p>
+        {item.pending && <div className="team-inbox-actions"><button type="button" disabled={busy} onClick={() => onHandlePending(item)}>去处理</button></div>}
       </article>) : <p className="team-inbox-empty">暂无球队通知。自由市场报价结果和赛季待办会显示在这里。</p>}</div>
-      {unreadIds.length > 0 && <footer><button type="button" disabled={busy} onClick={() => void onMarkRead?.(unreadIds)}>全部标为已读</button></footer>}
     </section>
   </div>;
 }

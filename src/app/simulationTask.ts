@@ -44,7 +44,7 @@ export function executeSimulationTask(request: SimulationRequest, onProgress?: (
       case "POSTSEASON": state = simulatePostseason(prepared); break;
       case "POSTSEASON_ROUND": state = simulatePostseasonRound(prepared); break;
       case "POSTSEASON_NEXT": state = isUserPostseasonEliminated(prepared) ? simulatePostseasonGame(prepared) : simulatePostseasonToNextUserGame(prepared); break;
-      case "ENTER_POSTSEASON": state = simulatePostseasonToNextUserGame(enterPostseason(prepared)); break;
+      case "ENTER_POSTSEASON": state = enterPostseason(prepared); break;
     }
     return { kind: "OPERATION", state };
   }

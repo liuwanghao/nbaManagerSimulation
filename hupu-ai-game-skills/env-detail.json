@@ -1,0 +1,195 @@
+{
+  "projectId": "app_2eeb0a1013",
+  "envId": "app-2eeb0a1013-d9g1x2i4s1d4596c3",
+  "found": true,
+  "envStatus": {
+    "status": "NORMAL",
+    "alias": "app-2eeb0a1013",
+    "region": "ap-shanghai",
+    "payMode": "prepayment",
+    "packageName": "集成版",
+    "postgresql": [
+      {
+        "name": "postgres",
+        "instanceName": "postgres-dh7ei2dc"
+      }
+    ],
+    "staticDomains": []
+  },
+  "routes": [
+    {
+      "domain": "app-2eeb0a1013-d9g1x2i4s1d4596c3-1252166086.ap-shanghai.app.tcloudbase.com",
+      "domainType": "HTTPSERVICE",
+      "accessType": "DIRECT",
+      "path": "/api/health",
+      "upstreamResourceType": "WEB_SCF",
+      "upstreamResourceName": "activity_api",
+      "enableAuth": false,
+      "enableSafeDomain": true,
+      "enablePathTransmission": true,
+      "enable": true
+    },
+    {
+      "domain": "app-2eeb0a1013-d9g1x2i4s1d4596c3-1252166086.ap-shanghai.app.tcloudbase.com",
+      "domainType": "HTTPSERVICE",
+      "accessType": "DIRECT",
+      "path": "/api/leaderboard",
+      "upstreamResourceType": "WEB_SCF",
+      "upstreamResourceName": "activity_api",
+      "enableAuth": false,
+      "enableSafeDomain": true,
+      "enablePathTransmission": true,
+      "enable": true
+    },
+    {
+      "domain": "app-2eeb0a1013-d9g1x2i4s1d4596c3-1252166086.ap-shanghai.app.tcloudbase.com",
+      "domainType": "HTTPSERVICE",
+      "accessType": "DIRECT",
+      "path": "/api/leaderboard/me",
+      "upstreamResourceType": "WEB_SCF",
+      "upstreamResourceName": "activity_api",
+      "enableAuth": true,
+      "enableSafeDomain": true,
+      "enablePathTransmission": true,
+      "enable": true
+    },
+    {
+      "domain": "app-2eeb0a1013-d9g1x2i4s1d4596c3-1252166086.ap-shanghai.app.tcloudbase.com",
+      "domainType": "HTTPSERVICE",
+      "accessType": "DIRECT",
+      "path": "/api/leaderboard/submit",
+      "upstreamResourceType": "WEB_SCF",
+      "upstreamResourceName": "activity_api",
+      "enableAuth": true,
+      "enableSafeDomain": true,
+      "enablePathTransmission": true,
+      "enable": true
+    }
+  ],
+  "functions": [
+    "activity_api"
+  ],
+  "functionSource": {
+    "scf": [],
+    "routes": [
+      "activity_api",
+      "activity_api",
+      "activity_api",
+      "activity_api"
+    ],
+    "snapshot": [
+      "activity_api"
+    ]
+  },
+  "tables": [
+    {
+      "schema": "public",
+      "table": "leaderboard_entries",
+      "columns": [
+        {
+          "name": "id",
+          "position": "1",
+          "type": "uuid",
+          "udt": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "maxLength": null,
+          "numericPrecision": null,
+          "numericScale": null
+        },
+        {
+          "name": "puid",
+          "position": "2",
+          "type": "text",
+          "udt": "text",
+          "nullable": false,
+          "default": null,
+          "maxLength": null,
+          "numericPrecision": null,
+          "numericScale": null
+        },
+        {
+          "name": "title",
+          "position": "3",
+          "type": "text",
+          "udt": "text",
+          "nullable": false,
+          "default": "''::text",
+          "maxLength": null,
+          "numericPrecision": null,
+          "numericScale": null
+        },
+        {
+          "name": "content",
+          "position": "4",
+          "type": "text",
+          "udt": "text",
+          "nullable": false,
+          "default": "''::text",
+          "maxLength": null,
+          "numericPrecision": null,
+          "numericScale": null
+        },
+        {
+          "name": "created_at",
+          "position": "5",
+          "type": "timestamp with time zone",
+          "udt": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "maxLength": null,
+          "numericPrecision": null,
+          "numericScale": null
+        },
+        {
+          "name": "score",
+          "position": "6",
+          "type": "integer",
+          "udt": "int4",
+          "nullable": false,
+          "default": "0",
+          "maxLength": null,
+          "numericPrecision": "32",
+          "numericScale": "0"
+        },
+        {
+          "name": "display_name",
+          "position": "7",
+          "type": "text",
+          "udt": "text",
+          "nullable": false,
+          "default": "'虎扑经理'::text",
+          "maxLength": null,
+          "numericPrecision": null,
+          "numericScale": null
+        },
+        {
+          "name": "updated_at",
+          "position": "8",
+          "type": "timestamp with time zone",
+          "udt": "timestamptz",
+          "nullable": false,
+          "default": "now()",
+          "maxLength": null,
+          "numericPrecision": null,
+          "numericScale": null
+        }
+      ]
+    }
+  ],
+  "cloudRun": {
+    "projectId": "app_2eeb0a1013",
+    "envId": "app-2eeb0a1013-d9g1x2i4s1d4596c3",
+    "serverName": "roomapp2eeb0a1013",
+    "ready": false,
+    "publicBaseUrl": "",
+    "publicAddress": "",
+    "sessionAffinity": "",
+    "vpcId": "",
+    "status": "",
+    "cpu": 0,
+    "memoryGb": 0,
+    "replicas": 0
+  },
+  "fetchedAt": "2026-09-30T02:33:44.091Z"
+}

@@ -337,9 +337,9 @@ export default function Bootstrap() {
         <small>每个决定都会影响薪资空间、球队适配度与未来竞争力。</small>
       </section>
       <section className="launcher-actions">
-        <button className="launcher-primary" data-testid="start-new-game" disabled={Boolean(launcherLoading)} onClick={() => void openNewGameMenu()}><i className="launcher-play-icon" aria-hidden="true" /><span>开始新游戏</span></button>
-        <button disabled={Boolean(launcherLoading)} onClick={() => void openLoadMenu()}><i className="launcher-folder-icon" aria-hidden="true" /><span>读取存档</span></button>
-        <button className="launcher-dark" disabled={Boolean(launcherLoading)} onClick={() => void launchLatest()}><i className="launcher-rotate-icon" aria-hidden="true">↻</i><span>继续上次进度</span></button>
+        <button className="launcher-primary" data-testid="start-new-game" disabled={Boolean(launcherLoading)} onClick={() => void openNewGameMenu()}><svg className="launcher-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><rect x="2" y="3" width="20" height="18" rx="4" stroke="currentColor" strokeWidth="2" /><polygon points="10,8 16,12 10,16" fill="currentColor" /></svg><span>开始新游戏</span></button>
+        <button disabled={Boolean(launcherLoading)} onClick={() => void openLoadMenu()}><svg className="launcher-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M3 7C3 5.89543 3.89543 5 5 5H9.58579C10.1162 5 10.625 5.21071 11 5.58579L12.4142 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z" stroke="currentColor" strokeWidth="2" /><path d="M12 10V15M12 15L9.5 12.5M12 15L14.5 12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg><span>读取存档</span></button>
+        <button className="launcher-dark" disabled={Boolean(launcherLoading)} onClick={() => void launchLatest()}><svg className="launcher-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M 12 4 A 8 8 0 1 1 5.5 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M 4 4 L 5.5 8 L 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><polygon points="10.5,10 14.5,12 10.5,14" fill="currentColor" /></svg><span>继续上次进度</span></button>
       </section>
       {launcherNotice && !loadMenuOpen && <p className="launcher-notice" role="status">{launcherNotice}</p>}
       {loadMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !launcherLoading) setLoadMenuOpen(false); }}>
@@ -377,7 +377,7 @@ export default function Bootstrap() {
         </section>
       </div>}
       {launcherLoading && <div className="launcher-loading-backdrop" role="status" aria-live="polite"><div className="launcher-loading-card"><BasketballSeamLoader /><b>{loadingLabel}</b><small>{launcherLoading === "slots" ? "正在检查可用存档，请稍候" : "正在校验并恢复游戏进度，请稍候"}</small></div></div>}
-      <small className="launcher-version">版本 2.0.0｜扩军纪念版</small>
+      <small className="launcher-version">从扩军开始，打造你的王朝</small>
     </main>;
   }
 

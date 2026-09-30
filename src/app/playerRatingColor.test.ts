@@ -22,6 +22,13 @@ describe("player rating colors", () => {
     expect(playerRatingColor(50)).toBe("#0AA2F4");
   });
 
+  it("uses the displayed rounded rating at color boundaries", () => {
+    expect(playerRatingColor(79.49)).toBe(PLAYER_RATING_COLORS.good);
+    expect(playerRatingColor(79.5)).toBe(PLAYER_RATING_COLORS.excellent);
+    expect(playerRatingColor(89.5)).toBe(PLAYER_RATING_COLORS.elite);
+    expect(playerRatingColor(59.5)).toBe(PLAYER_RATING_COLORS.average);
+  });
+
   it("clamps out-of-range values and exposes the shared CSS variable", () => {
     expect(playerRatingColor(120)).toBe(PLAYER_RATING_COLORS.elite);
     expect(playerRatingColor(-10)).toBe(PLAYER_RATING_COLORS.weakLow);

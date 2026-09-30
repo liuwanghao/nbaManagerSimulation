@@ -208,8 +208,14 @@ export function blockingEvent(state: GameState): EventInstance | undefined {
   return state.eventState.queue.find((event) => event.status === "PENDING" && event.effectivePause);
 }
 
-/** Keeps saves made before V1.43 actionable instead of trapping them on a notification-only morale event. */
+/** Adds newly available decisions to pending events stored by older saves. */
 export function choicesForEvent(event: EventInstance): EventInstance["choices"] {
+  if (event.definitionId === "fatigue_management_001") {
+    const keepRotation = EVENT_DEFINITION_BY_ID[event.definitionId].choices.find((choice) => choice.id === "keep_rotation");
+    return keepRotation && !event.choices.some((choice) => choice.id === "keep_rotation")
+      ? [{ ...keepRotation, effects: [] }, ...event.choices]
+      : event.choices;
+  }
   const legacyAcknowledgement = event.choices.length === 1 && event.choices[0]?.id === "acknowledge";
   if (!["MORALE", "ROLE"].includes(event.category)) return event.choices;
   const target = event.choices.flatMap((choice) => choice.effects).find((effect) => effect.type === "PLAYER_MORALE")?.target;

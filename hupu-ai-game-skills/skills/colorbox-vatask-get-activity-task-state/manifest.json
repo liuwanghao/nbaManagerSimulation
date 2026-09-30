@@ -1,0 +1,37 @@
+{
+  "id": "colorbox-vatask-get-activity-task-state",
+  "name": "查询活动任务状态",
+  "description": "查看用户当前的剩余抽奖次数与激励视频等任务完成情况，用于在活动页展示抽奖机会，并在任务完成后及时刷新状态。",
+  "category": "广告与收益",
+  "categories": [
+    "广告与收益"
+  ],
+  "icon": "list-todo",
+  "details": {
+    "capabilities": [
+      "查询活动任务状态：查看用户当前的剩余抽奖次数与激励视频等任务完成情况，用于在活动页展示抽奖机会，并在任务完成后及时刷新状态。",
+      "提供激励视频、活动任务与抽奖次数相关的广告变现能力。",
+      "支持查询剩余抽奖次数、任务完成状态并拉起激励视频领取奖励。"
+    ],
+    "scenarios": [
+      "需要展示广告任务、抽奖机会并引导用户观看激励视频的活动页面。",
+      "需要将广告观看行为转化为抽奖次数等收益奖励的场景。"
+    ],
+    "usageTips": [
+      "激励视频必须在用户主动点击后拉起，并在原生回调确认奖励到账后再刷新状态。",
+      "任务状态与抽奖次数展示后要及时刷新，避免重复观看或过度引导。"
+    ]
+  },
+  "content": "---\nname: vatask-getActivityTaskState\ndescription: 查看用户当前的剩余抽奖次数与激励视频等任务完成情况，用于在活动页展示抽奖机会，并在任务完成后及时刷新状态。\n---\n\n# Usage\n\n- JS Path: `window.ColorboxAI.vatask.getActivityTaskState(params)`\n\n# Constraints\n\n- 只允许通过 window.ColorboxAI.vatask.getActivityTaskState() 调用，禁止直接请求活动任务接口\n- 活动 id 由底座配置自动注入，无需也不能通过参数传入\n- 在页面初始化、任务完成后或用户主动刷新时调用；禁止在循环、轮询或自动重试中高频调用\n- tasks 中 taskCode 为 \"reward\" 的即激励视频任务；status 为 completed 表示本周期已完成\n- 激励视频任务通过 window.ColorboxAI.vatask.completeRewardVideo 完成，抽奖通过 window.ColorboxAI.vatask.consumeActivityChance 发起\n- 必须根据返回的 code 判断是否成功，若 code 不等于 200，必须使用返回的 message 对用户进行友好提示（如 Toast 或弹窗）。\n\n# Parameters\n\n| 参数名 | 类型 | 是否必填 | 说明 |\n| --- | --- | --- | --- |\n\n# Returns\n\n- Type: `Promise<Response>`\n\n### Response Properties\n\n| 属性名 | 类型 | 是否必填 | 说明 |\n| --- | --- | --- | --- |\n| code | number | 是 | 状态码，200 表示成功 |\n| message | string | 是 | 成功信息或面向用户的失败提示 |\n| data | object | 是 | 活动任务状态；失败时为 null |\n| data.availableChanceCount | number | 是 | 当前剩余的活动抽奖次数 |\n| data.tasks | array | 是 | 按后端顺序返回的任务列表 |\n| data.tasks[].id | string | 是 | 任务 id |\n| data.tasks[].taskCode | string | 是 | 任务类型编码，激励视频任务为 \"reward\" |\n| data.tasks[].title | string | 是 | 运营配置的任务标题 |\n| data.tasks[].description | string | 否 | 任务描述，可能不存在 |\n| data.tasks[].iconUrl | string | 否 | 任务图标 URL，可能不存在 |\n| data.tasks[].status | string | 是 | 任务完成状态：pending 表示可完成，completed 表示本周期已完成 |\n| data.tasks[].chanceGrantCount | number | 是 | 完成一次任务可获得的活动次数 |\n\n# Examples\n\n```javascript\nwindow.ColorboxAI.vatask.getActivityTaskState().then(res => { if (res.code === 200) { console.log(\"剩余次数\", res.data.availableChanceCount); } else { console.warn(res.message); } });\n```",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "content": "---\nname: vatask-getActivityTaskState\ndescription: 查看用户当前的剩余抽奖次数与激励视频等任务完成情况，用于在活动页展示抽奖机会，并在任务完成后及时刷新状态。\n---\n\n# Usage\n\n- JS Path: `window.ColorboxAI.vatask.getActivityTaskState(params)`\n\n# Constraints\n\n- 只允许通过 window.ColorboxAI.vatask.getActivityTaskState() 调用，禁止直接请求活动任务接口\n- 活动 id 由底座配置自动注入，无需也不能通过参数传入\n- 在页面初始化、任务完成后或用户主动刷新时调用；禁止在循环、轮询或自动重试中高频调用\n- tasks 中 taskCode 为 \"reward\" 的即激励视频任务；status 为 completed 表示本周期已完成\n- 激励视频任务通过 window.ColorboxAI.vatask.completeRewardVideo 完成，抽奖通过 window.ColorboxAI.vatask.consumeActivityChance 发起\n- 必须根据返回的 code 判断是否成功，若 code 不等于 200，必须使用返回的 message 对用户进行友好提示（如 Toast 或弹窗）。\n\n# Parameters\n\n| 参数名 | 类型 | 是否必填 | 说明 |\n| --- | --- | --- | --- |\n\n# Returns\n\n- Type: `Promise<Response>`\n\n### Response Properties\n\n| 属性名 | 类型 | 是否必填 | 说明 |\n| --- | --- | --- | --- |\n| code | number | 是 | 状态码，200 表示成功 |\n| message | string | 是 | 成功信息或面向用户的失败提示 |\n| data | object | 是 | 活动任务状态；失败时为 null |\n| data.availableChanceCount | number | 是 | 当前剩余的活动抽奖次数 |\n| data.tasks | array | 是 | 按后端顺序返回的任务列表 |\n| data.tasks[].id | string | 是 | 任务 id |\n| data.tasks[].taskCode | string | 是 | 任务类型编码，激励视频任务为 \"reward\" |\n| data.tasks[].title | string | 是 | 运营配置的任务标题 |\n| data.tasks[].description | string | 否 | 任务描述，可能不存在 |\n| data.tasks[].iconUrl | string | 否 | 任务图标 URL，可能不存在 |\n| data.tasks[].status | string | 是 | 任务完成状态：pending 表示可完成，completed 表示本周期已完成 |\n| data.tasks[].chanceGrantCount | number | 是 | 完成一次任务可获得的活动次数 |\n\n# Examples\n\n```javascript\nwindow.ColorboxAI.vatask.getActivityTaskState().then(res => { if (res.code === 200) { console.log(\"剩余次数\", res.data.availableChanceCount); } else { console.warn(res.message); } });\n```"
+    }
+  ],
+  "manifest": {
+    "capability": "vatask-getActivityTaskState",
+    "source": "skill-package",
+    "version": 1
+  }
+}

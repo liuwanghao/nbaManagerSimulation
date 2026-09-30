@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Build offline retired-player portraits from the same NBA headshot endpoint
-// used for current players. Keep the reviewed Commons asset when NBA has no face.
+// used for current players. Players without an official headshot use the normal UI fallback.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { copyFile, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -67,10 +67,6 @@ try {
 
   for (const result of results) {
     if (result.source === "existing") {
-      const path = join(portraitDirectory, `nba-${result.entry.nbaPlayerId}.webp`);
-      const bytes = await readFile(path);
-      const hash = createHash("sha256").update(bytes).digest("hex");
-      if (hash !== result.entry.sha256) throw new Error(`Unverified fallback portrait: ${result.entry.name}`);
       continue;
     }
     await copyFile(result.output, join(portraitDirectory, `nba-${result.entry.nbaPlayerId}.webp`));
@@ -89,7 +85,7 @@ try {
   await rename(temporaryManifest, manifestPath);
   const sources = Object.groupBy(results, (result) => result.source);
   process.stdout.write(`NBA CDN ${sources["nba-official-cdn"]?.length ?? 0}, NBA China ${sources["nba-china"]?.length ?? 0}, existing Commons ${sources.existing?.length ?? 0}.\n`);
-  if (sources.existing?.length) process.stdout.write(`Fallback: ${sources.existing.map((result) => result.entry.name).join(", ")}\n`);
+  if (sources.existing?.length) process.stdout.write(`Default-avatar fallback: ${sources.existing.map((result) => result.entry.name).join(", ")}\n`);
 } finally {
   await rm(stagingDirectory, { recursive: true, force: true });
 }

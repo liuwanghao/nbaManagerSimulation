@@ -1,0 +1,43 @@
+{
+  "metaActivityId": "app_2eeb0a1013",
+  "alias": "篮球经理：联盟扩军时代",
+  "envId": "app-2eeb0a1013-d9g1x2i4s1d4596c3",
+  "resources": {
+    "functions": [
+      "activity_api"
+    ],
+    "gatewayRoutes": [
+      "/api/health",
+      "/api/leaderboard",
+      "/api/leaderboard/me",
+      "/api/leaderboard/submit"
+    ],
+    "tables": [
+      "public.leaderboard_entries"
+    ]
+  },
+  "publicBaseUrl": "https://app-2eeb0a1013-d9g1x2i4s1d4596c3-1252166086.ap-shanghai.app.tcloudbase.com",
+  "verification": {
+    "ok": true,
+    "healthChecked": true,
+    "leaderboardReadChecked": true,
+    "authenticatedSubmitChecked": true,
+    "authenticatedRankChecked": true,
+    "corsChecked": true,
+    "testDataCleaned": true,
+    "profileFieldsChecked": true,
+    "sameScoreProfileUpdateChecked": true,
+    "highestScorePreservedChecked": true,
+    "userIsolationChecked": true,
+    "originalDataPreservedChecked": true
+  },
+  "activity": {
+    "status": "verified"
+  },
+  "deployment": {
+    "migrationVersion": "20260930000002",
+    "functionModifiedAt": "2026-09-30 12:04:34 +08:00",
+    "functionSha256": "a06956826351a4565f230fa41922b76fdb0444b0fdd3f2099449056fb0555c30",
+    "verifiedAt": "2026-09-30T04:11:11.569Z"
+  }
+}

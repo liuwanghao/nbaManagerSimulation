@@ -1,0 +1,37 @@
+{
+  "id": "colorbox-vatask",
+  "name": "激励广告",
+  "description": "为你的游戏接入激励广告变现：玩家看视频获得奖励次数，可用于抽奖或游戏内权益。零配置接入，平台自动完成活动与广告位绑定。",
+  "category": "广告与收益",
+  "categories": [
+    "广告与收益"
+  ],
+  "icon": "radio",
+  "details": {
+    "capabilities": [
+      "激励视频变现：玩家看视频获得奖励次数",
+      "支持抽奖玩法与游戏内权益兑换",
+      "剩余次数与任务状态查询"
+    ],
+    "scenarios": [
+      "需要广告变现或看广告得奖励的游戏与活动页面",
+      "需要抽奖、次数任务等玩法激励的页面"
+    ],
+    "usageTips": [
+      "接入零配置：创建应用时勾选即可，活动与广告位由平台自动绑定",
+      "玩家需在虎扑 App 内登录后观看，奖励到账以平台确认结果为准"
+    ]
+  },
+  "content": "---\nname: vatask\ndescription: 为你的游戏接入激励广告变现：玩家看视频获得奖励次数，可用于抽奖或游戏内权益。零配置接入，平台自动完成活动与广告位绑定。\n---\n\n# 激励广告（业务介绍）\n\n为游戏接入激励广告能力：玩家在虎扑 App 内观看一段激励视频，完整看完后获得奖励次数，可用于抽奖或兑换游戏内权益。\n\n## 开发者接入\n\n- 创建应用时勾选「激励广告」即可，无需任何配置；活动、广告位与奖励规则由平台自动创建和绑定\n- 玩家在页面看到「看视频领奖励」入口和剩余次数展示\n- 仅虎扑 App 内生效，玩家需登录后参与\n- 广告收益按完播结算，由平台统一处理\n\n## 实现指引（供生成代码的 AI 使用）\n\n本能力组包含三个 `vatask` 任务能力，具体参数、返回值与约束以各子 Skill 定义为准：\n\n| 子 Skill | JS Path | 作用 |\n| --- | --- | --- |\n| 完成激励视频 | `window.ColorboxAI.vatask.completeRewardVideo()` | 拉起激励视频，完播后奖励到账 |\n| 查询活动任务状态 | `window.ColorboxAI.vatask.getActivityTaskState()` | 查询剩余次数与任务完成情况 |\n| 消耗活动次数抽奖 | `window.ColorboxAI.vatask.consumeActivityChance()` | 消耗一次次数并返回抽奖结果 |\n\n活动 id 由底座配置自动注入（`window.__COLORBOX_AI_CONFIG__.ActivityId`），调用时无需也不能传参。\n\n### 任务链路如何运行\n\n1. **看广告拿奖励**：用户点击 → `completeRewardVideo()` → 原生拉起激励视频 → 完播后原生确认奖励到账 → 服务端自动增加次数。页面只负责成功后刷新状态，不可自行加次数\n2. **查询次数**：页面初始化 / 任务完成 / 用户刷新时调用 `getActivityTaskState()` 获取剩余次数与任务状态；`taskCode` 为 `\"reward\"` 即激励视频任务\n3. **消耗次数**：用户点击抽奖时调用 `consumeActivityChance()` 消耗一次并返回结果；`data.prize` 为 `null` 表示未中奖，不是失败\n\n### 组合方式（由业务场景决定）\n\n- **直接权益兑换**：看广告成功 → 页面发放游戏内权益，次数可不展示\n- **抽奖玩法**：看广告得次数 → 展示剩余次数 → 抽奖消耗 → 中奖弹窗\n- **任务墙**：展示 reward 任务与剩余次数，可叠加签到、分享等自有任务\n\n### 通用接入骨架\n\n```javascript\n// 1. 页面初始化：查状态（只读）\nconst state = await window.ColorboxAI.vatask.getActivityTaskState();\n\n// 2. 用户点击\"看广告\"：拉起激励视频\nconst res = await window.ColorboxAI.vatask.completeRewardVideo();\nif (res.code === 200 && res.data.rewarded) {\n  await window.ColorboxAI.vatask.getActivityTaskState(); // 刷新状态\n  // 发放业务奖励（抽奖次数/游戏权益等）\n} else {\n  // 按 res.message 提示；禁止自行补发奖励\n}\n```\n\n### 通用约束\n\n- 必须由用户主动点击触发，禁止页面加载、循环、轮询或自动重试中调用\n- 只允许通过 `window.ColorboxAI.vatask.*` 调用，禁止直接调用原生 Bridge 或活动任务接口\n- 同一时间只允许一个激励视频流程，进行中必须禁用触发按钮\n- 失败时使用返回的 `message` 提示用户，禁止自行补发奖励\n- 仅支持虎扑 App，暂不支持鸿蒙系统；站外调用返回 `code 403`（reason 为 `APP_REQUIRED`）\n",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "content": "---\nname: vatask\ndescription: 为你的游戏接入激励广告变现：玩家看视频获得奖励次数，可用于抽奖或游戏内权益。零配置接入，平台自动完成活动与广告位绑定。\n---\n\n# 激励广告（业务介绍）\n\n为游戏接入激励广告能力：玩家在虎扑 App 内观看一段激励视频，完整看完后获得奖励次数，可用于抽奖或兑换游戏内权益。\n\n## 开发者接入\n\n- 创建应用时勾选「激励广告」即可，无需任何配置；活动、广告位与奖励规则由平台自动创建和绑定\n- 玩家在页面看到「看视频领奖励」入口和剩余次数展示\n- 仅虎扑 App 内生效，玩家需登录后参与\n- 广告收益按完播结算，由平台统一处理\n\n## 实现指引（供生成代码的 AI 使用）\n\n本能力组包含三个 `vatask` 任务能力，具体参数、返回值与约束以各子 Skill 定义为准：\n\n| 子 Skill | JS Path | 作用 |\n| --- | --- | --- |\n| 完成激励视频 | `window.ColorboxAI.vatask.completeRewardVideo()` | 拉起激励视频，完播后奖励到账 |\n| 查询活动任务状态 | `window.ColorboxAI.vatask.getActivityTaskState()` | 查询剩余次数与任务完成情况 |\n| 消耗活动次数抽奖 | `window.ColorboxAI.vatask.consumeActivityChance()` | 消耗一次次数并返回抽奖结果 |\n\n活动 id 由底座配置自动注入（`window.__COLORBOX_AI_CONFIG__.ActivityId`），调用时无需也不能传参。\n\n### 任务链路如何运行\n\n1. **看广告拿奖励**：用户点击 → `completeRewardVideo()` → 原生拉起激励视频 → 完播后原生确认奖励到账 → 服务端自动增加次数。页面只负责成功后刷新状态，不可自行加次数\n2. **查询次数**：页面初始化 / 任务完成 / 用户刷新时调用 `getActivityTaskState()` 获取剩余次数与任务状态；`taskCode` 为 `\"reward\"` 即激励视频任务\n3. **消耗次数**：用户点击抽奖时调用 `consumeActivityChance()` 消耗一次并返回结果；`data.prize` 为 `null` 表示未中奖，不是失败\n\n### 组合方式（由业务场景决定）\n\n- **直接权益兑换**：看广告成功 → 页面发放游戏内权益，次数可不展示\n- **抽奖玩法**：看广告得次数 → 展示剩余次数 → 抽奖消耗 → 中奖弹窗\n- **任务墙**：展示 reward 任务与剩余次数，可叠加签到、分享等自有任务\n\n### 通用接入骨架\n\n```javascript\n// 1. 页面初始化：查状态（只读）\nconst state = await window.ColorboxAI.vatask.getActivityTaskState();\n\n// 2. 用户点击\"看广告\"：拉起激励视频\nconst res = await window.ColorboxAI.vatask.completeRewardVideo();\nif (res.code === 200 && res.data.rewarded) {\n  await window.ColorboxAI.vatask.getActivityTaskState(); // 刷新状态\n  // 发放业务奖励（抽奖次数/游戏权益等）\n} else {\n  // 按 res.message 提示；禁止自行补发奖励\n}\n```\n\n### 通用约束\n\n- 必须由用户主动点击触发，禁止页面加载、循环、轮询或自动重试中调用\n- 只允许通过 `window.ColorboxAI.vatask.*` 调用，禁止直接调用原生 Bridge 或活动任务接口\n- 同一时间只允许一个激励视频流程，进行中必须禁用触发按钮\n- 失败时使用返回的 `message` 提示用户，禁止自行补发奖励\n- 仅支持虎扑 App，暂不支持鸿蒙系统；站外调用返回 `code 403`（reason 为 `APP_REQUIRED`）\n"
+    }
+  ],
+  "manifest": {
+    "capability": "vatask",
+    "source": "skill-package",
+    "version": 1
+  }
+}

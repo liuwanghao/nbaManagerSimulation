@@ -1,0 +1,46 @@
+{
+  "activityId": "app_2eeb0a1013",
+  "activityName": "篮球经理：联盟扩军时代",
+  "status": "done",
+  "confirmed": {
+    "requirements": false,
+    "plan": false,
+    "implement": false,
+    "security-review": false,
+    "deploy": true,
+    "test": false,
+    "deliver": false,
+    "done": false
+  },
+  "history": [
+    {
+      "at": "2026-09-30T02:11:39Z",
+      "action": "init",
+      "from": null,
+      "to": "requirements",
+      "note": "初始化任务状态（链：requirements → plan → implement → security-review → deploy → test → deliver → done）"
+    },
+    {
+      "at": "2026-09-30T04:00:12Z",
+      "action": "goto",
+      "from": "requirements",
+      "to": "deploy",
+      "note": "用户已明确授权部署本轮已完成并验证的排行榜资料改动，恢复既有活动部署阶段。"
+    },
+    {
+      "at": "2026-09-30T04:00:13Z",
+      "action": "confirm:deploy",
+      "from": "deploy",
+      "to": "deploy",
+      "note": "开发者确认"
+    },
+    {
+      "at": "2026-09-30T04:15:28Z",
+      "action": "goto",
+      "from": "deploy",
+      "to": "done",
+      "note": "排行榜资料迁移及云函数已部署并完成线上验证，测试数据清理完成，原有成绩保持不变。"
+    }
+  ],
+  "updatedAt": "2026-09-30T04:15:28Z"
+}

@@ -1,4 +1,4 @@
-import { ACHIEVEMENT_IDS } from "../game/career/AchievementService";
+import { ACHIEVEMENT_IDS, getGmLevelLabel } from "../game/career/AchievementService";
 import type { GameState } from "../game/state/types";
 
 const STORAGE_KEY = "basketball-manager-leaderboard-proof-v1";
@@ -10,6 +10,8 @@ export function createLeaderboardProof(state: GameState) {
     score: state.gmCareer.dynastyScore,
     displayName: `${state.teams[state.userTeamId]?.name ?? "扩军球队"}经理`,
     teamName: state.teams[state.userTeamId]?.fullName ?? "扩军球队",
+    teamLogo: state.teams[state.userTeamId]?.logoUrl ?? "",
+    title: getGmLevelLabel(state),
     seasonId: state.league.seasonId,
     championships: state.history.champions.filter((champion) => champion.teamId === state.userTeamId).length,
     seasons: state.history.seasons.map((season) => ({

@@ -1,0 +1,77 @@
+{
+  "metrics": [
+    {
+      "width": 393,
+      "overflow": false,
+      "logoRadius": "50%",
+      "titleSize": "14px",
+      "titleOnRight": true,
+      "cards": [
+        {
+          "height": 131,
+          "color": "rgb(200, 160, 60)"
+        },
+        {
+          "height": 131,
+          "color": "rgb(129, 149, 167)"
+        },
+        {
+          "height": 131,
+          "color": "rgb(170, 92, 68)"
+        }
+      ],
+      "rowTitleBelowScore": true,
+      "rows": 100,
+      "errors": []
+    },
+    {
+      "width": 375,
+      "overflow": false,
+      "logoRadius": "50%",
+      "titleSize": "14px",
+      "titleOnRight": true,
+      "cards": [
+        {
+          "height": 131,
+          "color": "rgb(200, 160, 60)"
+        },
+        {
+          "height": 131,
+          "color": "rgb(129, 149, 167)"
+        },
+        {
+          "height": 131,
+          "color": "rgb(170, 92, 68)"
+        }
+      ],
+      "rowTitleBelowScore": true,
+      "rows": 100,
+      "errors": []
+    },
+    {
+      "width": 320,
+      "overflow": false,
+      "logoRadius": "50%",
+      "titleSize": "14px",
+      "titleOnRight": true,
+      "cards": [
+        {
+          "height": 131,
+          "color": "rgb(200, 160, 60)"
+        },
+        {
+          "height": 131,
+          "color": "rgb(129, 149, 167)"
+        },
+        {
+          "height": 131,
+          "color": "rgb(170, 92, 68)"
+        }
+      ],
+      "rowTitleBelowScore": true,
+      "rows": 100,
+      "errors": []
+    }
+  ],
+  "oldApiProfileMerged": true
+}

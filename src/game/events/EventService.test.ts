@@ -4,7 +4,7 @@ import { createCareer } from "../season/career";
 import { stableHash } from "../random/hash";
 import { emptyPlayerSeasonStats, type GameResult, type GameState } from "../state/types";
 import { freeAgentAttraction } from "../team/TeamSystemService";
-import { blockingEvent, enqueueAfterUserGameEvents, enqueueEvent, executeEventCommand, recentRookieBreakoutContext, settleInformationalEvents } from "./EventService";
+import { blockingEvent, choicesForEvent, enqueueAfterUserGameEvents, enqueueEvent, executeEventCommand, recentRookieBreakoutContext, settleInformationalEvents } from "./EventService";
 
 function recentRookieGames(state: GameState, rookieId: string, rookiePoints: number[]): GameResult[] {
   const rivalId = Object.keys(state.teams).find((id) => id !== state.userTeamId) as string;
@@ -49,7 +49,7 @@ describe("data-driven event engine", () => {
     state.lightweightResults = recentRookieGames(state, leadId, [16]).map(({ homeBoxScore: _box, ...game }) => game);
     enqueueAfterUserGameEvents(state);
     const event = state.eventState.queue.find((item) => item.definitionId === "fatigue_management_001");
-    expect(event?.choices.map((choice) => choice.id)).toEqual(["manual_adjust", "watch_video"]);
+    expect(event?.choices.map((choice) => choice.id)).toEqual(["keep_rotation", "manual_adjust", "watch_video"]);
     expect(event?.description).toContain("2 名轮换球员");
     expect(blockingEvent(state)?.eventInstanceId).toBe(event?.eventInstanceId);
     const command = { commandId: "fatigue-video-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "watch_video" } } as const;
@@ -60,6 +60,16 @@ describe("data-driven event engine", () => {
     expect(executeEventCommand(recovered, command)).toBe(recovered);
     const manual = executeEventCommand(state, { commandId: "fatigue-manual-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "manual_adjust" } });
     expect(manual.players[leadId].fatigue).toBe(78);
+    const legacy = structuredClone(state);
+    const legacyEvent = legacy.eventState.queue.find((item) => item.eventInstanceId === event!.eventInstanceId)!;
+    legacyEvent.choices = legacyEvent.choices.filter((choice) => choice.id !== "keep_rotation");
+    expect(choicesForEvent(legacyEvent).map((choice) => choice.id)).toEqual(["keep_rotation", "manual_adjust", "watch_video"]);
+    const kept = executeEventCommand(legacy, { commandId: "fatigue-keep-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "keep_rotation" } });
+    expect(kept.teams[kept.userTeamId].rotationPlan).toEqual(state.teams[state.userTeamId].rotationPlan);
+    expect(kept.players[leadId].fatigue).toBe(78);
+    expect(kept.players[secondId].fatigue).toBe(65);
+    expect(kept.eventState.queue.some((item) => item.eventInstanceId === event!.eventInstanceId)).toBe(false);
+    expect(kept.eventState.leagueLog[0]).toContain("保持当前轮换");
   });
 
   it("alerts from projected next-game fatigue after rest, rather than on a five-game timer", () => {

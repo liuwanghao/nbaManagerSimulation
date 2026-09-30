@@ -1,14 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCareer } from "../game/season/career";
-import { coachingFatigueRewardKey, coachingMoraleRewardKey, coachingPregameRewardKey, fatigueEventRewardKey, hasConfirmedCoachingReward, runCoachingWithReward } from "./coachingReward";
+import { coachingMoraleRewardKey, coachingPregameRewardKey, fatigueEventRewardKey, hasConfirmedCoachingReward, runCoachingWithReward } from "./coachingReward";
 
 describe("rewarded morale intervention", () => {
-  it("keeps fatigue and morale video receipts separate for the same review", () => {
+  it("keeps pregame, morale review, and fatigue event receipts separate", () => {
     const state = createCareer("coaching-reward-key");
     const gameId = "five-game-review";
-    expect(coachingFatigueRewardKey(state, gameId)).not.toBe(coachingMoraleRewardKey(state, gameId));
     expect(coachingPregameRewardKey(state, gameId)).not.toBe(coachingMoraleRewardKey(state, gameId));
-    expect(fatigueEventRewardKey(state, gameId)).not.toBe(coachingFatigueRewardKey(state, gameId));
+    expect(fatigueEventRewardKey(state, gameId)).not.toBe(coachingMoraleRewardKey(state, gameId));
   });
   it("changes no morale when the video is not rewarded", async () => {
     const apply = vi.fn(async () => {});

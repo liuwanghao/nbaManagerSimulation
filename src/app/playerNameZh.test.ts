@@ -19,6 +19,7 @@ describe("playerNameZh", () => {
     expect(playerNameZh("LeBron James")).toBe("勒布朗·詹姆斯");
     expect(playerNameZh("CJ McCollum")).toBe("CJ·麦科勒姆");
     expect(playerNameZh("Klay Thompson", "nba:202691")).toBe("克莱·汤普森");
+    expect(playerNameZh("Magic Johnson", "nba:77142")).toBe("埃尔文·约翰逊");
     expect(playerNameZh("Example Unknownname")).toBe("Example Unknownname");
   });
 

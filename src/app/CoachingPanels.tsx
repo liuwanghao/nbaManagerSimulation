@@ -8,18 +8,6 @@ import { SIMULATION_CONFIG } from "../game/simulation/config";
 import { playerNameZh } from "./playerNameZh";
 
 type ApplyCoaching = (command: CoachingCommand) => Promise<void>;
-function PlayerChoices({ state, ids, selected, onChange, stat, disabled = false }: {
-  state: GameState;
-  ids: string[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
-  stat: "fatigue" | "morale";
-  disabled?: boolean;
-}) {
-  return <div className="coaching-player-choices" role="group" aria-label={stat === "fatigue" ? "选择恢复体能的球员" : "选择鼓舞士气的球员"}>
-    {ids.map((id) => <label key={id}><input type="checkbox" disabled={disabled} checked={selected.includes(id)} onChange={() => onChange(selected.includes(id) ? selected.filter((entry) => entry !== id) : selected.length < 2 ? [...selected, id] : selected)} /><span>{playerNameZh(state.players[id].name, id)}</span><b>{stat === "fatigue" ? "疲劳" : "士气"} {Math.round(state.players[id][stat])}</b></label>)}
-  </div>;
-}
 
 function FocusChoice({ value, onChange, onClear, disabled = false }: { value: CoachingFocus | null; onChange: (value: CoachingFocus) => void; onClear?: () => void; disabled?: boolean }) {
   return <div className={`coaching-focus-options${onClear ? " with-skip" : ""}`} role="group" aria-label={onClear ? "选择下一场备战方式" : "选择攻防准备方向"}>
@@ -54,32 +42,28 @@ export function RegularCoachingPanel({ state, busy, selection, onSelectionChange
   </article>;
 }
 
-export function FiveGameReviewPanel({ state, busy, onApply, message, moraleRewardConfirmed, fatigueRewardConfirmed }: {
+export function FiveGameReviewPanel({ state, busy, onApply, message, moraleRewardConfirmed }: {
   state: GameState;
   busy: boolean;
   onApply: ApplyCoaching;
   message?: string | null;
   moraleRewardConfirmed?: boolean;
-  fatigueRewardConfirmed?: boolean;
 }) {
   const view = fiveGameReviewView(state);
-  const [choice, setChoice] = useState<"FATIGUE" | "TEAM_FATIGUE" | "MORALE_TWO" | "MORALE" | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
-  useEffect(() => { setChoice(null); setSelected([]); }, [view?.afterGameId]);
+  const [choice, setChoice] = useState<"MORALE_TWO" | "MORALE" | null>(null);
+  useEffect(() => { setChoice(null); }, [view?.afterGameId]);
   if (!view) return null;
   const twoPlayerNames = view.moraleTwoTargets.map((id) => playerNameZh(state.players[id].name, id)).join("、");
   return <article className="coaching-panel coaching-review-panel" aria-label="五场赛后教练组干预">
     <header><div><small>近 5 场赛后复盘</small><h3>教练组干预</h3></div><span>每 5 场限一次</span></header>
     <p>近五场 {view.wins} 胜 {view.losses} 负。本次可选择一次干预；开始下一场后机会失效。逐场模拟和连续模拟均可触发。</p>
     <div className="coaching-focus-options" role="group" aria-label="选择复盘干预方向">
-      {view.fatigueCandidates.length > 0 && <button type="button" className={choice === "FATIGUE" ? "selected" : ""} onClick={() => { setChoice("FATIGUE"); setSelected(view.fatigueCandidates.slice(0, 2)); }}><span>恢复高疲劳</span><small>所选球员疲劳各 −{SIMULATION_CONFIG.coaching.reviewFatigueRecovery}</small></button>}
-      {view.fatigueCandidates.length > 0 && <button type="button" className={choice === "TEAM_FATIGUE" ? "selected" : ""} onClick={() => { setChoice("TEAM_FATIGUE"); setSelected([]); }}><span>减轻全队疲劳</span><small>激励视频 · 每人疲劳 −{SIMULATION_CONFIG.coaching.reviewTeamFatigueRecovery}</small></button>}
-      {view.moraleTwoTargets.length === 2 && <button type="button" className={choice === "MORALE_TWO" ? "selected" : ""} onClick={() => { setChoice("MORALE_TWO"); setSelected([]); }}><span>随机鼓舞两人</span><small>无需视频 · 两人士气各 +{SIMULATION_CONFIG.coaching.reviewTwoPlayerMoraleBoost}</small></button>}
-      {view.moraleCandidates.length > 0 && <button type="button" className={`${choice === "MORALE" ? "selected" : ""}${view.moraleTwoTargets.length < 2 ? " review-full-width" : ""}`} onClick={() => { setChoice("MORALE"); setSelected([]); }}><span>鼓舞全队</span><small>激励视频 · 每人士气 +{SIMULATION_CONFIG.coaching.reviewTeamMoraleBoost}</small></button>}
+      {view.moraleTwoTargets.length === 2 && <button type="button" className={choice === "MORALE_TWO" ? "selected" : ""} onClick={() => setChoice("MORALE_TWO")}><span>随机鼓舞两人</span><small>无需视频 · 两人士气各 +{SIMULATION_CONFIG.coaching.reviewTwoPlayerMoraleBoost}</small></button>}
+      <button type="button" className={`${choice === "MORALE" ? "selected" : ""}${view.moraleTwoTargets.length < 2 ? " review-full-width" : ""}`} onClick={() => setChoice("MORALE")}><span>鼓舞全队</span><small>激励视频 · 每人士气 +{SIMULATION_CONFIG.coaching.reviewTeamMoraleBoost}</small></button>
     </div>
-    {choice && <>{choice === "FATIGUE" && <PlayerChoices state={state} ids={view.fatigueCandidates} selected={selected} onChange={setSelected} stat="fatigue" />}
-      <p>{choice === "MORALE" ? `视频完播确认后，全队球员士气各提升 ${SIMULATION_CONFIG.coaching.reviewTeamMoraleBoost}。` : choice === "MORALE_TWO" ? `无需视频。本次随机抽中 ${twoPlayerNames}，两人士气各提升 ${SIMULATION_CONFIG.coaching.reviewTwoPlayerMoraleBoost}。` : choice === "TEAM_FATIGUE" ? `视频完播确认后，全队球员疲劳各降低 ${SIMULATION_CONFIG.coaching.reviewTeamFatigueRecovery}。` : `所选球员疲劳各降低 ${SIMULATION_CONFIG.coaching.reviewFatigueRecovery}。`}</p>
-      <button className="coaching-confirm" type="button" disabled={busy || choice === "FATIGUE" && selected.length === 0} onClick={() => void onApply(choice === "MORALE" ? { type: "USE_FIVE_GAME_REVIEW", afterGameId: view.afterGameId, benefit: "MORALE" } : choice === "MORALE_TWO" ? { type: "USE_FIVE_GAME_REVIEW", afterGameId: view.afterGameId, benefit: "MORALE_TWO" } : choice === "TEAM_FATIGUE" ? { type: "USE_FIVE_GAME_REVIEW", afterGameId: view.afterGameId, benefit: "TEAM_FATIGUE" } : { type: "USE_FIVE_GAME_REVIEW", afterGameId: view.afterGameId, benefit: "FATIGUE", playerIds: selected })}>{busy ? "处理中…" : choice === "MORALE" ? moraleRewardConfirmed ? "视频已确认 · 完成鼓舞" : "观看激励视频 · 鼓舞全队" : choice === "MORALE_TWO" ? "确认鼓舞两人" : choice === "TEAM_FATIGUE" ? fatigueRewardConfirmed ? "视频已确认 · 完成体能恢复" : "观看激励视频 · 减轻全队疲劳" : "确认体能恢复"}</button>
+    {choice && <>
+      <p>{choice === "MORALE" ? `视频完播确认后，全队球员士气各提升 ${SIMULATION_CONFIG.coaching.reviewTeamMoraleBoost}。` : `无需视频。本次随机抽中 ${twoPlayerNames}，两人士气各提升 ${SIMULATION_CONFIG.coaching.reviewTwoPlayerMoraleBoost}。`}</p>
+      <button className="coaching-confirm" type="button" disabled={busy} onClick={() => void onApply({ type: "USE_FIVE_GAME_REVIEW", afterGameId: view.afterGameId, benefit: choice })}>{busy ? "处理中…" : choice === "MORALE" ? moraleRewardConfirmed ? "视频已确认 · 完成鼓舞" : "观看激励视频 · 鼓舞全队" : "确认鼓舞两人"}</button>
     </>}
     {message && <p className="coaching-message" role="status">{message}</p>}
   </article>;

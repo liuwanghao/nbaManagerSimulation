@@ -134,17 +134,13 @@ describe("coaching interventions", () => {
     expect(offerCoachingReview(state, ids.slice(0, 4))).toBe(state);
     const offered = offerCoachingReview(state, ids);
     expect(fiveGameReviewView(offered)?.afterGameId).toBe(ids[4]);
-    const recovered = executeCoachingCommand(offered, { type: "USE_FIVE_GAME_REVIEW", afterGameId: ids[4], benefit: "FATIGUE", playerIds: [playerIds[0]] });
-    expect(recovered.players[playerIds[0]].fatigue).toBe(59);
-    expect(offered.players[playerIds[0]].fatigue).toBe(77);
-    expect(fiveGameReviewView(recovered)).toBeUndefined();
-    expect(() => executeCoachingCommand(recovered, { type: "USE_FIVE_GAME_REVIEW", afterGameId: ids[4], benefit: "MORALE" })).toThrow("COACHING_REVIEW_UNAVAILABLE");
     const encouraged = executeCoachingCommand(offered, { type: "USE_FIVE_GAME_REVIEW", afterGameId: ids[4], benefit: "MORALE" });
     for (const id of state.teams[state.userTeamId].playerIds) {
       expect(encouraged.players[id].morale).toBe(Math.min(100, offered.players[id].morale + 1));
       expect(encouraged.players[id]).not.toBe(offered.players[id]);
     }
     expect(encouraged.players[playerIds[1]].morale).toBe(42);
+    expect(encouraged.players[playerIds[0]].fatigue).toBe(77);
     const twoTargets = fiveGameReviewView(offered)?.moraleTwoTargets ?? [];
     expect(twoTargets).toHaveLength(2);
     expect(twoTargets).toContain(playerIds[1]);
@@ -155,18 +151,6 @@ describe("coaching interventions", () => {
     }
     expect(fiveGameReviewView(twoEncouraged)).toBeUndefined();
     expect(() => executeCoachingCommand(twoEncouraged, { type: "USE_FIVE_GAME_REVIEW", afterGameId: ids[4], benefit: "MORALE" })).toThrow("COACHING_REVIEW_UNAVAILABLE");
-    const teamRecovered = executeCoachingCommand(offered, { type: "USE_FIVE_GAME_REVIEW", afterGameId: ids[4], benefit: "TEAM_FATIGUE" });
-    for (const id of state.teams[state.userTeamId].playerIds) {
-      expect(teamRecovered.players[id].fatigue).toBe(Math.max(0, offered.players[id].fatigue - 1));
-      expect(offered.players[id].fatigue).toBe(state.players[id].fatigue);
-    }
-    expect(teamRecovered.players[playerIds[0]].fatigue).toBe(76);
-    expect(teamRecovered.players[playerIds[1]].fatigue).toBe(0);
-    expect(fiveGameReviewView(teamRecovered)).toBeUndefined();
-    expect(() => executeCoachingCommand(teamRecovered, { type: "USE_FIVE_GAME_REVIEW", afterGameId: ids[4], benefit: "FATIGUE", playerIds: [playerIds[0]] })).toThrow("COACHING_REVIEW_UNAVAILABLE");
-    const moraleOnly = structuredClone(offered);
-    for (const id of moraleOnly.teams[moraleOnly.userTeamId].playerIds) moraleOnly.players[id].fatigue = 0;
-    expect(() => executeCoachingCommand(moraleOnly, { type: "USE_FIVE_GAME_REVIEW", afterGameId: ids[4], benefit: "TEAM_FATIGUE" })).toThrow("COACHING_REVIEW_UNAVAILABLE");
     const expired = structuredClone(offered);
     consumeRegularCoachingForGame(expired, games[5]);
     expect(fiveGameReviewView(expired)).toBeUndefined();
@@ -176,7 +160,7 @@ describe("coaching interventions", () => {
     let state = createCareer("coaching-five-individual-games");
     const games = state.schedule.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId)
       .sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id));
-    state.players[state.teams[state.userTeamId].playerIds[0]].fatigue = 75;
+    state.players[state.teams[state.userTeamId].playerIds[0]].morale = 40;
     for (let index = 0; index < 5; index += 1) {
       games[index].status = "FINAL";
       const advanced = offerCoachingReview(state, [games[index].id]);
@@ -184,7 +168,7 @@ describe("coaching interventions", () => {
       state = advanced;
     }
     expect(state.coaching?.lastReviewAtGameCount).toBe(5);
-    const reviewed = executeCoachingCommand(state, { type: "USE_FIVE_GAME_REVIEW", afterGameId: games[4].id, benefit: "TEAM_FATIGUE" });
+    const reviewed = executeCoachingCommand(state, { type: "USE_FIVE_GAME_REVIEW", afterGameId: games[4].id, benefit: "MORALE_TWO" });
     expect(reviewed.coaching?.lastReviewAtGameCount).toBe(5);
   });
 
@@ -192,7 +176,7 @@ describe("coaching interventions", () => {
     let state = createCareer("coaching-mixed-review-cadence");
     const games = state.schedule.filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId)
       .sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id));
-    state.players[state.teams[state.userTeamId].playerIds[0]].fatigue = 75;
+    state.players[state.teams[state.userTeamId].playerIds[0]].morale = 40;
     for (let index = 0; index < 3; index += 1) {
       games[index].status = "FINAL";
       state = offerCoachingReview(state, [games[index].id]);
@@ -227,7 +211,11 @@ describe("coaching interventions", () => {
     expect(fiveGameReviewView(state)).toBeUndefined();
     games.slice(6, 10).forEach((game) => { game.status = "FINAL"; });
     state = offerCoachingReview(state, games.slice(6, 10).map((game) => game.id));
-    expect(fiveGameReviewView(state)?.afterGameId).toBe(games[9].id);
+    expect(fiveGameReviewView(state)).toBeUndefined();
+    state.players[state.teams[state.userTeamId].playerIds[0]].morale = 40;
+    games.slice(10, 15).forEach((game) => { game.status = "FINAL"; });
+    state = offerCoachingReview(state, games.slice(10, 15).map((game) => game.id));
+    expect(fiveGameReviewView(state)?.afterGameId).toBe(games[14].id);
   });
 
   it("allows only one playoff plan per round, including multiple play-in games", () => {

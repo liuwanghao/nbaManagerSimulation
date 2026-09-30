@@ -12,8 +12,8 @@
       body { min-width: 320px; min-height: 100vh; margin: 0; background: radial-gradient(circle at 75% 0%, #173149, transparent 38%), linear-gradient(180deg, #0a1627, #070e19 60%); }
       button, a { font: inherit; }
       button:focus-visible, a:focus-visible { outline: 2px solid #00e7f4; outline-offset: 3px; }
-      main { width: min(100%, 560px); min-height: 100dvh; margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) 14px max(34px, env(safe-area-inset-bottom)); }
-      header { display: flex; align-items: center; justify-content: space-between; gap: 11px; padding-bottom: 13px; border-bottom: 1px solid #2a4356; }
+      main { width: min(100%, 560px); min-height: 100dvh; margin: 0 auto; padding: 0 14px max(34px, env(safe-area-inset-bottom)); }
+      header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 11px; margin: 0 -14px; padding: max(14px, env(safe-area-inset-top)) 14px 13px; border-bottom: 1px solid #2a4356; background: #0b1b2b; }
       .back { display: inline-flex; min-height: 36px; padding: 0 12px; flex: none; align-items: center; gap: 5px; color: #00d9ef; border: 1px solid #3b5b6f; background: #102537; text-decoration: none; font-size: 11px; font-weight: 900; }
       .back span { font-size: 23px; font-weight: 400; line-height: 1; }
       .section-title small, .ranking-hero small { color: #00d9ef; font: 900 9px ui-monospace, monospace; letter-spacing: .14em; }
@@ -29,9 +29,15 @@
       .mine-heading b { margin-left: 7px; color: #eaf3fa; font: 900 12px Inter, sans-serif; letter-spacing: 0; }
       .mine-heading small, .mine-identity small, .mine-values small { color: #8ca8bc; font-size: 10px; }
       .mine-identity { display: flex; align-items: center; gap: 11px; padding: 15px 0; }
-      .mine-identity > div { display: grid; min-width: 0; gap: 3px; }
+      .mine-identity > div { display: grid; flex: 1; min-width: 0; gap: 3px; }
+      .mine-identity .mine-title { flex: none; color: #f4cc79; font-size: 14px; font-weight: 900; white-space: nowrap; }
       .mine-identity strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-      .mine-emblem { display: grid; width: 38px; height: 38px; flex: none; place-items: center; border: 1px solid #6d6650; background: #283045; color: #f4d691; font: 900 13px ui-monospace, monospace; }
+      .mine-emblem img { width: 100%; height: 100%; border-radius: 50%; object-fit: contain; }
+      .manager-title { display: block; color: #f4cc79; font-size: 9px; font-style: normal; }
+      .avatar img { width: 100%; height: 100%; object-fit: cover; }
+      .podium .avatar { display: grid; width: 32px; height: 32px; margin: 0 auto 6px; place-items: center; border-radius: 50%; overflow: hidden; background: #19334a; font-size: 11px; }
+      .row .avatar { overflow: hidden; border-radius: 50%; }
+      .mine-emblem { display: grid; width: 42px; height: 42px; flex: none; padding: 4px; overflow: hidden; border-radius: 50%; place-items: center; border: 1px solid #6d6650; background: #283045; color: #f4d691; font: 900 13px ui-monospace, monospace; }
       .mine-values { align-items: end; padding: 12px 0 16px; border-top: 1px solid #30465a; border-bottom: 1px solid #30465a; }
       .mine-values > div { display: grid; gap: 6px; }
       .mine-values > div:last-child { text-align: right; }
@@ -47,12 +53,14 @@
       .section-title h2 { margin: 4px 0 0; font-size: 16px; }
       .section-title > span { color: #8fa8ba; font-size: 10px; }
       .podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-      .podium article { min-width: 0; min-height: 125px; padding: 12px 8px; border: 1px solid #30495f; background: linear-gradient(155deg, #12293b, #0c1a2c); text-align: center; }
-      .podium article:first-child { border-color: #b9954e; background: linear-gradient(155deg, #40371f, #102638 76%); }
-      .podium em { display: grid; width: 31px; height: 31px; margin: 0 auto 10px; place-items: center; border: 1px solid #967d50; border-radius: 50%; color: #f4cc79; font-size: 13px; font-style: normal; font-weight: 900; }
+      .podium article { --medal: #ffe079; --medal-border: #c8a03c; --medal-wash: #50431b; position: relative; min-width: 0; min-height: 125px; padding: 11px 6px 10px; border: 1px solid var(--medal-border); background: linear-gradient(155deg, var(--medal-wash), #102638 76%); text-align: center; }
+      .podium article:nth-child(2) { --medal: #d5e0e8; --medal-border: #8195a7; --medal-wash: #2e3c4b; }
+      .podium article:nth-child(3) { --medal: #df9979; --medal-border: #aa5c44; --medal-wash: #4a2925; }
+      .podium em { position: absolute; top: 7px; left: 6px; display: grid; width: 20px; height: 20px; place-items: center; border: 1px solid var(--medal-border); border-radius: 50%; color: var(--medal); font-size: 10px; font-style: normal; font-weight: 900; }
       .podium b { display: block; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-      .podium small { display: block; margin-top: 5px; color: #88a4b7; font-size: 9px; }
-      .podium strong { display: block; margin-top: 6px; color: #f5d28a; font-size: 16px; }
+      .podium small { display: block; overflow: hidden; margin-top: 3px; color: #a8bbc9; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .podium .manager-title, .podium strong { color: var(--medal); }
+      .podium strong { display: block; margin-top: 4px; font-size: 16px; }
       .list { padding: 0 12px; border: 1px solid #30495f; background: #0e1c2d; }
       .row { display: grid; min-height: 63px; grid-template-columns: 27px 35px minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid #25394c; }
       .row:last-child { border-bottom: 0; }
@@ -63,6 +71,8 @@
       .row .name b { overflow: hidden; color: #eef6fb; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
       .row .name small { color: #7899ad; font-size: 9px; }
       .row .score { color: #e6c379; font-size: 13px; font-weight: 900; white-space: nowrap; }
+      .row .score-column { display: grid; gap: 4px; text-align: right; }
+      .row .score-column .manager-title { font-size: 10px; font-weight: 700; white-space: nowrap; }
       .row.mine-row { margin-inline: -12px; padding-inline: 12px; background: rgba(0,217,239,.09); }
       .state { margin: 0; padding: 24px 12px; color: #a7bfd0; font-size: 12px; line-height: 1.55; text-align: center; }
       .state.error { color: #ffb2a5; }
@@ -74,13 +84,13 @@
     <main>
       <header><a class="back" id="back" href="../index.html"><span aria-hidden="true">‹</span>返回生涯总览</a><button class="refresh" id="refresh" type="button">刷新榜单 ↻</button></header>
       <div class="ranking-hero"><small>DYNASTY SCORE · 王朝积分</small><h2>全服经理，一较高下</h2><p>按账号最高王朝积分排名；同分时，先达到该积分的经理排在前面。</p></div>
-      <section class="mine" aria-label="我的排名"><div class="mine-heading"><span>MY RANK <b>我的排名</b></span><small>账号最高成绩</small></div><div class="mine-identity"><span class="mine-emblem" aria-hidden="true">GM</span><div><strong id="my-name">正在读取经理资料</strong><small id="my-team">当前存档</small></div></div><div class="mine-values"><div><small>全服名次</small><strong id="my-rank">正在加载</strong></div><div><small>王朝积分</small><b id="my-score">—</b></div></div><div class="mine-facts"><span id="my-season">赛季 —</span><span id="my-championships">总冠军 —</span><span id="my-achievements">成就 —</span></div></section>
+      <section class="mine" aria-label="我的排名"><div class="mine-heading"><span>MY RANK <b>我的排名</b></span><small>账号最高成绩</small></div><div class="mine-identity"><span class="mine-emblem" id="my-logo"></span><div><strong id="my-name">正在读取球队资料</strong><small id="my-team">当前存档</small></div><em class="manager-title mine-title" id="my-title">称号待同步</em></div><div class="mine-values"><div><small>全服名次</small><strong id="my-rank">正在加载</strong></div><div><small>王朝积分</small><b id="my-score">—</b></div></div><div class="mine-facts"><span id="my-season">赛季 —</span><span id="my-championships">总冠军 —</span><span id="my-achievements">成就 —</span></div></section>
       <section class="submit" aria-label="成绩自动同步"><p id="local-score">从生涯总览进入后，当前成绩会自动校验并同步。</p><p class="message" id="submit-message" role="status" aria-live="polite" hidden></p><button id="retry-sync" type="button" hidden>重试同步</button></section>
       <div class="section-title"><div><small>TOP THREE</small><h2>荣耀前三</h2></div><span>最高王朝积分</span></div>
       <section class="podium" id="podium" aria-label="排行榜前三名"></section>
       <div class="section-title"><div><small>SCORE BOARD</small><h2>王朝积分总榜</h2></div><span>前 100 名</span></div>
       <section class="list" id="list" aria-label="排行榜列表"><p class="state" id="status" role="status">正在加载榜单…</p></section>
-      <p class="rule">榜单记录账号最高成绩。当前存档的球队、赛季和荣誉仅在“我的排名”中展示。</p>
+      <p class="rule">榜单记录账号最高积分；球队、赛季和称号随最近同步的生涯资料更新。</p>
     </main>
     <script src="./config.js"></script>
     <script>
@@ -89,7 +99,11 @@
       const refreshButton = document.getElementById("refresh");
       const backLink = document.getElementById("back");
       const careerSlot = new URLSearchParams(window.location.search).get("careerSlot");
-      if (["1", "2", "3"].includes(careerSlot)) backLink.href = `../index.html?careerSlot=${careerSlot}`;
+      if (careerSlot === "1") backLink.href = "../index.html?careerSlot=1";
+      if (careerSlot === "2") backLink.href = "../index.html?careerSlot=2";
+      if (careerSlot === "3") backLink.href = "../index.html?careerSlot=3";
+      const myLogo = document.getElementById("my-logo");
+      const myTitle = document.getElementById("my-title");
       const myRank = document.getElementById("my-rank");
       const myName = document.getElementById("my-name");
       const myScore = document.getElementById("my-score");
@@ -109,8 +123,10 @@
           if (parsed?.version === 1 && Number.isSafeInteger(parsed.score) && parsed.score >= 0) {
             localProof = parsed;
             localScore.textContent = `当前存档 ${parsed.score.toLocaleString("zh-CN")} 分 · 自动同步账号最高成绩`;
-            myName.textContent = parsed.displayName || "虎扑经理";
-            myTeam.textContent = typeof parsed.teamName === "string" ? parsed.teamName : "当前存档";
+            myName.textContent = parsed.teamName || "当前存档球队";
+            myTitle.textContent = parsed.title || "经理称号待同步";
+            myTeam.textContent = "当前存档";
+            renderImage(myLogo, parsed.teamLogo, parsed.teamName || "球队", false);
             mySeason.textContent = `赛季 ${typeof parsed.seasonId === "string" ? parsed.seasonId : "—"}`;
             myChampionships.textContent = `总冠军 ${Number.isSafeInteger(parsed.championships) ? parsed.championships : "—"}`;
             myAchievements.textContent = `成就 ${Array.isArray(parsed.achievements) ? parsed.achievements.length : "—"}`;
@@ -127,10 +143,36 @@
         list.append(element);
       }
 
+      let requestId = 0;
+      function requestViaGame(action, submission) {
+        return new Promise((resolve, reject) => {
+          const id = ++requestId;
+          const onResponse = (event) => {
+            if (event.source !== window.parent || (event.origin !== window.location.origin && !(window.location.protocol === "file:" && event.origin === "null"))) return;
+            const message = event.data;
+            if (message?.type !== "basketball-manager:leaderboard-response" || message.id !== id) return;
+            clearTimeout(timeout);
+            window.removeEventListener("message", onResponse);
+            if (message.error) reject(new Error(message.error));
+            else resolve(message.data);
+          };
+          const timeout = window.setTimeout(() => {
+            window.removeEventListener("message", onResponse);
+            reject(new Error("榜单连接超时，请稍后重试。"));
+          }, 30000);
+          window.addEventListener("message", onResponse);
+          window.parent.postMessage({ type: "basketball-manager:leaderboard-request", id, action, submission }, window.location.protocol === "file:" ? "*" : window.location.origin);
+        });
+      }
+
       async function request(path, options = {}) {
-        if (!window.ACTIVITY_API_BASE || !window.ColorboxAI?.cloud?.request || (options.auth && !window.ACTIVITY_ENV_ID)) {
-          throw new Error("排行榜服务暂未开放，请稍后再试。");
+        if (new URLSearchParams(window.location.search).get("embedded") === "1" && window.parent !== window) {
+          const action = path === "/leaderboard" ? "list" : path === "/leaderboard/me" ? "mine" : path === "/leaderboard/submit" ? "submit" : null;
+          if (!action) throw new Error("不支持的排行榜请求");
+          return requestViaGame(action, action === "submit" ? options.data : { force: options.force === true });
         }
+        if (!window.ACTIVITY_API_BASE || (options.auth && !window.ACTIVITY_ENV_ID)) throw new Error("排行榜配置缺失，请稍后再试。");
+        if (!window.ColorboxAI?.cloud?.request) throw new Error("请从虎扑 App 内的游戏生涯页打开排行榜。");
         const response = await window.ColorboxAI.cloud.request({
           url: window.ACTIVITY_API_BASE + path,
           method: options.method || "GET",
@@ -150,112 +192,163 @@
         parent.append(element);
       }
 
-      function render(entries) {
+      function imageUrl(value) {
+        if (typeof value !== "string") return "";
+        if (/^\.\/expansion-logos\/[a-z0-9-]+\.(png|svg|webp)$/.test(value)) return "../" + value.slice(2);
+        try { const url = new URL(value); return url.protocol === "https:" ? url.href : ""; } catch { return ""; }
+      }
+
+      function renderImage(parent, url, label, lazy = true) {
+        parent.replaceChildren();
+        const fallback = document.createElement("span");
+        fallback.textContent = Array.from(label || "经理").slice(0, 2).join("");
+        parent.append(fallback);
+        const src = imageUrl(url);
+        if (!src) return;
+        const img = document.createElement("img");
+        img.alt = label || "头像";
+        img.loading = lazy ? "lazy" : "eager";
+        img.decoding = "async";
+        img.addEventListener("error", () => img.replaceWith(fallback), { once: true });
+        img.src = src;
+        parent.replaceChildren(img);
+      }
+
+      function renderMine(mine) {
+        myRank.textContent = mine ? `第 ${mine.rank} 名` : "暂未上榜";
+        myScore.textContent = mine ? Number(mine.score).toLocaleString("zh-CN") : "—";
+        myName.textContent = localProof?.teamName || mine?.teamName || "当前存档球队";
+        myTitle.textContent = localProof?.title || mine?.title || "经理称号待同步";
+        myTeam.textContent = "当前存档 · 总经理生涯";
+        if (!localProof) mySeason.textContent = `赛季 ${mine?.seasonId || "—"}`;
+        renderImage(myLogo, localProof?.teamLogo || mine?.teamLogo, myName.textContent, false);
+      }
+
+      function render(entries, mine) {
+        entries = entries.map((entry) => mine && String(entry.id) === String(mine.id) ? { ...entry, ...mine } : entry);
         podium.replaceChildren();
         list.replaceChildren();
-        if (!entries.length) {
-          status("榜单暂时还没有成绩。");
-          return;
-        }
+        if (!entries.length) { status("榜单暂时还没有成绩。"); return; }
         for (const entry of entries.slice(0, 3)) {
           const card = document.createElement("article");
           addText(card, "em", "", entry.rank);
+          const avatar = document.createElement("span");
+          avatar.className = "avatar";
+          renderImage(avatar, entry.avatarUrl, entry.displayName || "虎扑经理", false);
+          card.append(avatar);
           addText(card, "b", "", entry.displayName || "虎扑经理");
-          addText(card, "small", "", "王朝积分");
+          addText(card, "small", "", entry.teamName || "球队待同步");
+          addText(card, "small", "manager-title", entry.title || "称号待同步");
           addText(card, "strong", "", Number(entry.score).toLocaleString("zh-CN"));
           podium.append(card);
         }
         for (const entry of entries) {
+          const isCurrent = mine && String(entry.id) === String(mine.id);
           const row = document.createElement("div");
-          row.className = `row${entry.rank <= 3 ? " top-rank" : ""}${entry.isCurrent ? " mine-row" : ""}`;
+          row.className = `row${entry.rank <= 3 ? " top-rank" : ""}${isCurrent ? " mine-row" : ""}`;
           addText(row, "span", "rank", entry.rank);
-          addText(row, "span", "avatar", Array.from(entry.displayName || "经理").slice(0, 2).join(""));
+          const avatar = document.createElement("span");
+          avatar.className = "avatar";
+          renderImage(avatar, entry.avatarUrl, entry.displayName || "虎扑经理");
+          row.append(avatar);
           const identity = document.createElement("span");
           identity.className = "name";
-          addText(identity, "b", "", `${entry.displayName || "虎扑经理"}${entry.isCurrent ? " · 我" : ""}`);
-          addText(identity, "small", "", "经理 · 王朝积分");
+          addText(identity, "b", "", `${entry.displayName || "虎扑经理"}${isCurrent ? " · 我" : ""}`);
+          addText(identity, "small", "", `${entry.teamName || "球队待同步"} · ${entry.seasonId || "赛季待同步"}`);
           row.append(identity);
-          addText(row, "strong", "score", `${Number(entry.score).toLocaleString("zh-CN")} 分`);
+          const scoreColumn = document.createElement("span");
+          scoreColumn.className = "score-column";
+          addText(scoreColumn, "strong", "score", `${Number(entry.score).toLocaleString("zh-CN")} 分`);
+          addText(scoreColumn, "em", "manager-title", entry.title || "称号待同步");
+          row.append(scoreColumn);
           list.append(row);
-        }
-      }
-
-      async function load() {
-        refreshButton.disabled = true;
-        podium.replaceChildren();
-        status("正在加载榜单…");
-        myRank.textContent = "正在加载";
-        myName.textContent = localProof?.displayName || "虎扑经理";
-        myScore.textContent = "—";
-        try {
-          const payload = await request("/leaderboard", { data: { limit: 100 } });
-          const entries = Array.isArray(payload) ? payload : payload?.entries;
-          if (!Array.isArray(entries)) throw new Error("榜单数据格式不正确。");
-          const validEntries = entries.filter((entry) => Number.isInteger(entry.rank) && Number.isFinite(Number(entry.score)));
-          render(validEntries);
-          try {
-            const mine = await request("/leaderboard/me", { auth: true });
-            myRank.textContent = mine ? `第 ${mine.rank} 名` : "暂未上榜";
-            myName.textContent = mine?.displayName || localProof?.displayName || "虎扑经理";
-            myScore.textContent = mine ? Number(mine.score).toLocaleString("zh-CN") : "—";
-            if (mine) render(validEntries.map((entry) => ({ ...entry, isCurrent: String(entry.id) === String(mine.id) })));
-          } catch (error) {
-            myRank.textContent = "暂不可用";
-            submitMessage.hidden = false;
-            submitMessage.setAttribute("role", "alert");
-            submitMessage.textContent = error instanceof Error ? error.message : "个人名次暂不可用";
-          }
-        } catch (error) {
-          myRank.textContent = "暂不可用";
-          status(error instanceof Error ? error.message : "榜单加载失败，请稍后再试。", true);
-        } finally {
-          refreshButton.disabled = false;
         }
       }
 
       let syncing = false;
       async function syncScore() {
-        if (!localProof || syncing) return false;
+        if (!localProof) return request("/leaderboard/me", { auth: true });
         syncing = true;
         retryButton.hidden = true;
         submitMessage.hidden = false;
         submitMessage.setAttribute("role", "status");
         submitMessage.textContent = "正在自动校验并同步成绩…";
         try {
-          await request("/leaderboard/submit", {
+          let profile = null;
+          const embedded = new URLSearchParams(window.location.search).get("embedded") === "1" && window.parent !== window;
+          if (!embedded) {
+            if (!window.ColorboxAI?.auth?.getUserInfo) throw new Error("虎扑资料接口暂不可用，请从虎扑 App 生涯页重试同步");
+            const response = await window.ColorboxAI.auth.getUserInfo();
+            if (response.code !== 200) throw new Error(response.message || "经理资料暂时无法读取");
+            if (!response.data?.puid || response.data.islogin === 0) throw new Error("请先登录虎扑账号");
+            if (!response.data.nickname?.trim()) throw new Error("虎扑昵称暂未读取，请重试同步");
+            profile = response.data;
+          }
+          const result = await request("/leaderboard/submit", {
             method: "POST", auth: true,
-            data: { proof: localProof, displayName: localProof.displayName }
+            data: { proof: localProof, displayName: profile?.nickname || "虎扑经理", ...(profile ? { avatarUrl: profile.avatar || profile.userHeadUrl || "" } : {}) }
           });
-          submitMessage.textContent = "成绩已自动同步。";
-          localProof = null;
-          try { sessionStorage.removeItem(proofKey); } catch { /* Successful sync is already confirmed. */ }
-          return true;
+          const mine = Number.isSafeInteger(result?.rank) ? result : await request("/leaderboard/me", { auth: true });
+          const profileSynced = mine?.profileSynced !== false && typeof mine?.teamName === "string" && typeof mine?.avatarUrl === "string";
+          submitMessage.textContent = profileSynced ? "成绩与生涯资料已同步。" : "成绩已同步；云端榜单资料尚未启用，当前玩家资料已在本页显示。";
+          return mine && profile ? { ...mine, displayName: profile.nickname, avatarUrl: profile.avatar || profile.userHeadUrl || mine.avatarUrl || "", teamName: mine.teamName || localProof.teamName, teamLogo: mine.teamLogo || localProof.teamLogo, seasonId: mine.seasonId || localProof.seasonId, title: mine.title || localProof.title } : mine;
         } catch (error) {
           submitMessage.setAttribute("role", "alert");
           submitMessage.textContent = error instanceof Error ? error.message : "成绩提交失败，请稍后再试。";
           retryButton.hidden = false;
-          return false;
-        } finally {
-          syncing = false;
-        }
+          return request("/leaderboard/me", { auth: true });
+        } finally { syncing = false; }
       }
 
+      let loading = false;
+      async function load(force = false) {
+        if (loading || syncing) return;
+        loading = true;
+        refreshButton.disabled = true;
+        let entries = null;
+        let mine = null;
+        // Public rows render as soon as they arrive, independently of login/sync.
+        const listTask = request("/leaderboard", { data: { limit: 100 }, force }).then((payload) => {
+          const rows = Array.isArray(payload) ? payload : payload?.entries;
+          if (!Array.isArray(rows)) throw new Error("榜单数据格式不正确。");
+          entries = rows.filter((entry) => Number.isInteger(entry.rank) && Number.isFinite(Number(entry.score)));
+          render(entries, mine);
+        }).catch((error) => status(error instanceof Error ? error.message : "榜单加载失败，请稍后再试。", true));
+        const mineTask = (force ? request("/leaderboard/me", { auth: true, force: true }) : syncScore()).then((result) => {
+          mine = result;
+          renderMine(mine);
+          if (entries) render(entries.map((entry) => String(entry.id) === String(mine?.id) ? { ...entry, ...mine } : entry), mine);
+        }).catch((error) => {
+          myRank.textContent = "暂不可用";
+          submitMessage.hidden = false;
+          submitMessage.setAttribute("role", "alert");
+          submitMessage.textContent = error instanceof Error ? error.message : "个人名次暂不可用";
+        });
+        try {
+          await Promise.all([listTask, mineTask]);
+          // A new record may have changed ordering while the public request was in flight.
+          if (entries && mine && ((mine.rank <= 100 && !entries.some((entry) => String(entry.id) === String(mine.id) && entry.score === mine.score && entry.rank === mine.rank)) || entries.some((entry) => String(entry.id) === String(mine.id) && (entry.score !== mine.score || entry.rank !== mine.rank)))) {
+            const payload = await request("/leaderboard", { data: { limit: 100 }, force: true });
+            const rows = Array.isArray(payload) ? payload : payload?.entries;
+            if (Array.isArray(rows)) render(rows, mine);
+          }
+        } catch (error) {
+          submitMessage.hidden = false;
+          submitMessage.textContent = error instanceof Error ? error.message : "榜单更新失败，请刷新重试。";
+        } finally { loading = false; refreshButton.disabled = false; }
+      }
+
+      backLink.href = careerSlot === "1" || careerSlot === "2" || careerSlot === "3"
+        ? `../index.html?careerSlot=${careerSlot}` : "../index.html";
       backLink.addEventListener("click", (event) => {
-        event.preventDefault();
         if (new URLSearchParams(window.location.search).get("embedded") === "1" && window.parent !== window) {
+          event.preventDefault();
           window.parent.postMessage("basketball-manager:close-leaderboard", "*");
-          return;
         }
-        window.location.replace(backLink.href);
       });
-      refreshButton.addEventListener("click", load);
-      retryButton.addEventListener("click", async () => {
-        if (await syncScore()) await load();
-      });
-      (async () => {
-        await syncScore();
-        await load();
-      })();
+      refreshButton.addEventListener("click", () => load(true));
+      retryButton.addEventListener("click", () => load());
+      void load();
     </script>
   </body>
 </html>

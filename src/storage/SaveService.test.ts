@@ -470,12 +470,15 @@ describe("SaveService", () => {
     const service = new SaveService(new MemoryStorageAdapter());
     const first = createCareer("summary-one");
     first.teams[first.userTeamId].fullName = "西雅图海潮";
-    await service.save(1, first);
+    const firstSaved = await service.save(1, first);
     const latest = simulateNextGameDay(createCareer("summary-two"));
     latest.teams[latest.userTeamId].fullName = "拉斯维加斯王牌";
-    await service.save(2, latest);
+    const latestSaved = await service.save(2, latest);
 
-    expect(await service.listSlotSummaries()).toEqual(expect.arrayContaining([
+    const summaries = await service.listSlotSummaries();
+    expect(service.summaryFor(1, firstSaved)).toEqual(summaries.find((summary) => summary.slotId === 1));
+    expect(service.summaryFor(2, latestSaved)).toEqual(summaries.find((summary) => summary.slotId === 2));
+    expect(summaries).toEqual(expect.arrayContaining([
       expect.objectContaining({ slotId: 1, teamName: "西雅图海潮", seasonId: first.league.seasonId, wins: 0, losses: 0 }),
       expect.objectContaining({ slotId: 2, teamName: "拉斯维加斯王牌", seasonId: latest.league.seasonId, currentDate: expect.any(String) }),
     ]));

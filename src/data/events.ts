@@ -11,7 +11,7 @@ const seedGroups: Record<string, EventSeed[]> = {
     ["injury_depth_test_001", "轮换球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。请选择如何调整首发与轮换。", 55, true],
   ],
   FATIGUE: [
-    ["fatigue_management_001", "体能预警", "{{fatigue_summary}}。你可以调整轮换分担出场时间，或观看激励视频将当前高疲劳球员恢复到 60。", 68, true],
+    ["fatigue_management_001", "体能预警", "{{fatigue_summary}}。你可以保持当前轮换、调整轮换分担出场时间，或观看激励视频将当前高疲劳球员恢复到 60。", 68, true],
   ],
   MORALE: [
     ["morale_role_unhappy_001", "角色不满", "经理，我想在轮换里承担更多责任。能多给我一些上场时间吗？", 70, true],
@@ -113,6 +113,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
           : [{ effectId: "event_log", type: "LEAGUE_LOG", value: title, executionPhase: "ON_CHOICE" }];
   const choices = fatigueDecision
     ? [
+      { id: "keep_rotation", label: "保持当前轮换", effects: [] },
       { id: "manual_adjust", label: "手动调整轮换", effects: [] },
       { id: "watch_video", label: "观看激励视频", effects: [] },
     ]
@@ -140,7 +141,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     : [{ id: "acknowledge", label: "确认", effects: choiceEffects }];
   return {
     id,
-    version: injuryRotationDecision ? 2 : 1,
+    version: injuryRotationDecision || fatigueDecision ? 2 : 1,
     type: category,
     category,
     scope,

@@ -44,10 +44,8 @@ export const SIMULATION_CONFIG = {
   coaching: {
     regularEfficiencyPoints: 1,
     playoffEfficiencyPoints: 1.5,
-    reviewFatigueRecovery: 18,
     reviewTeamMoraleBoost: 1,
     reviewTwoPlayerMoraleBoost: 1,
-    reviewTeamFatigueRecovery: 1,
     highFatigueThreshold: 60,
     lowMoraleThreshold: 50,
   },

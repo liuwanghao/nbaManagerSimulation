@@ -10,6 +10,7 @@ import App from "./App";
 import { executeTradeCommand, generateTradeOffers } from "../game/trade/TradeService";
 import { freeAgencyOfferCommandId, TradeDesk } from "./Stage4Flow";
 import { getUpcomingFreeAgents, RegularSeasonFreeAgents } from "./RegularSeasonFreeAgents";
+import { PLAYER_RATING_COLORS } from "./playerRatingColor";
 import { MarketTradeRecords } from "./MarketTradeRecords";
 import { targetedTradeInquiryCommandId, tradeAssetPositionCounts, tradeInquiryCommandId, tradeOfferPortraitPlayer, tradeOfferStatusLabel, tradePickLabel } from "./tradeView";
 
@@ -70,6 +71,17 @@ describe("regular-season market", () => {
     expect(markup).not.toContain("FREE AGENTS");
     expect(markup).not.toContain('data-testid="submit-fa-offer"');
     expect(markup).toContain("休赛期到期");
+  });
+
+  it("colors a rounded 80 OVR consistently in the regular-season free-agent list", () => {
+    const state = createCareer("regular-free-agent-rating-color");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    player.teamId = "FREE_AGENT";
+    player.contract.status = "UFA";
+    player.overallAdjustment = (player.overallAdjustment ?? 0) + 79.5 - calculatePlayerOverall(player);
+    const markup = renderToStaticMarkup(createElement(RegularSeasonFreeAgents, { state, onOpenPlayer: () => {} }));
+    expect(markup).toContain(`<strong class="player-rating-tone" style="--player-rating-color:${PLAYER_RATING_COLORS.excellent}">80</strong>`);
   });
 
   it("distinguishes an active regular-season offer from the new-offer action", () => {

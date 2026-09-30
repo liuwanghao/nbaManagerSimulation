@@ -5,8 +5,6 @@ import type { CoachingFocus, CoachingState, GameResult, GameState, ScheduleGame 
 export type CoachingCommand =
   | { type: "UNLOCK_REGULAR_PREP"; gameId: string }
   | { type: "SET_REGULAR_PLAN"; gameId: string; focus: CoachingFocus }
-  | { type: "USE_FIVE_GAME_REVIEW"; afterGameId: string; benefit: "FATIGUE"; playerIds: string[] }
-  | { type: "USE_FIVE_GAME_REVIEW"; afterGameId: string; benefit: "TEAM_FATIGUE" }
   | { type: "USE_FIVE_GAME_REVIEW"; afterGameId: string; benefit: "MORALE_TWO" }
   | { type: "USE_FIVE_GAME_REVIEW"; afterGameId: string; benefit: "MORALE" }
   | { type: "SET_PLAYOFF_PLAN"; gameId: string; seriesId: string; focus: CoachingFocus };
@@ -36,13 +34,6 @@ export function nextPlayoffUserGame(state: GameState): { game: ScheduleGame; ser
   return game && series ? { game, seriesId: series.id, round: series.round } : undefined;
 }
 
-export function highFatiguePlayerIds(state: GameState): string[] {
-  return state.teams[state.userTeamId].playerIds.filter((id) => {
-    const player = state.players[id];
-    return player?.available && !player.injury && player.fatigue > SIMULATION_CONFIG.coaching.highFatigueThreshold;
-  }).sort((left, right) => state.players[right].fatigue - state.players[left].fatigue || left.localeCompare(right));
-}
-
 export function lowMoralePlayerIds(state: GameState): string[] {
   return state.teams[state.userTeamId].playerIds.filter((id) => state.players[id]?.morale < SIMULATION_CONFIG.coaching.lowMoraleThreshold)
     .sort((left, right) => state.players[left].morale - state.players[right].morale || left.localeCompare(right));
@@ -66,17 +57,17 @@ export function regularCoachingView(state: GameState): { gameId: string; selecte
   return { gameId: game.id, selected, videoUnlocked: coaching.regularVideoGameId === game.id };
 }
 
-export function fiveGameReviewView(state: GameState): { afterGameId: string; fatigueCandidates: string[]; moraleCandidates: string[]; moraleTwoTargets: string[]; wins: number; losses: number } | undefined {
+export function fiveGameReviewView(state: GameState): { afterGameId: string; moraleCandidates: string[]; moraleTwoTargets: string[]; wins: number; losses: number } | undefined {
   const review = currentCoaching(state).fiveGameReview;
   if (!review || !nextRegularUserGame(state)) return undefined;
   const latest = state.schedule.filter((game) => game.status === "FINAL" && isUserGame(state, game)).sort(bySchedule).at(-1);
   if (latest?.id !== review.afterGameId) return undefined;
-  const fatigueCandidates = highFatiguePlayerIds(state);
   const moraleCandidates = lowMoralePlayerIds(state);
+  if (!moraleCandidates.length) return undefined;
   const moraleTwoTargets = moraleCandidates.length ? randomReviewMoraleTargetIds(state, review.afterGameId) : [];
   const recent = state.schedule.filter((game) => game.status === "FINAL" && isUserGame(state, game)).sort(bySchedule).slice(-5);
   const wins = recent.filter((game) => game.winnerTeamId === state.userTeamId).length;
-  return fatigueCandidates.length || moraleCandidates.length ? { afterGameId: review.afterGameId, fatigueCandidates, moraleCandidates, moraleTwoTargets, wins, losses: recent.length - wins } : undefined;
+  return { afterGameId: review.afterGameId, moraleCandidates, moraleTwoTargets, wins, losses: recent.length - wins };
 }
 
 export function playoffCoachingView(state: GameState): { gameId: string; seriesId: string; selected?: CoachingState["playoffPlan"]; used: boolean } | undefined {
@@ -88,12 +79,6 @@ export function playoffCoachingView(state: GameState): { gameId: string; seriesI
     selected: coaching.playoffPlan?.gameId === upcoming.game.id ? coaching.playoffPlan : undefined,
     used: coaching.usedPlayoffRounds.includes(upcoming.round),
   };
-}
-
-function validateSelectedPlayers(state: GameState, ids: string[], eligible: string[], requiredCount?: number): void {
-  if (ids.length < 1 || ids.length > 2 || (requiredCount && ids.length !== requiredCount)
-    || new Set(ids).size !== ids.length || ids.some((id) => !eligible.includes(id))) throw new Error("COACHING_PLAYERS_INVALID");
-  if (ids.some((id) => !state.players[id])) throw new Error("COACHING_PLAYERS_INVALID");
 }
 
 export function executeCoachingCommand(input: GameState, command: CoachingCommand): GameState {
@@ -123,21 +108,7 @@ export function executeCoachingCommand(input: GameState, command: CoachingComman
   const view = fiveGameReviewView(input);
   if (!view || view.afterGameId !== command.afterGameId) throw new Error("COACHING_REVIEW_UNAVAILABLE");
   state.players = { ...input.players };
-  if (command.benefit === "FATIGUE") {
-    validateSelectedPlayers(input, command.playerIds, view.fatigueCandidates);
-    for (const id of command.playerIds) {
-      const player = { ...input.players[id] };
-      player.fatigue = Math.max(0, Math.round((player.fatigue - SIMULATION_CONFIG.coaching.reviewFatigueRecovery) * 100) / 100);
-      state.players[id] = player;
-    }
-  } else if (command.benefit === "TEAM_FATIGUE") {
-    if (!view.fatigueCandidates.length) throw new Error("COACHING_REVIEW_UNAVAILABLE");
-    for (const id of input.teams[input.userTeamId].playerIds) {
-      const player = input.players[id];
-      if (!player) continue;
-      state.players[id] = { ...player, fatigue: Math.max(0, Math.round((player.fatigue - SIMULATION_CONFIG.coaching.reviewTeamFatigueRecovery) * 100) / 100) };
-    }
-  } else if (command.benefit === "MORALE_TWO") {
+  if (command.benefit === "MORALE_TWO") {
     if (!view.moraleCandidates.length || view.moraleTwoTargets.length !== 2) throw new Error("COACHING_REVIEW_UNAVAILABLE");
     for (const id of view.moraleTwoTargets) {
       const player = input.players[id];
@@ -178,7 +149,7 @@ export function offerCoachingReview(input: GameState, completedGameIds: string[]
   const checkpoint = currentCoaching(input).lastReviewAtGameCount ?? Math.floor(completedBeforeAction / 5) * 5;
   if (completed.length - checkpoint < 5) return input;
   const coaching: CoachingState = { ...currentCoaching(input), lastReviewAtGameCount: completed.length };
-  if (highFatiguePlayerIds(input).length || lowMoralePlayerIds(input).length) {
+  if (lowMoralePlayerIds(input).length) {
     coaching.fiveGameReview = { afterGameId: completed.at(-1)!.id };
   }
   return { ...input, coaching };

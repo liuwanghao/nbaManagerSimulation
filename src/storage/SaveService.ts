@@ -346,8 +346,9 @@ export class SaveService {
     envelope.stateHash = encoded.stateHash;
     const serialized = encoded.serialized;
     await this.setWithQuotaRecovery(slotId, tempKey(slotId), serialized);
-    const verify = await parseValidSaveEnvelope(await this.adapter.get(tempKey(slotId)), slotId);
-    if (verify?.stateHash !== envelope.stateHash) {
+    // The encoded envelope was already hashed in the Worker. Exact readback also
+    // detects corruption without parsing and hashing the entire state again.
+    if (await this.adapter.get(tempKey(slotId)) !== serialized) {
       throw new Error("Temporary save verification failed");
     }
     const previousSerialized = await this.adapter.get(slotKey(slotId));
@@ -506,7 +507,7 @@ export class SaveService {
     return envelope.slotId === slotId ? envelope : { ...envelope, slotId };
   }
 
-  private summaryFor(slotId: 1 | 2 | 3, envelope: SaveEnvelope): SaveSlotSummary {
+  summaryFor(slotId: 1 | 2 | 3, envelope: SaveEnvelope): SaveSlotSummary {
     const state = envelope.state;
     const team = state.teams[state.userTeamId];
     const record = state.standings[state.userTeamId];

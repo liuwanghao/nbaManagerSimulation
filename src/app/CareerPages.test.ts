@@ -21,6 +21,11 @@ describe("career pages", () => {
     expect(html).toContain("经理排行榜");
     expect(html).toContain("我的排名");
     expect(html).toContain("当前存档");
+    expect(html).toContain("一键发帖分享");
+    expect(html).not.toContain("预览海报</button>");
+    expect(html).not.toContain("career-poster-preview");
+    expect(html).not.toContain("分享海报预览");
+    expect(html).toContain("经理称号、全服排名与战绩");
   });
 
   it("shows live progress toward win-based achievements", () => {

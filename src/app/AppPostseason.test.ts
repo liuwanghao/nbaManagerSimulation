@@ -1,15 +1,45 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { createCareer, enterPostseason, simulatePostseasonRound, simulatePostseasonToNextUserGame } from "../game/season/career";
+import { createCareer, enterPostseason, simulatePostseasonRound, simulatePostseasonToNextUserGame, standingsForConference } from "../game/season/career";
 import { executeCoachingCommand, nextPlayoffUserGame, nextRegularUserGame } from "../game/coaching/CoachingService";
 import { rolloverLeagueYear } from "../game/contracts/ContractLifecycleService";
 import { stableHash } from "../game/random/hash";
 import { createRng } from "../game/random/xoshiro";
 import { playerNameZh } from "./playerNameZh";
+import { executeSimulationTask } from "./simulationTask";
 import App from "./App";
 
 describe("season home after postseason", () => {
+  it("enters the play-in with the tenth seed's first game still unplayed", () => {
+    const state = createCareer("postseason-tenth-seed-entry");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    const conference = state.teams[state.userTeamId].conference;
+    state.userTeamId = standingsForConference(state, conference)[9].teamId;
+
+    const result = executeSimulationTask({
+      state, pregameSelection: null,
+      action: { kind: "OPERATION", operation: "ENTER_POSTSEASON", usePregameSelection: false },
+    });
+    expect(result.kind).toBe("OPERATION");
+    const entered = result.state;
+    const firstGame = nextPlayoffUserGame(entered)?.game;
+    expect(entered.league.currentPhase).toBe("PLAY_IN");
+    expect(entered.postseason?.seeds[conference][9]).toBe(entered.userTeamId);
+    expect(firstGame?.status).toBe("SCHEDULED");
+    expect(entered.postseason?.schedule.some((game) => game.status === "FINAL" && (game.homeTeamId === entered.userTeamId || game.awayTeamId === entered.userTeamId))).toBe(false);
+    const markup = renderToStaticMarkup(createElement(App, { initialState: entered }));
+    expect(markup).toContain('data-testid="simulate-postseason-next"');
+    expect(markup).not.toContain("本队赛程结束");
+
+    const afterFirstGame = executeSimulationTask({
+      state: entered, pregameSelection: null,
+      action: { kind: "OPERATION", operation: "POSTSEASON_NEXT", usePregameSelection: false },
+    }).state;
+    expect(afterFirstGame.postseason?.schedule.find((game) => game.id === firstGame?.id)?.status).toBe("FINAL");
+    expect(afterFirstGame.postseason?.schedule.filter((game) => game.status === "FINAL" && (game.homeTeamId === entered.userTeamId || game.awayTeamId === entered.userTeamId))).toHaveLength(1);
+  });
+
   it("keeps optional pregame preparation inside the next matchup without a one-day action", () => {
     const markup = renderToStaticMarkup(createElement(App, { initialState: createCareer("pregame-matchup-layout") }));
     const matchup = markup.indexOf('class="season-command-matchup"');

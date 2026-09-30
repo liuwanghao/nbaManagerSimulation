@@ -1,0 +1,107 @@
+{
+  "metrics": [
+    {
+      "width": 393,
+      "visibleBeforeSync": true,
+      "overflow": false,
+      "calls": [
+        {
+          "action": "list",
+          "time": 192.89999997615814
+        },
+        {
+          "action": "submit",
+          "time": 195.20000004768372
+        }
+      ],
+      "afterRefresh": [
+        {
+          "action": "list",
+          "time": 192.89999997615814
+        },
+        {
+          "action": "submit",
+          "time": 195.20000004768372
+        },
+        {
+          "action": "list",
+          "time": 2341.7000000476837
+        },
+        {
+          "action": "mine",
+          "time": 2341.7999999523163
+        }
+      ],
+      "errors": []
+    },
+    {
+      "width": 375,
+      "visibleBeforeSync": true,
+      "overflow": false,
+      "calls": [
+        {
+          "action": "list",
+          "time": 107.5
+        },
+        {
+          "action": "submit",
+          "time": 108.10000002384186
+        }
+      ],
+      "afterRefresh": [
+        {
+          "action": "list",
+          "time": 107.5
+        },
+        {
+          "action": "submit",
+          "time": 108.10000002384186
+        },
+        {
+          "action": "list",
+          "time": 2189.600000023842
+        },
+        {
+          "action": "mine",
+          "time": 2189.600000023842
+        }
+      ],
+      "errors": []
+    },
+    {
+      "width": 320,
+      "visibleBeforeSync": true,
+      "overflow": false,
+      "calls": [
+        {
+          "action": "list",
+          "time": 101.20000004768372
+        },
+        {
+          "action": "submit",
+          "time": 101.80000007152557
+        }
+      ],
+      "afterRefresh": [
+        {
+          "action": "list",
+          "time": 101.20000004768372
+        },
+        {
+          "action": "submit",
+          "time": 101.80000007152557
+        },
+        {
+          "action": "list",
+          "time": 2168
+        },
+        {
+          "action": "mine",
+          "time": 2168
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "retryRecovered": true
+}

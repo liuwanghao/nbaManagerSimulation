@@ -2,8 +2,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { buildDefaultRotationPlan } from "../game/roster/RotationPlanService";
+import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { createCareer } from "../game/season/career";
 import type { TeamRotationPlan } from "../game/state/types";
+import { playerRatingColor } from "./playerRatingColor";
 import { RotationEditor, limitedRotationMinutes, swapRotationPositions } from "./RotationEditor";
 
 const plan: TeamRotationPlan = {
@@ -14,6 +16,35 @@ const plan: TeamRotationPlan = {
 };
 
 describe("rotation card position swap", () => {
+  it("puts a single starting-five share button before save, with no explanatory share copy", () => {
+    const state = createCareer("rotation-share-button");
+    const team = state.teams[state.userTeamId];
+    const players = team.playerIds.map((id) => state.players[id]);
+    const markup = renderToStaticMarkup(createElement(RotationEditor, {
+      players, plan: buildDefaultRotationPlan(players), postseason: false, busy: false, onSave: () => {},
+      shareContext: { team, seasonId: state.league.seasonId },
+    }));
+    const footer = markup.split('<footer class="rotation-save-bar has-share-action">')[1]?.split("</footer>")[0] ?? "";
+    expect(footer.match(/>晒出首发五虎 ↗<\/button>/g)).toHaveLength(1);
+    expect(footer.indexOf("晒出首发五虎")).toBeLessThan(footer.indexOf("保存轮换方案"));
+    expect(footer).toContain('class="rotation-share-button" aria-busy="false"');
+    expect(markup).not.toContain("晒出你的球队阵容");
+    expect(markup).not.toContain("生成带应用 Logo 的阵容图片");
+    expect(markup).not.toContain("阵容发帖交流");
+    expect(markup).not.toContain("rotation-starter-poster");
+  });
+
+  it("disables sharing while a game command is busy", () => {
+    const state = createCareer("rotation-share-busy");
+    const team = state.teams[state.userTeamId];
+    const players = team.playerIds.map((id) => state.players[id]);
+    const markup = renderToStaticMarkup(createElement(RotationEditor, {
+      players, plan: buildDefaultRotationPlan(players), postseason: false, busy: true, onSave: () => {},
+      shareContext: { team, seasonId: state.league.seasonId },
+    }));
+    expect(markup).toContain('class="rotation-share-button" disabled="" aria-busy="false"');
+  });
+
   it("caps typed and stepped minutes at the remaining team allowance", () => {
     expect(limitedRotationMinutes(20, 238, 30, 40)).toBe(22);
     expect(limitedRotationMinutes(20, 240, 21, 40)).toBe(20);
@@ -113,11 +144,31 @@ describe("rotation card position swap", () => {
     expect(benchIds).toContain(zeroMinute!.id);
     expect(benchMarkup.split(`data-player-id="${zeroMinute!.id}"`)[1]?.split("</article>")[0]).toContain('value="0"');
     expect(benchIds.at(-1)).toBe(injured.id);
-    expect(benchMarkup).toContain("伤停约 7 天");
+    expect(benchMarkup).toContain('title="伤停约 7 天"');
     expect(markup).toContain("一键自动匹配");
     expect(markup).toContain("PG");
     expect(markup).not.toMatch(/LINEUP CONTROL|STARTERS|BENCH|>MIN</u);
     expect(markup).not.toContain("rotation-starter-select");
+  });
+
+  it("shows fatigue and morale on rotation cards, highlighting warning values", () => {
+    const state = createCareer("rotation-player-condition");
+    const players = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
+    players[0].fatigue = 75;
+    players[0].morale = 40;
+    players[1].fatigue = 60;
+    players[1].morale = 50;
+    const markup = renderToStaticMarkup(createElement(RotationEditor, {
+      players, plan: buildDefaultRotationPlan(players), postseason: false, busy: false, onSave: () => {},
+    }));
+    const warningCard = markup.split(`data-player-id="${players[0].id}"`)[1]?.split("</article>")[0];
+    const normalCard = markup.split(`data-player-id="${players[1].id}"`)[1]?.split("</article>")[0];
+    expect(warningCard).toContain('class="rotation-player-condition fatigued" title="疲劳 75，偏高">疲劳 75</span>');
+    expect(warningCard).toContain('class="rotation-player-condition low-morale" title="士气 40，偏低">士气 40</span>');
+    expect(normalCard).toContain('class="rotation-player-condition" title="疲劳 60">疲劳 60</span>');
+    expect(normalCard).toContain('class="rotation-player-condition" title="士气 50">士气 50</span>');
+    const overall = calculatePlayerOverall(players[0]);
+    expect(warningCard).toContain(`<span class="rotation-player-overall" aria-label="能力值 ${overall.toFixed(0)}"><small>OVR</small><strong class="player-rating-tone" style="--player-rating-color:${playerRatingColor(overall)}">${overall.toFixed(0)}</strong></span>`);
   });
 
   it("shows ranks 11 and 12 when the manager assigns twelve active players", () => {
