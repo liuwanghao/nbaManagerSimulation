@@ -11,6 +11,9 @@ const base64ToBytes = (value: string): Uint8Array => {
   return bytes;
 };
 
+// Keep the marker in the message: Worker responses serialize errors as text.
+export const STORED_STRING_CORRUPTION_ERROR = "INVALID_COMPRESSED_SAVE";
+
 export async function encodeStoredStringCore(value: string): Promise<string> {
   if (value.length < 1_024 || typeof CompressionStream === "undefined") return `raw:${value}`;
   const stream = new Blob([value]).stream().pipeThrough(new CompressionStream("gzip"));
@@ -22,7 +25,11 @@ export async function decodeStoredStringCore(value: string): Promise<string> {
   if (value.startsWith("raw:")) return value.slice(4);
   if (!value.startsWith("gz:")) return value;
   if (typeof DecompressionStream === "undefined") throw new Error("GZIP_STORAGE_UNSUPPORTED");
-  const compressed = base64ToBytes(value.slice(3));
-  const stream = new Blob([compressed.slice().buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return new Response(stream).text();
+  try {
+    const compressed = base64ToBytes(value.slice(3));
+    const stream = new Blob([compressed.slice().buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(stream).text();
+  } catch (error) {
+    throw new Error(`${STORED_STRING_CORRUPTION_ERROR}: ${error instanceof Error ? error.message || error.name : String(error)}`, { cause: error });
+  }
 }

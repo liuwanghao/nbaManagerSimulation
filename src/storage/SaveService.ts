@@ -18,6 +18,7 @@ import { addTeamNotification, ensureExpansionWelcomeNotification } from "../game
 import { EVENT_DEFINITION_BY_ID } from "../data/events";
 import { createAiTeamProfiles } from "../game/ai/AIManagementService";
 import { encodeStoredString, type StorageAdapter } from "../platform/storage/StorageAdapter";
+import { STORED_STRING_CORRUPTION_ERROR } from "../platform/storage/StoredStringCodec";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, upgradeLegacyAutomaticRotationPlan } from "../game/roster/RotationPlanService";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { hasOpeningMipBaselines, seedOpeningMipBaselines } from "../game/awards/OpeningMipBaseline";
@@ -42,6 +43,8 @@ export interface SaveEnvelope {
 
 export interface SaveSlotSummary {
   slotId: 1 | 2 | 3;
+  status?: "CORRUPTED" | "UNAVAILABLE";
+  error?: string;
   teamName: string;
   seasonId: string;
   currentDate: string;
@@ -50,6 +53,45 @@ export interface SaveSlotSummary {
   losses: number;
   updatedAt: string;
   revision: number;
+}
+
+export interface SaveOptions {
+  /** Set only after the player confirms replacing an unrecoverable career. */
+  rebuildCorrupted?: boolean;
+}
+
+type SaveCopyDiagnostic = { key: string; error: unknown; kind: "CORRUPTED" | "UNAVAILABLE" };
+
+export class SaveRecoveryError extends Error {
+  readonly canRebuild: boolean;
+
+  constructor(readonly diagnostics: SaveCopyDiagnostic[]) {
+    super(`No recoverable save revision: ${diagnostics.map(({ key, error }) => `${key}: ${error instanceof Error ? error.message : String(error)}`).join("; ")}`);
+    this.name = "SaveRecoveryError";
+    this.canRebuild = diagnostics.every(({ kind }) => kind === "CORRUPTED");
+  }
+}
+
+// Shared adapter identity also protects callers that construct another service.
+const slotOperations = new WeakMap<StorageAdapter, Map<number, Promise<void>>>();
+
+function queueSlotOperation<T>(slotId: number, adapters: StorageAdapter[], operation: () => Promise<T>): Promise<T> {
+  if (!Number.isInteger(slotId) || slotId < 1 || slotId > 3) return Promise.reject(new Error("V1 supports save slots 1 through 3"));
+  const queues = [...new Set(adapters)].map((adapter) => {
+    let slots = slotOperations.get(adapter);
+    if (!slots) { slots = new Map(); slotOperations.set(adapter, slots); }
+    return slots;
+  });
+  // Reserve all participating adapters together, so cloud writes and conflict
+  // resolution cannot interleave with a save or deadlock on nested locks.
+  const pending = queues.map((slots) => slots.get(slotId) ?? Promise.resolve());
+  const result = Promise.all(pending).then(operation);
+  const tail = result.then(() => undefined, () => undefined);
+  for (const slots of queues) slots.set(slotId, tail);
+  void tail.then(() => {
+    for (const slots of queues) if (slots.get(slotId) === tail) slots.delete(slotId);
+  });
+  return result;
 }
 
 const slotKey = (slotId: number): string => `basketball-manager:career:${slotId}`;
@@ -322,9 +364,20 @@ export class SaveService {
     }
   }
 
-  async save(slotId: number, state: GameState): Promise<SaveEnvelope> {
-    if (slotId < 1 || slotId > 3) throw new Error("V1 supports save slots 1 through 3");
-    const previous = await this.loadEnvelope(slotId);
+  save(slotId: number, state: GameState, options: SaveOptions = {}): Promise<SaveEnvelope> {
+    return queueSlotOperation(slotId, [this.adapter], () => this.saveUnlocked(slotId, state, options));
+  }
+
+  private async saveUnlocked(slotId: number, state: GameState, options: SaveOptions = {}): Promise<SaveEnvelope> {
+    let previous: SaveEnvelope | null;
+    let rebuilding = false;
+    try {
+      previous = await this.loadEnvelope(slotId);
+    } catch (error) {
+      if (!options.rebuildCorrupted || !(error instanceof SaveRecoveryError) || !error.canRebuild) throw error;
+      previous = null;
+      rebuilding = true;
+    }
     const revision = (previous?.revision ?? 0) + 1;
     const envelope: SaveEnvelope = {
       saveId: previous?.saveId ?? stableHash(state.seeds.careerSeed, "save", slotId),
@@ -351,7 +404,7 @@ export class SaveService {
     if (await this.adapter.get(tempKey(slotId)) !== serialized) {
       throw new Error("Temporary save verification failed");
     }
-    const previousSerialized = await this.adapter.get(slotKey(slotId));
+    const previousSerialized = previous ? await stringifySaveValue(previous) : null;
     if (previousSerialized) {
       try {
         await this.setWithQuotaRecovery(slotId, previousKey(slotId), previousSerialized);
@@ -361,10 +414,17 @@ export class SaveService {
     }
     await this.setWithQuotaRecovery(slotId, slotKey(slotId), serialized);
     await this.adapter.remove(tempKey(slotId));
+    // The healthy primary is committed; stale corrupt backup cleanup can be
+    // retried later without reporting that the player's new save failed.
+    if (rebuilding) await this.adapter.remove(previousKey(slotId)).catch(() => undefined);
     return envelope;
   }
 
-  async load(slotId: number): Promise<GameState | null> {
+  load(slotId: number): Promise<GameState | null> {
+    return queueSlotOperation(slotId, [this.adapter], () => this.loadUnlocked(slotId));
+  }
+
+  private async loadUnlocked(slotId: number): Promise<GameState | null> {
     const envelope = await this.loadEnvelope(slotId);
     if (!envelope) return null;
     const actualHash = await hashSaveState(envelope.state);
@@ -374,19 +434,35 @@ export class SaveService {
 
   async listSlotSummaries(): Promise<SaveSlotSummary[]> {
     const slots = [1, 2, 3] as const;
-    const envelopes = await Promise.all(slots.map((slotId) => this.loadEnvelope(slotId)));
-    return envelopes.flatMap((envelope, index) => envelope ? [this.summaryFor(slots[index], envelope)] : []);
+    const summaries = await Promise.all(slots.map((slotId) => queueSlotOperation(slotId, [this.adapter], async () => {
+      try {
+        const envelope = await this.loadEnvelope(slotId);
+        return envelope ? this.summaryFor(slotId, envelope) : null;
+      } catch (error) {
+        return {
+          slotId, status: error instanceof SaveRecoveryError && error.canRebuild ? "CORRUPTED" as const : "UNAVAILABLE" as const,
+          error: error instanceof Error ? error.message : String(error),
+          teamName: error instanceof SaveRecoveryError && error.canRebuild ? "损坏存档" : "存档暂不可用", seasonId: "", currentDate: "", phase: "",
+          wins: 0, losses: 0, updatedAt: "", revision: 0,
+        };
+      }
+    })));
+    return summaries.filter((summary): summary is SaveSlotSummary => summary !== null);
   }
 
   async loadMostRecent(): Promise<{ slotId: 1 | 2 | 3; state: GameState } | null> {
     const summaries = await this.listSlotSummaries();
-    const latest = summaries.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.revision - left.revision || right.slotId - left.slotId)[0];
+    const latest = summaries.filter((summary) => !summary.status).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || right.revision - left.revision || right.slotId - left.slotId)[0];
     if (!latest) return null;
     const state = await this.load(latest.slotId);
     return state ? { slotId: latest.slotId, state } : null;
   }
 
-  async saveCheckpoint(slotId: number, checkpointId: string, state: GameState): Promise<void> {
+  saveCheckpoint(slotId: number, checkpointId: string, state: GameState): Promise<void> {
+    return queueSlotOperation(slotId, [this.adapter], () => this.saveCheckpointUnlocked(slotId, checkpointId, state));
+  }
+
+  private async saveCheckpointUnlocked(slotId: number, checkpointId: string, state: GameState): Promise<void> {
     if (!/^[a-z0-9-]{1,40}$/u.test(checkpointId)) throw new Error("Invalid checkpoint id");
     const indexSerialized = await this.adapter.get(checkpointIndexKey(slotId));
     const current = indexSerialized ? JSON.parse(indexSerialized) as string[] : [];
@@ -408,7 +484,11 @@ export class SaveService {
     await this.adapter.set(checkpointIndexKey(slotId), JSON.stringify([...retained, checkpointId]));
   }
 
-  async loadCheckpoint(slotId: number, checkpointId: string): Promise<GameState | null> {
+  loadCheckpoint(slotId: number, checkpointId: string): Promise<GameState | null> {
+    return queueSlotOperation(slotId, [this.adapter], () => this.loadCheckpointUnlocked(slotId, checkpointId));
+  }
+
+  private async loadCheckpointUnlocked(slotId: number, checkpointId: string): Promise<GameState | null> {
     const serialized = await this.adapter.get(checkpointKey(slotId, checkpointId));
     if (!serialized) return null;
     const envelope = JSON.parse(serialized) as CheckpointEnvelope;
@@ -416,7 +496,11 @@ export class SaveService {
     return migrateLoadedState(envelope.state);
   }
 
-  async getSlotUsageBytes(slotId: number): Promise<number> {
+  getSlotUsageBytes(slotId: number): Promise<number> {
+    return queueSlotOperation(slotId, [this.adapter], () => this.getSlotUsageBytesUnlocked(slotId));
+  }
+
+  private async getSlotUsageBytesUnlocked(slotId: number): Promise<number> {
     const indexSerialized = await this.adapter.get(checkpointIndexKey(slotId));
     const checkpoints = indexSerialized ? JSON.parse(indexSerialized) as string[] : [];
     const keys = [slotKey(slotId), tempKey(slotId), previousKey(slotId), checkpointIndexKey(slotId), conflictBackupKey(slotId), ...checkpoints.map((id) => checkpointKey(slotId, id))];
@@ -425,14 +509,13 @@ export class SaveService {
     return encoded.reduce((sum, value) => sum + (value ? new TextEncoder().encode(value).byteLength : 0), 0);
   }
 
-  async syncWithCloud(slotId: number, cloud: StorageAdapter): Promise<SaveSyncResult | null> {
+  syncWithCloud(slotId: number, cloud: StorageAdapter): Promise<SaveSyncResult | null> {
+    return queueSlotOperation(slotId, [this.adapter, cloud], () => this.syncWithCloudUnlocked(slotId, cloud));
+  }
+
+  private async syncWithCloudUnlocked(slotId: number, cloud: StorageAdapter): Promise<SaveSyncResult | null> {
     const local = await this.loadEnvelope(slotId);
-    const cloudSerialized = await cloud.get(slotKey(slotId));
-    const parsedCloudEnvelope = await parseValidSaveEnvelope(cloudSerialized, slotId);
-    const cloudEnvelope = parsedCloudEnvelope ? this.normalizeEnvelopeSlot(slotId, parsedCloudEnvelope) : null;
-    if (cloudEnvelope && cloudSerialized !== await stringifySaveValue(cloudEnvelope)) {
-      await this.writeEnvelope(cloud, slotId, cloudEnvelope);
-    }
+    const cloudEnvelope = await this.loadEnvelope(slotId, cloud);
     if (!local && !cloudEnvelope) return null;
     if (!local && cloudEnvelope) {
       const normalized = { ...cloudEnvelope, syncBaseRevision: cloudEnvelope.revision, pendingSync: false };
@@ -467,8 +550,12 @@ export class SaveService {
     return { status: "SAVE_CONFLICT", local, cloud: cloudEnvelope };
   }
 
-  async resolveConflict(slotId: number, cloud: StorageAdapter, choice: "LOCAL" | "CLOUD"): Promise<SaveEnvelope> {
-    const status = await this.syncWithCloud(slotId, cloud);
+  resolveConflict(slotId: number, cloud: StorageAdapter, choice: "LOCAL" | "CLOUD"): Promise<SaveEnvelope> {
+    return queueSlotOperation(slotId, [this.adapter, cloud], () => this.resolveConflictUnlocked(slotId, cloud, choice));
+  }
+
+  private async resolveConflictUnlocked(slotId: number, cloud: StorageAdapter, choice: "LOCAL" | "CLOUD"): Promise<SaveEnvelope> {
+    const status = await this.syncWithCloudUnlocked(slotId, cloud);
     if (!status || status.status !== "SAVE_CONFLICT") throw new Error("NO_SAVE_CONFLICT");
     if (choice === "LOCAL") {
       const revision = Math.max(status.local.revision, status.cloud.revision) + 1;
@@ -494,7 +581,11 @@ export class SaveService {
     return resolved;
   }
 
-  async loadConflictBackup(slotId: number): Promise<GameState | null> {
+  loadConflictBackup(slotId: number): Promise<GameState | null> {
+    return queueSlotOperation(slotId, [this.adapter], () => this.loadConflictBackupUnlocked(slotId));
+  }
+
+  private async loadConflictBackupUnlocked(slotId: number): Promise<GameState | null> {
     const serialized = await this.adapter.get(conflictBackupKey(slotId));
     if (!serialized) return null;
     const backup = JSON.parse(serialized) as ConflictBackup;
@@ -536,36 +627,58 @@ export class SaveService {
     await adapter.remove(tempKey(slotId));
   }
 
-  private async loadEnvelope(slotId: number): Promise<SaveEnvelope | null> {
-    const [primarySerialized, pendingSerialized] = await Promise.all([
-      this.adapter.get(slotKey(slotId)),
-      this.adapter.get(tempKey(slotId)),
+  private async readEnvelopeCopy(key: string, slotId: number, adapter: StorageAdapter): Promise<{
+    serialized: string | null;
+    envelope: SaveEnvelope | null;
+    diagnostic?: SaveCopyDiagnostic;
+  }> {
+    try {
+      // Adapters decode before returning; decoding must be inside this copy's
+      // boundary so a bad gzip payload cannot prevent trying other copies.
+      const serialized = await adapter.get(key);
+      if (serialized === null) return { serialized, envelope: null };
+      const envelope = await parseValidSaveEnvelope(serialized, slotId);
+      if (!envelope || !Number.isInteger(envelope.revision) || envelope.revision < 1
+        || typeof envelope.updatedAt !== "string" || !Number.isFinite(Date.parse(envelope.updatedAt))
+        || !envelope.state?.meta || !envelope.state.seeds || !envelope.state.teams
+        || !envelope.state.standings || !envelope.state.calendar || !envelope.state.league) {
+        return { serialized, envelope: null, diagnostic: { key, error: new Error("Invalid save structure or checksum"), kind: "CORRUPTED" } };
+      }
+      return { serialized, envelope: this.normalizeEnvelopeSlot(slotId, envelope) };
+    } catch (error) {
+      const kind = error instanceof Error && error.message.startsWith(`${STORED_STRING_CORRUPTION_ERROR}:`) ? "CORRUPTED" : "UNAVAILABLE";
+      return { serialized: null, envelope: null, diagnostic: { key, error, kind } };
+    }
+  }
+
+  private async loadEnvelope(slotId: number, adapter: StorageAdapter = this.adapter): Promise<SaveEnvelope | null> {
+    const [primaryCopy, pendingCopy] = await Promise.all([
+      this.readEnvelopeCopy(slotKey(slotId), slotId, adapter),
+      this.readEnvelopeCopy(tempKey(slotId), slotId, adapter),
     ]);
-    const [parsedPrimary, parsedPending] = await Promise.all([
-      parseValidSaveEnvelope(primarySerialized, slotId),
-      parseValidSaveEnvelope(pendingSerialized, slotId),
-    ]);
-    const previousSerialized = !parsedPrimary && !parsedPending ? await this.adapter.get(previousKey(slotId)) : null;
-    const parsedPrevious = await parseValidSaveEnvelope(previousSerialized, slotId);
-    const primary = parsedPrimary ? this.normalizeEnvelopeSlot(slotId, parsedPrimary) : null;
-    const pending = parsedPending ? this.normalizeEnvelopeSlot(slotId, parsedPending) : null;
-    const previous = parsedPrevious ? this.normalizeEnvelopeSlot(slotId, parsedPrevious) : null;
+    const primary = primaryCopy.envelope;
+    const pending = pendingCopy.envelope;
+    const previousCopy = !primary && !pending ? await this.readEnvelopeCopy(previousKey(slotId), slotId, adapter) : null;
+    const previous = previousCopy?.envelope;
+    const hasPending = pendingCopy.serialized !== null || pendingCopy.diagnostic !== undefined;
     if (!primary && !pending && !previous) {
-      if (primarySerialized || pendingSerialized || previousSerialized) throw new Error("No recoverable save revision");
+      const diagnostics = [primaryCopy.diagnostic, pendingCopy.diagnostic, previousCopy?.diagnostic]
+        .filter((diagnostic): diagnostic is SaveCopyDiagnostic => diagnostic !== undefined);
+      if (diagnostics.length) throw new SaveRecoveryError(diagnostics);
       return null;
     }
     if (pending && (!primary || pending.revision > primary.revision)) {
-      await this.adapter.set(slotKey(slotId), await stringifySaveValue(pending));
-      await this.adapter.remove(tempKey(slotId));
+      await adapter.set(slotKey(slotId), await stringifySaveValue(pending));
+      await adapter.remove(tempKey(slotId));
       return pending;
     }
     if (!primary && previous) {
-      await this.adapter.set(slotKey(slotId), await stringifySaveValue(previous));
-      if (pendingSerialized) await this.adapter.remove(tempKey(slotId));
+      await adapter.set(slotKey(slotId), await stringifySaveValue(previous));
+      if (hasPending) await adapter.remove(tempKey(slotId));
       return previous;
     }
-    if (pendingSerialized) await this.adapter.remove(tempKey(slotId));
-    if (primary && primarySerialized !== await stringifySaveValue(primary)) await this.adapter.set(slotKey(slotId), await stringifySaveValue(primary));
+    if (hasPending) await adapter.remove(tempKey(slotId));
+    if (primary && primaryCopy.serialized !== await stringifySaveValue(primary)) await adapter.set(slotKey(slotId), await stringifySaveValue(primary));
     return primary;
   }
 }

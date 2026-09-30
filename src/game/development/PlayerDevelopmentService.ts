@@ -13,6 +13,7 @@ import {
   type TrainingFocus,
 } from "../state/types";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
+import { getRosterTrainingAssignments } from "../roster/TrainingPlanService";
 
 const cfg = BALANCE_CONFIG.playerLifecycle;
 const ATTRIBUTE_KEYS = Object.keys(cfg.regressionMultipliers) as Array<keyof PlayerAttributes>;
@@ -268,7 +269,7 @@ function average(values: number[]): number {
 export function processOffseasonPlayerLifecycle(input: GameState): GameState {
   const state = structuredClone(input);
   state.history.retiredPlayerIds ??= [];
-  const trainingAssignments = { ...(state.trainingPlan?.assignments ?? {}) };
+  const trainingAssignments = getRosterTrainingAssignments(state);
   const players = Object.values(state.players).sort((left, right) => left.id.localeCompare(right.id));
   const eligibleBefore = players.filter((player) => player.contract.status !== "RETIRED");
   const beforeValues = eligibleBefore.map(playerOverall);

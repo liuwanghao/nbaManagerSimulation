@@ -25,7 +25,7 @@ import { clearLeaderboardReturn, leaderboardReturnSlot } from "./leaderboardRetu
 
 const CAREER_SEED = "expansion-era-demo";
 const launcherSaveService = typeof window === "undefined" ? null : new SaveService(createBrowserPlatform().storage);
-type LauncherLoading = "latest" | "slots" | `slot-${1 | 2 | 3}`;
+type LauncherLoading = "latest" | "slots" | "creating" | `slot-${1 | 2 | 3}`;
 const SAVE_SLOT_PREVIEW: SaveSlotSummary = {
   slotId: 1,
   teamName: "西雅图海潮",
@@ -261,7 +261,7 @@ export default function Bootstrap() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 32));
       await action();
     } catch (error) {
-      setLauncherNotice(error instanceof Error ? `读取失败：${error.message}` : "读取失败，请重试。");
+      setLauncherNotice(error instanceof Error ? `${kind === "creating" ? "新生涯保存" : "读取"}失败：${error.message}` : "存档操作失败，请重试。");
     } finally {
       launcherLoadInFlight.current = false;
       setLauncherLoading(null);
@@ -307,15 +307,18 @@ export default function Bootstrap() {
     setScreen("game");
   });
 
-  const startNewGame = (slotId: 1 | 2 | 3) => {
-    setInitialState(createFixturePreview());
+  const startNewGame = (slotId: 1 | 2 | 3) => runLauncherLoad("creating", async () => {
+    const next = createFixturePreview();
+    const summary = homeSaveSlots.find((slot) => slot.slotId === slotId);
+    await launcherSaveService?.save(slotId, next, { rebuildCorrupted: summary?.status === "CORRUPTED" });
+    setInitialState(next);
     setInitialActiveSlot(slotId);
     setOpenLoadOnStart(false);
     setPendingOverwriteSlot(null);
     setNewGameMenuOpen(false);
     setSessionKey((value) => value + 1);
     setScreen("intro");
-  };
+  });
 
   if (saveSlotsFixture) {
     return <main className="app-shell"><GameChrome phase="PRESEASON" initialDrawerTab="load" activeSlot={1} saveSlots={[SAVE_SLOT_PREVIEW]} onHome={() => undefined} /></main>;
@@ -323,7 +326,7 @@ export default function Bootstrap() {
 
   if (screen === "home") {
     const loadingLabel = launcherLoading === "latest" ? "正在继续上次进度…"
-      : launcherLoading === "slots" ? "正在读取存档列表…"
+      : launcherLoading === "creating" ? "正在保存新生涯…" : launcherLoading === "slots" ? "正在读取存档列表…"
         : launcherLoading ? `正在读取槽位 0${launcherLoading.slice(-1)}…` : "";
     return <main className="launcher-shell home-screen" style={{ backgroundImage: 'linear-gradient(180deg, rgba(2, 6, 16, .28) 0%, rgba(2, 6, 16, .7) 47%, rgba(2, 6, 16, .96) 100%), url("./story/opening-arena.jpg")' }}>
       <section className="launcher-center">
@@ -341,7 +344,7 @@ export default function Bootstrap() {
         <button disabled={Boolean(launcherLoading)} onClick={() => void openLoadMenu()}><svg className="launcher-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M3 7C3 5.89543 3.89543 5 5 5H9.58579C10.1162 5 10.625 5.21071 11 5.58579L12.4142 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z" stroke="currentColor" strokeWidth="2" /><path d="M12 10V15M12 15L9.5 12.5M12 15L14.5 12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg><span>读取存档</span></button>
         <button className="launcher-dark" disabled={Boolean(launcherLoading)} onClick={() => void launchLatest()}><svg className="launcher-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M 12 4 A 8 8 0 1 1 5.5 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M 4 4 L 5.5 8 L 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><polygon points="10.5,10 14.5,12 10.5,14" fill="currentColor" /></svg><span>继续上次进度</span></button>
       </section>
-      {launcherNotice && !loadMenuOpen && <p className="launcher-notice" role="status">{launcherNotice}</p>}
+      {launcherNotice && !loadMenuOpen && !newGameMenuOpen && <p className="launcher-notice" role="status">{launcherNotice}</p>}
       {loadMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !launcherLoading) setLoadMenuOpen(false); }}>
         <section className="home-load-menu" role="dialog" aria-modal="true" aria-label="读取存档">
           <header><div><b>读取存档</b><small>选择一个生涯继续游戏</small></div><button disabled={Boolean(launcherLoading)} onClick={() => setLoadMenuOpen(false)} aria-label="关闭读取存档">×</button></header>
@@ -350,33 +353,36 @@ export default function Bootstrap() {
             {([1, 2, 3] as const).map((slotId) => {
               const summary = homeSaveSlots.find((slot) => slot.slotId === slotId);
               return <article key={slotId} className={summary ? "has-save" : "empty-save"}>
-                <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
-                <small>{summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存任何生涯"}</small>
-                {summary && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}
-                <button disabled={!summary || Boolean(launcherLoading)} onClick={() => void loadFromHome(slotId)}>{summary ? "读取并继续" : "暂无存档"}</button>
+                <b>槽位 0{slotId} · {summary?.status === "UNAVAILABLE" ? "暂时无法读取" : summary?.status === "CORRUPTED" ? "存档损坏" : summary?.teamName ?? "空存档"}</b>
+                <small>{summary?.status === "UNAVAILABLE" ? "存储暂时不可用，请重试读取" : summary?.status === "CORRUPTED" ? "自动恢复失败，请重试读取，或在新游戏菜单确认重建" : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "尚未保存任何生涯"}</small>
+                {summary && !summary.status && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}
+                <button disabled={!summary || Boolean(launcherLoading)} onClick={() => void loadFromHome(slotId)}>{summary?.status ? "重试读取" : summary ? "读取并继续" : "暂无存档"}</button>
               </article>;
             })}
           </div>
         </section>
       </div>}
-      {newGameMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setNewGameMenuOpen(false); setPendingOverwriteSlot(null); } }}>
+      {newGameMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !launcherLoading) { setNewGameMenuOpen(false); setPendingOverwriteSlot(null); } }}>
         <section className="home-load-menu" role="dialog" aria-modal="true" aria-label="选择新生涯槽位">
-          <header><div><b>选择新生涯槽位</b><small>选定后将作为后续自动保存与手动保存的位置</small></div><button onClick={() => { setNewGameMenuOpen(false); setPendingOverwriteSlot(null); }} aria-label="关闭选择槽位">×</button></header>
+          <header><div><b>选择新生涯槽位</b><small>选定后将作为后续自动保存与手动保存的位置</small></div><button disabled={Boolean(launcherLoading)} onClick={() => { setNewGameMenuOpen(false); setPendingOverwriteSlot(null); }} aria-label="关闭选择槽位">×</button></header>
+          {launcherNotice && <p className="home-load-error" role="alert">{launcherNotice}</p>}
           <div className="home-load-slots">
             {([1, 2, 3] as const).map((slotId) => {
               const summary = homeSaveSlots.find((slot) => slot.slotId === slotId);
               const needsConfirm = Boolean(summary) && pendingOverwriteSlot === slotId;
+              const corrupted = summary?.status === "CORRUPTED";
+              const unavailable = summary?.status === "UNAVAILABLE";
               return <article key={slotId} className={`${summary ? "has-save" : "empty-save"}${needsConfirm ? " pending-overwrite" : ""}`}>
-                <b>槽位 0{slotId} · {summary?.teamName ?? "空存档"}</b>
-                <small className={needsConfirm ? "home-load-warning" : undefined}>{needsConfirm ? `将覆盖「${summary?.teamName}」的现有进度，确认后无法恢复。` : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "在此位置创建新的扩军生涯"}</small>
-                {summary && !needsConfirm && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}
-                {needsConfirm ? <div className="home-load-confirm-actions"><button className="home-load-cancel" onClick={() => setPendingOverwriteSlot(null)}>取消</button><button onClick={() => startNewGame(slotId)}>确认覆盖</button></div> : <button onClick={() => summary ? setPendingOverwriteSlot(slotId) : startNewGame(slotId)}>{summary ? "覆盖并开始" : "使用此槽位"}</button>}
+                <b>槽位 0{slotId} · {summary?.status === "UNAVAILABLE" ? "暂时无法读取" : summary?.status === "CORRUPTED" ? "存档损坏" : summary?.teamName ?? "空存档"}</b>
+                <small className={needsConfirm ? "home-load-warning" : undefined}>{needsConfirm ? corrupted ? "将重建此损坏槽位，原有进度将被覆盖，确认后无法恢复。" : `将覆盖「${summary?.teamName}」的现有进度，确认后无法恢复。` : unavailable ? "存储暂时不可用，请重试读取后再创建新生涯" : corrupted ? "存档无法自动恢复，可确认重建新的生涯" : summary ? `${summary.seasonId} · ${summary.currentDate} · ${summary.wins}胜${summary.losses}负 · ${phaseLabel(summary.phase)}` : "在此位置创建新的扩军生涯"}</small>
+                {summary && !summary.status && !needsConfirm && <time className="save-slot-time" dateTime={summary.updatedAt}>最后保存：{formatBeijingSaveTime(summary.updatedAt)}（北京时间）</time>}
+                {needsConfirm ? <div className="home-load-confirm-actions"><button className="home-load-cancel" disabled={Boolean(launcherLoading)} onClick={() => setPendingOverwriteSlot(null)}>取消</button><button disabled={Boolean(launcherLoading)} onClick={() => void startNewGame(slotId)}>{corrupted ? "确认重建" : "确认覆盖"}</button></div> : <button disabled={unavailable || Boolean(launcherLoading)} onClick={() => summary ? setPendingOverwriteSlot(slotId) : void startNewGame(slotId)}>{unavailable ? "读取不可用" : corrupted ? "重建并开始" : summary ? "覆盖并开始" : "使用此槽位"}</button>}
               </article>;
             })}
           </div>
         </section>
       </div>}
-      {launcherLoading && <div className="launcher-loading-backdrop" role="status" aria-live="polite"><div className="launcher-loading-card"><BasketballSeamLoader /><b>{loadingLabel}</b><small>{launcherLoading === "slots" ? "正在检查可用存档，请稍候" : "正在校验并恢复游戏进度，请稍候"}</small></div></div>}
+      {launcherLoading && <div className="launcher-loading-backdrop" role="status" aria-live="polite"><div className="launcher-loading-card"><BasketballSeamLoader /><b>{loadingLabel}</b><small>{launcherLoading === "slots" ? "正在检查可用存档，请稍候" : launcherLoading === "creating" ? "正在将新生涯写入选定槽位，请稍候" : "正在校验并恢复游戏进度，请稍候"}</small></div></div>}
       <small className="launcher-version">从扩军开始，打造你的王朝</small>
     </main>;
   }

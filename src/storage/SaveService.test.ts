@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
 import { executeDraftCommand } from "../game/draft/DraftService";
@@ -6,11 +6,292 @@ import { calculateAttributeOverall, calculatePlayerOverall } from "../game/playe
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import { addTeamNotification, executeTeamNotificationCommand } from "../game/notifications/TeamNotificationService";
 import { enqueueEvent, executeEventCommand } from "../game/events/EventService";
-import { MemoryStorageAdapter, MigratingIndexedDbStorageAdapter } from "../platform/storage/StorageAdapter";
+import { LocalStorageAdapter, MemoryStorageAdapter, MigratingIndexedDbStorageAdapter } from "../platform/storage/StorageAdapter";
 import type { StorageAdapter } from "../platform/storage/StorageAdapter";
 import { SaveService } from "./SaveService";
 
 describe("SaveService", () => {
+  it("queues same-slot saves in invocation order while other slots remain available", async () => {
+    const backing = new MemoryStorageAdapter();
+    const primaryKey = "basketball-manager:career:1";
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started!: () => void;
+    const writing = new Promise<void>((resolve) => { started = resolve; });
+    const adapter: StorageAdapter = {
+      get: (key) => backing.get(key),
+      remove: (key) => backing.remove(key),
+      async set(key, value) {
+        const envelope = JSON.parse(value);
+        if (key === `${primaryKey}:pending` && envelope.revision === 2 && envelope.state.calendar.currentDateIndex === 0) {
+          started();
+          await gate;
+        }
+        await backing.set(key, value);
+      },
+    };
+    const service = new SaveService(adapter);
+    const state = createCareer("ordered-slot-writes");
+    await service.save(1, state);
+    const older = service.save(1, state);
+    await writing;
+    const newerState = structuredClone(state);
+    newerState.calendar.currentDateIndex = 1;
+    // A second service sharing storage must observe the same slot queue.
+    const newer = new SaveService(adapter).save(1, newerState);
+    const concurrentLoad = service.load(1);
+    await service.save(2, state);
+    release();
+    expect((await older).revision).toBe(2);
+    expect((await newer).revision).toBe(3);
+    expect((await concurrentLoad)?.calendar.currentDateIndex).toBe(1);
+    expect((await service.load(1))?.calendar.currentDateIndex).toBe(1);
+  });
+
+  it("reserves local and cloud slots through conflict resolution before later saves", async () => {
+    const localAdapter = new MemoryStorageAdapter();
+    const cloudBacking = new MemoryStorageAdapter();
+    let blocked = false;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started!: () => void;
+    const writing = new Promise<void>((resolve) => { started = resolve; });
+    const cloudAdapter: StorageAdapter = {
+      get: (key) => cloudBacking.get(key),
+      remove: (key) => cloudBacking.remove(key),
+      async set(key, value) {
+        if (blocked && key === "basketball-manager:career:1:pending") {
+          blocked = false;
+          started();
+          await gate;
+        }
+        await cloudBacking.set(key, value);
+      },
+    };
+    const localService = new SaveService(localAdapter);
+    const cloudService = new SaveService(cloudAdapter);
+    const base = createCareer("ordered-cloud-resolution");
+    await localService.save(1, base);
+    await localService.syncWithCloud(1, cloudAdapter);
+    const localState = structuredClone(base);
+    localState.calendar.currentDateIndex = 1;
+    const cloudState = structuredClone(base);
+    cloudState.calendar.currentDateIndex = 2;
+    await localService.save(1, localState);
+    await cloudService.save(1, cloudState);
+    blocked = true;
+    const resolution = localService.resolveConflict(1, cloudAdapter, "LOCAL");
+    await writing;
+    const laterLocal = structuredClone(base);
+    laterLocal.calendar.currentDateIndex = 3;
+    const laterCloud = structuredClone(base);
+    laterCloud.calendar.currentDateIndex = 4;
+    const localSave = localService.save(1, laterLocal);
+    const cloudSave = cloudService.save(1, laterCloud);
+    release();
+    expect((await resolution).revision).toBe(3);
+    expect((await localSave).revision).toBe(4);
+    expect((await cloudSave).revision).toBe(4);
+    expect((await localService.load(1))?.calendar.currentDateIndex).toBe(3);
+    expect((await cloudService.load(1))?.calendar.currentDateIndex).toBe(4);
+  });
+
+  it("keeps a rejected write from poisoning the slot queue and retries against the committed revision", async () => {
+    const backing = new MemoryStorageAdapter();
+    let rejectNext = false;
+    const adapter: StorageAdapter = {
+      get: (key) => backing.get(key),
+      remove: (key) => backing.remove(key),
+      async set(key, value) {
+        if (rejectNext) { rejectNext = false; throw new Error("STORAGE_UNAVAILABLE"); }
+        await backing.set(key, value);
+      },
+    };
+    const service = new SaveService(adapter);
+    const state = createCareer("failed-save-retry");
+    await service.save(1, state);
+    rejectNext = true;
+    const rejected = expect(service.save(1, state)).rejects.toThrow("STORAGE_UNAVAILABLE");
+    const next = service.save(1, state);
+    await rejected;
+    expect((await next).revision).toBe(2);
+    expect((await service.load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
+  });
+
+  it("recovers a newer cloud pending revision before deciding whether to pull or conflict", async () => {
+    const localAdapter = new MemoryStorageAdapter();
+    const cloudAdapter = new MemoryStorageAdapter();
+    const localService = new SaveService(localAdapter);
+    const cloudService = new SaveService(cloudAdapter);
+    const base = createCareer("cloud-pending-recovery");
+    const key = "basketball-manager:career:1";
+    await localService.save(1, base);
+    await localService.syncWithCloud(1, cloudAdapter);
+    const oldCloud = await cloudAdapter.get(key) as string;
+    const newer = structuredClone(base);
+    newer.calendar.currentDateIndex = 2;
+    await cloudService.save(1, newer);
+    await cloudAdapter.set(`${key}:pending`, await cloudAdapter.get(key) as string);
+    await cloudAdapter.set(key, oldCloud);
+
+    expect((await localService.syncWithCloud(1, cloudAdapter))?.status).toBe("PULLED_CLOUD");
+    expect((await localService.load(1))?.calendar.currentDateIndex).toBe(2);
+    expect(await cloudAdapter.get(`${key}:pending`)).toBeNull();
+  });
+
+  it("preserves diagnostics for every unreadable copy instead of treating the slot as empty", async () => {
+    const backing = new MemoryStorageAdapter();
+    const key = "basketball-manager:career:1";
+    for (const suffix of ["", ":pending", ":previous-valid"]) await backing.set(`${key}${suffix}`, "unreadable");
+    const failure = new Error("INVALID_COMPRESSED_SAVE: Invalid character");
+    const adapter: StorageAdapter = {
+      async get(name) { if (await backing.get(name) !== null) throw failure; return null; },
+      set: (name, value) => backing.set(name, value),
+      remove: (name) => backing.remove(name),
+    };
+    const service = new SaveService(adapter);
+    await expect(service.load(1)).rejects.toMatchObject({
+      name: "SaveRecoveryError",
+      diagnostics: [
+        { key, error: failure },
+        { key: `${key}:pending`, error: failure },
+        { key: `${key}:previous-valid`, error: failure },
+      ],
+    });
+    expect(await service.listSlotSummaries()).toEqual([
+      expect.objectContaining({ slotId: 1, status: "CORRUPTED", error: expect.stringContaining("Invalid character") }),
+    ]);
+    expect(await service.loadMostRecent()).toBeNull();
+  });
+
+  it("never rebuilds a healthy but temporarily inaccessible slot or a slot with an unreadable backup", async () => {
+    const backing = new MemoryStorageAdapter();
+    const key = "basketball-manager:career:1";
+    const unavailable = new Set<string>();
+    const adapter: StorageAdapter = {
+      async get(name) { if (unavailable.has(name)) throw new Error("STORAGE_OFFLINE"); return backing.get(name); },
+      set: (name, value) => backing.set(name, value),
+      remove: (name) => backing.remove(name),
+    };
+    const service = new SaveService(adapter);
+    const original = createCareer("temporarily-unavailable-save");
+    await service.save(1, original);
+    const committed = await backing.get(key);
+    unavailable.add(key);
+    expect(await service.listSlotSummaries()).toEqual([
+      expect.objectContaining({ slotId: 1, status: "UNAVAILABLE", error: expect.stringContaining("STORAGE_OFFLINE") }),
+    ]);
+    await expect(service.save(1, createCareer("replacement"), { rebuildCorrupted: true })).rejects.toMatchObject({ canRebuild: false });
+    expect(await backing.get(key)).toBe(committed);
+    expect(await service.loadMostRecent()).toBeNull();
+    unavailable.clear();
+    expect((await service.load(1))?.seeds.careerSeed).toBe(original.seeds.careerSeed);
+
+    await backing.set(key, "broken-json");
+    unavailable.add(`${key}:previous-valid`);
+    expect(await service.listSlotSummaries()).toEqual([expect.objectContaining({ slotId: 1, status: "UNAVAILABLE" })]);
+    await expect(service.save(1, original, { rebuildCorrupted: true })).rejects.toMatchObject({ canRebuild: false });
+    expect(await backing.get(key)).toBe("broken-json");
+  });
+
+  it("reports a rebuilt healthy primary as committed even if corrupt backup cleanup fails", async () => {
+    const backing = new MemoryStorageAdapter();
+    const key = "basketball-manager:career:1";
+    await backing.set(key, "broken-json");
+    await backing.set(`${key}:previous-valid`, "broken-json");
+    const adapter: StorageAdapter = {
+      get: (name) => backing.get(name),
+      set: (name, value) => backing.set(name, value),
+      async remove(name) {
+        if (name === `${key}:previous-valid`) throw new Error("BACKUP_REMOVE_FAILED");
+        await backing.remove(name);
+      },
+    };
+    const service = new SaveService(adapter);
+    const state = createCareer("committed-corrupt-slot-rebuild");
+    expect((await service.save(1, state, { rebuildCorrupted: true })).revision).toBe(1);
+    expect((await service.load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
+    expect(await service.listSlotSummaries()).toEqual([expect.objectContaining({ slotId: 1, revision: 1 })]);
+  });
+
+  it("classifies actual gzip corruption as rebuildable while unsupported gzip remains unavailable", async () => {
+    const values = new Map<string, string>();
+    const key = "basketball-manager:career:1";
+    values.set(key, "gz:!!!!");
+    vi.stubGlobal("window", { localStorage: {
+      getItem: (name: string) => values.get(name) ?? null,
+      setItem: (name: string, value: string) => { values.set(name, value); },
+      removeItem: (name: string) => { values.delete(name); },
+    } });
+    try {
+      const service = new SaveService(new LocalStorageAdapter());
+      expect(await service.listSlotSummaries()).toEqual([expect.objectContaining({ status: "CORRUPTED" })]);
+      await expect(service.load(1)).rejects.toMatchObject({ canRebuild: true });
+      const state = createCareer("rebuild-invalid-gzip");
+      await service.save(1, state, { rebuildCorrupted: true });
+      expect((await service.load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
+      vi.stubGlobal("DecompressionStream", undefined);
+      expect(await service.listSlotSummaries()).toEqual([expect.objectContaining({ status: "UNAVAILABLE" })]);
+      await expect(service.save(1, state, { rebuildCorrupted: true })).rejects.toMatchObject({ canRebuild: false });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("isolates unrecoverable slots and requires explicit consent before rebuilding them", async () => {
+    const adapter = new MemoryStorageAdapter();
+    const service = new SaveService(adapter);
+    const healthy = createCareer("healthy-next-to-broken-slot");
+    await service.save(1, healthy);
+    for (const suffix of ["", ":pending", ":previous-valid"]) await adapter.set(`basketball-manager:career:2${suffix}`, "broken-json");
+    const summaries = await service.listSlotSummaries();
+    expect(summaries).toEqual([
+      expect.objectContaining({ slotId: 1, revision: 1 }),
+      expect.objectContaining({ slotId: 2, status: "CORRUPTED", error: expect.stringContaining("No recoverable save revision") }),
+    ]);
+    expect((await service.loadMostRecent())?.slotId).toBe(1);
+    await expect(service.load(2)).rejects.toThrow("No recoverable save revision");
+    await expect(service.save(2, healthy)).rejects.toThrow("No recoverable save revision");
+    await service.save(3, createCareer("new-career-in-empty-slot"));
+    expect((await service.load(3))?.seeds.careerSeed).toBe("new-career-in-empty-slot");
+    await service.save(2, healthy, { rebuildCorrupted: true });
+    expect((await service.load(2))?.seeds.careerSeed).toBe(healthy.seeds.careerSeed);
+    expect(await adapter.get("basketball-manager:career:2:previous-valid")).toBeNull();
+  });
+
+  it.each(["base64", "truncated-gzip", "checksum", "pending"])("recovers real compressed copies independently when %s is corrupt", async (kind) => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", { localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    } });
+    try {
+      const service = new SaveService(new LocalStorageAdapter());
+      const state = createCareer(`recover-compressed-${kind}`);
+      const key = "basketball-manager:career:1";
+      await service.save(1, state);
+      const valid = values.get(key)!;
+      expect(valid.startsWith("gz:")).toBe(true);
+      values.set(`${key}:previous-valid`, valid);
+      if (kind === "pending") values.set(`${key}:pending`, "gz:!!!!");
+      else if (kind === "base64") values.set(key, "gz:!!!!");
+      else if (kind === "truncated-gzip") values.set(key, "gz:H4sIAAAAAAAA");
+      else {
+        const adapter = new LocalStorageAdapter();
+        const corrupt = JSON.parse(await adapter.get(key) as string);
+        corrupt.stateHash = "invalid-checksum";
+        await adapter.set(key, JSON.stringify(corrupt));
+      }
+      expect((await service.load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
+      expect(values.has(`${key}:pending`)).toBe(false);
+      await service.save(1, state);
+      expect((await service.load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("does not read the previous full revision when the primary is valid", async () => {
     const backing = new MemoryStorageAdapter();
     const reads: string[] = [];

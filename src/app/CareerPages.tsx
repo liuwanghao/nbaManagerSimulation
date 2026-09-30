@@ -121,10 +121,11 @@ function SeasonGameButton({ game, state, label, onOpenGame }: { game: GameResult
   </button>;
 }
 
-export function CareerPages({ state, activeTab, activeSlot, onPrepareLeaderboard, onOpenLeaderboard, onOpenPlayer, onOpenGame }: {
+export function CareerPages({ state, activeTab, activeSlot, busy = false, onPrepareLeaderboard, onOpenLeaderboard, onOpenPlayer, onOpenGame }: {
   state: GameState;
   activeTab: CareerTab;
   activeSlot: LeaderboardSaveSlot;
+  busy?: boolean;
   onPrepareLeaderboard: () => Promise<void>;
   onOpenLeaderboard: () => void;
   onOpenPlayer: (id: string) => void;
@@ -203,10 +204,10 @@ export function CareerPages({ state, activeTab, activeSlot, onPrepareLeaderboard
           <div><small>完整赛季</small><strong>{overview.seasons}<i> 季</i></strong><span>持续书写中</span></div>
         </div>
       </div>
-      <a className="career-leaderboard-link league-section-card" href={`./leaderboard/index.html?careerSlot=${activeSlot}`} onClick={(event) => {
+      <a className="career-leaderboard-link league-section-card" aria-disabled={busy} href={`./leaderboard/index.html?careerSlot=${activeSlot}`} onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        if (openingLeaderboardRef.current) return;
+        if (busy || openingLeaderboardRef.current) return;
         openingLeaderboardRef.current = true;
         setLeaderboardStatus("正在保存生涯进度…");
         void (async () => {

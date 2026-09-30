@@ -8,11 +8,12 @@ import { getQualifyingOfferAmount } from "../game/contracts/ContractRules";
 import { evaluateTradeOffer, type TradeCommand } from "../game/trade/TradeService";
 import { isUntouchable, untouchablePlayerIds } from "../game/trade/TradeAvailabilityService";
 import type { RosterCommand } from "../game/roster/RosterService";
+import { getRosterTrainingAssignments } from "../game/roster/TrainingPlanService";
 import type { ContractYearOption, GameState, Player, PromisedRole, TrainingFocus } from "../game/state/types";
 import type { ContractLifecycleCommand } from "../game/contracts/ContractLifecycleService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
-import { GameChrome } from "./GameChrome";
+import { GameChrome, type SaveActionOptions, type SaveActionResult } from "./GameChrome";
 import { getTeamInboxItems } from "../game/notifications/TeamNotificationService";
 import { contractStatusLabel, freeAgencyTransactionLabel, humanizeUiText, measurementLabel, moneyLabel, phaseLabel, positionLabel, positionPairLabel, slotLabel } from "./uiText";
 import { localizePlayerNamesInText, playerNameZh, playerSurnameZh } from "./playerNameZh";
@@ -42,7 +43,7 @@ interface Stage4FlowProps {
   onFreeAgencyCommand: (command: FreeAgencyCommand) => Promise<void>;
   onTradeCommand: (command: TradeCommand) => Promise<void>;
   onRosterCommand: (command: RosterCommand) => Promise<void>;
-  onSave: (slot?: 1 | 2 | 3) => Promise<void>;
+  onSave: (slot?: 1 | 2 | 3, options?: SaveActionOptions) => Promise<SaveActionResult | void>;
   onLoad: (slot?: 1 | 2 | 3) => Promise<boolean>;
   onLoadLatest: () => Promise<boolean>;
   saveSlots: SaveSlotSummary[];
@@ -54,6 +55,11 @@ interface Stage4FlowProps {
 }
 
 const money = moneyLabel;
+
+export function trainingFocusCommandId(state: GameState, playerId: string): string {
+  const intentId = crypto.getRandomValues(new Uint32Array(4)).join("-");
+  return `training-${state.league.seasonId}-${playerId}-${intentId}`;
+}
 
 export function freeAgencyOfferCommandId(state: GameState, playerId: string): string {
   const market = state.freeAgency;
@@ -121,7 +127,7 @@ export function Stage4Flow({ state, busy, status, onCommand, onContractCommand, 
       {phase === "PRESEASON" && <RosterLock state={state} busy={busy} onRosterCommand={onRosterCommand} />}
       <footer>
         <label className="slot-picker">存档<select disabled={busy} value={activeSlot} onChange={(event) => onSlotChange(Number(event.target.value) as 1 | 2 | 3)}><option value={1}>{slotLabel(1)}</option><option value={2}>{slotLabel(2)}</option><option value={3}>{slotLabel(3)}</option></select></label>
-        <button className="footer-action" disabled={busy} onClick={() => void onSave()}>保存{slotLabel(activeSlot)}</button>
+        <button className="footer-action" disabled={busy} onClick={() => void onSave().catch(() => undefined)}>保存{slotLabel(activeSlot)}</button>
         <button className="footer-action" disabled={busy} onClick={() => void onLoad()}>读取{slotLabel(activeSlot)}</button>
         <span>选秀选择、合同生成与电脑球队选秀均通过引擎指令原子提交</span>
       </footer>
@@ -691,7 +697,7 @@ function RosterLock({ state, busy, onRosterCommand }: Pick<Stage4FlowProps, "sta
   const [focusPickerAnchor, setFocusPickerAnchor] = useState<{ left: number; top: number; width: number } | null>(null);
   const roster = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
   const requiredWaives = Math.max(0, roster.length - LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum);
-  const assignments = state.trainingPlan?.seasonId === state.league.seasonId ? state.trainingPlan.assignments : {};
+  const assignments = state.trainingPlan?.seasonId === state.league.seasonId ? getRosterTrainingAssignments(state) : {};
   const focusedCount = Object.keys(assignments).length;
   const selectedPlayer = selectedPlayerId ? state.players[selectedPlayerId] : undefined;
   const pendingWaivePlayer = pendingWaivePlayerId ? state.players[pendingWaivePlayerId] : undefined;
@@ -731,7 +737,7 @@ function RosterLock({ state, busy, onRosterCommand }: Pick<Stage4FlowProps, "sta
   }} /><div className="terminal-sticky-action"><button className="terminal-primary-button" disabled={busy || roster.length > LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum} onClick={() => onRosterCommand({ commandId: `lock-opening-roster-${state.league.seasonId}`, type: "LOCK_OPENING_ROSTER", payload: { confirmMinimumFill: true } })}>锁定名单并进入常规赛 ➔</button></div>
     {focusPickerPlayer && focusPickerAnchor && createPortal(<div className="preseason-focus-dismiss" role="presentation" onMouseDown={closeFocusPicker}><div className="preseason-focus-dropdown" role="menu" aria-label={`${playerNameZh(focusPickerPlayer.name, focusPickerPlayer.id)} 训练重点`} style={focusPickerAnchor} onMouseDown={(event) => event.stopPropagation()}><header><b>{playerNameZh(focusPickerPlayer.name, focusPickerPlayer.id)}</b><small className={focusPickerPlayer.age + 1 >= 30 ? "training-age-warning" : ""}>当前 {focusPickerPlayer.age} 岁 · 预计结算 {focusPickerPlayer.age + 1} 岁{focusPickerPlayer.age + 1 >= 30 ? " · 无培养加成" : ` · 名额 ${focusedCount}/${BALANCE_CONFIG.training.maxFocusedPlayers}`}</small></header>{([{ value: null, label: "不指定", description: "取消重点培养，不占用培养名额" }, ...TRAINING_FOCUS_OPTIONS] as Array<{ value: TrainingFocus | null; label: string; description: string }>).map(({ value, label, description }) => {
       const selected = (assignments[focusPickerPlayer.id] ?? null) === value;
-      return <button type="button" role="menuitemradio" aria-checked={selected} key={value ?? "none"} className={selected ? "selected" : ""} disabled={busy || (value !== null && (focusPickerPlayer.age + 1 >= 30 || (!assignments[focusPickerPlayer.id] && focusedCount >= BALANCE_CONFIG.training.maxFocusedPlayers)))} onClick={() => { closeFocusPicker(); if (selected) return; void onRosterCommand({ commandId: `training-${state.league.seasonId}-${focusPickerPlayer.id}-${value ?? "none"}`, type: "SET_TRAINING_FOCUS", payload: { playerId: focusPickerPlayer.id, focus: value } }); }}><span><b>{label}</b><small>{value !== null && focusPickerPlayer.age + 1 >= 30 ? "预计结算时已满 30 岁，此方向不会提供加成" : description}</small></span>{selected && <strong>✓</strong>}</button>;
+      return <button type="button" role="menuitemradio" aria-checked={selected} key={value ?? "none"} className={selected ? "selected" : ""} disabled={busy || (value !== null && (focusPickerPlayer.age + 1 >= 30 || (!assignments[focusPickerPlayer.id] && focusedCount >= BALANCE_CONFIG.training.maxFocusedPlayers)))} onClick={() => { closeFocusPicker(); if (selected) return; void onRosterCommand({ commandId: trainingFocusCommandId(state, focusPickerPlayer.id), type: "SET_TRAINING_FOCUS", payload: { playerId: focusPickerPlayer.id, focus: value } }); }}><span><b>{label}</b><small>{value !== null && focusPickerPlayer.age + 1 >= 30 ? "预计结算时已满 30 岁，此方向不会提供加成" : description}</small></span>{selected && <strong>✓</strong>}</button>;
     })}</div></div>, document.body)}
     {selectedPlayer && <div className="player-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedPlayerId(null); }}><section className="reference-player-dialog" role="dialog" aria-modal="true" aria-label={`${playerNameZh(selectedPlayer.name, selectedPlayer.id)} 球员详情`}><button className="detail-close" type="button" onClick={() => setSelectedPlayerId(null)} aria-label="关闭">×</button><ReferencePlayerCard player={selectedPlayer} teamName={state.teams[selectedPlayer.teamId]?.fullName ?? "自由球员"} /></section></div>}
     {pendingWaivePlayer && <div className="player-detail-backdrop preseason-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setPendingWaivePlayerId(null); }}><section className="preseason-waive-dialog" data-testid="preseason-waive-dialog" role="alertdialog" aria-modal="true" aria-labelledby="preseason-waive-title" aria-describedby="preseason-waive-description"><span className="preseason-waive-icon" aria-hidden="true">!</span><div><small>ROSTER TRANSACTION</small><h2 id="preseason-waive-title">确认裁掉 {playerNameZh(pendingWaivePlayer.name, pendingWaivePlayer.id)}？</h2><p id="preseason-waive-description">该操作会立即移出球队名单；剩余保障金额 {money(pendingWaivePlayer.contract.guaranteedAmount)} 将按合同年份计入死钱。</p><div className="preseason-waive-summary"><span>裁员后名单 <b>{roster.length - 1} 人</b></span><span>球员状态 <b>完全自由球员</b></span></div><div className="preseason-waive-actions"><button type="button" data-testid="preseason-waive-cancel" disabled={busy} onClick={() => setPendingWaivePlayerId(null)}>取消</button><button type="button" className="danger" data-testid="preseason-waive-confirm" disabled={busy} onClick={() => void onRosterCommand({ commandId: `waive-${state.league.seasonId}-${pendingWaivePlayer.id}`, type: "WAIVE_PLAYER", payload: { playerId: pendingWaivePlayer.id } }).finally(() => setPendingWaivePlayerId(null))}>确认裁员</button></div></div></section></div>}

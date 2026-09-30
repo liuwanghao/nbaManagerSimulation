@@ -11,6 +11,7 @@ import { ensureExpansionWelcomeNotification } from "../notifications/TeamNotific
 import { getCapSheet } from "../cap/CapSheetService";
 import { advanceFreeAgencyDay, finishMainFreeAgencyAfterSettlement } from "../freeAgency/FreeAgencyService";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, reconcileRotationAfterRosterChange, validateRotationPlan } from "./RotationPlanService";
+import { getRosterTrainingAssignments } from "./TrainingPlanService";
 
 export type RosterCommand =
   | { commandId: string; type: "CLOSE_FREE_AGENCY"; payload: Record<string, never> }
@@ -55,12 +56,12 @@ export function waivePlayer(input: GameState, playerId: string): GameState {
 
 export function setTrainingFocus(input: GameState, playerId: string, focus: TrainingFocus | null): GameState {
   assertPhaseAllowed(input, "Set training focus", ["PRESEASON"]);
-  if (!input.teams[input.userTeamId].playerIds.includes(playerId)) throw new Error("TRAINING_PLAYER_NOT_ON_USER_ROSTER");
+  if (!input.teams[input.userTeamId].playerIds.includes(playerId) || input.players[playerId]?.teamId !== input.userTeamId) throw new Error("TRAINING_PLAYER_NOT_ON_USER_ROSTER");
   const state = structuredClone(input);
   if (!state.trainingPlan || state.trainingPlan.seasonId !== state.league.seasonId) {
     state.trainingPlan = { seasonId: state.league.seasonId, assignments: {} };
   }
-  const assignments = state.trainingPlan.assignments;
+  const assignments = state.trainingPlan.assignments = getRosterTrainingAssignments(state);
   if (focus === null) {
     delete assignments[playerId];
     return state;
@@ -200,6 +201,7 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
   if (size > LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum) throw new Error("ROSTER_OVER_REGULAR_LIMIT");
   if (size < LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMinimum && !confirmMinimumFill) throw new Error("MINIMUM_FILL_CONFIRMATION_REQUIRED");
   const state = structuredClone(input);
+  if (state.trainingPlan) state.trainingPlan.assignments = getRosterTrainingAssignments(state);
   while (state.teams[state.userTeamId].playerIds.length < LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMinimum) {
     const player = availableFreeAgents(state)[0];
     if (!player) throw new Error("No free agent is available for minimum roster fill");

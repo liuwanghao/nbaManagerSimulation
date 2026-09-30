@@ -6,6 +6,8 @@ import { tradePlayerValue } from "./TradePlayerValue";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { acceptTradeOffer, applyTradePackage, evaluateTradeOffer, executeTradeCommand, generateTargetedTradeOffers, generateTradeOffers, isTradePhaseAllowed, validateTradePackage } from "./TradeService";
 import { isUntouchable, untouchablePlayerIds } from "./TradeAvailabilityService";
+import { setTrainingFocus } from "../roster/RosterService";
+import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 
 function tradeState() {
   const state = createCareer("player-trade-tests");
@@ -14,6 +16,36 @@ function tradeState() {
 }
 
 describe("TradeService", () => {
+  it("releases training slots on either trade side and does not restore a plan after a return trade", () => {
+    for (const userOnLeft of [true, false]) {
+      let state = createCareer(`trade-training-${userOnLeft}`);
+      state.league.currentPhase = "PRESEASON";
+      const userTeam = state.teams[state.userTeamId];
+      const counterpart = state.teams.CHA;
+      const outgoing = userTeam.playerIds.filter((id) => state.players[id].contract.status === "STANDARD")
+        .sort((a, b) => calculatePlayerOverall(state.players[a]) - calculatePlayerOverall(state.players[b]))[0];
+      const incoming = counterpart.playerIds.find((id) => state.players[id].contract.status === "STANDARD" && !isUntouchable(state, id))!;
+      for (const team of [userTeam, counterpart]) for (const id of team.playerIds) state.players[id].contract.salary = LEAGUE_FINANCE_CONFIG.minimumSalary;
+      state = setTrainingFocus(state, outgoing, "SHOOTING");
+      const trade = {
+        leftTeamId: userOnLeft ? userTeam.id : counterpart.id,
+        rightTeamId: userOnLeft ? counterpart.id : userTeam.id,
+        leftPlayerIds: [userOnLeft ? outgoing : incoming], rightPlayerIds: [userOnLeft ? incoming : outgoing],
+        leftPickIds: [], rightPickIds: [],
+      };
+      applyTradePackage(state, trade);
+      expect(state.players[outgoing].teamId).toBe(counterpart.id);
+      expect(state.trainingPlan?.assignments).toEqual({});
+      const [first, second] = state.teams[state.userTeamId].playerIds;
+      state = setTrainingFocus(state, first, "DEFENSE");
+      state = setTrainingFocus(state, second, "BALANCED");
+      expect(Object.keys(state.trainingPlan!.assignments)).toHaveLength(2);
+      applyTradePackage(state, { ...trade, leftPlayerIds: trade.rightPlayerIds, rightPlayerIds: trade.leftPlayerIds });
+      expect(state.players[outgoing].teamId).toBe(state.userTeamId);
+      expect(state.trainingPlan?.assignments[outgoing]).toBeUndefined();
+    }
+  });
+
   it("rejects untouchables in direct packages, targeted inquiries and saved offers", () => {
     const state = tradeState();
     const protectedTeam = Object.values(state.teams).find((team) => team.id !== state.userTeamId

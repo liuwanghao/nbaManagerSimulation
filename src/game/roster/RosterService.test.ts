@@ -5,7 +5,7 @@ import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { getFreeAgents } from "../freeAgency/FreeAgencyService";
 import { getCapSheet } from "../cap/CapSheetService";
 import { getSeasonFinanceConfig } from "../../config/leagueFinance";
-import { lockOpeningRoster, setTeamRole, setTrainingFocus, waivePlayer } from "./RosterService";
+import { executeRosterCommand, lockOpeningRoster, setTeamRole, setTrainingFocus, waivePlayer } from "./RosterService";
 
 describe("RosterService", () => {
   it("waives a player into UFA and records guaranteed salary as dead money", () => {
@@ -140,6 +140,44 @@ describe("RosterService", () => {
     state = setTrainingFocus(state, second, null);
     state = setTrainingFocus(state, third, "ATHLETICISM");
     expect(state.trainingPlan?.assignments).toEqual({ [first]: "PLAYMAKING", [third]: "ATHLETICISM" });
+  });
+
+  it("discards departed and missing-player training assignments before counting slots", () => {
+    let state = createCareer("stale-training-slots");
+    state.league.currentPhase = "PRESEASON";
+    const [first, second, staleRosterId] = state.teams[state.userTeamId].playerIds;
+    const departed = state.teams.CHA.playerIds[0];
+    state.players[staleRosterId].teamId = "CHA";
+    state.trainingPlan = { seasonId: state.league.seasonId, assignments: {
+      [departed]: "SHOOTING", [staleRosterId]: "DEFENSE", missing: "BALANCED",
+    } };
+    const original = structuredClone(state);
+    state = setTrainingFocus(state, first, "SHOOTING");
+    state = setTrainingFocus(state, second, "DEFENSE");
+    expect(state.trainingPlan?.assignments).toEqual({ [first]: "SHOOTING", [second]: "DEFENSE" });
+    expect(original.trainingPlan?.assignments).toHaveProperty(departed);
+    expect(() => setTrainingFocus(state, staleRosterId, "BALANCED")).toThrow("TRAINING_PLAYER_NOT_ON_USER_ROSTER");
+  });
+
+  it("keeps repeated training commands idempotent after another intent and reload", () => {
+    let state = createCareer("training-command-retry");
+    state.league.currentPhase = "PRESEASON";
+    const playerId = state.teams[state.userTeamId].playerIds[0];
+    const command = { commandId: "first-training-intent", type: "SET_TRAINING_FOCUS" as const, payload: { playerId, focus: "SHOOTING" as const } };
+    state = executeRosterCommand(state, command);
+    state = executeRosterCommand(state, { commandId: "second-training-intent", type: "SET_TRAINING_FOCUS", payload: { playerId, focus: "DEFENSE" } });
+    state = JSON.parse(JSON.stringify(state));
+    expect(executeRosterCommand(state, command)).toBe(state);
+    expect(state.trainingPlan?.assignments[playerId]).toBe("DEFENSE");
+  });
+
+  it("removes a waived player's training assignment before they can return", () => {
+    let state = createCareer("waived-training");
+    state.league.currentPhase = "PRESEASON";
+    const playerId = state.teams[state.userTeamId].playerIds[0];
+    state = setTrainingFocus(state, playerId, "SHOOTING");
+    state = waivePlayer(state, playerId);
+    expect(state.trainingPlan?.assignments).toEqual({});
   });
 
   it("lets the manager change team roles while enforcing three franchise cores", () => {

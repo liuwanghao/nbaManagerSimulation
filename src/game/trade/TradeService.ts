@@ -7,6 +7,7 @@ import type { DraftPickAsset, GameState, Player, TradeOffer } from "../state/typ
 import { calculateTeamFitForPlayers } from "../team/TeamFitService";
 import { validateSalaryMatch } from "./SalaryMatchValidator";
 import { reconcileRotationAfterRosterChange } from "../roster/RotationPlanService";
+import { getRosterTrainingAssignments } from "../roster/TrainingPlanService";
 import { isUntouchable, untouchablePlayerIds } from "./TradeAvailabilityService";
 import { playerTradeWaitingReason } from "./TradeTimingPolicy";
 
@@ -184,6 +185,12 @@ export function applyTradePackage(state: GameState, trade: TradePackage): void {
   for (const player of rightPlayers) state.players[player.id].rotationRole = player.rotationRole;
   for (const id of trade.leftPlayerIds) { state.players[id].teamId = right.id; state.players[id].birdTeamId = right.id; }
   for (const id of trade.rightPlayerIds) { state.players[id].teamId = left.id; state.players[id].birdTeamId = left.id; }
+  if (state.trainingPlan) {
+    if (trade.leftTeamId === state.userTeamId || trade.rightTeamId === state.userTeamId) {
+      for (const id of [...trade.leftPlayerIds, ...trade.rightPlayerIds]) delete state.trainingPlan.assignments[id];
+    }
+    state.trainingPlan.assignments = getRosterTrainingAssignments(state);
+  }
   for (const id of trade.leftPickIds) state.draftPicks[id].ownerTeamId = right.id;
   for (const id of trade.rightPickIds) state.draftPicks[id].ownerTeamId = left.id;
 }

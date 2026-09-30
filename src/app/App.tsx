@@ -27,7 +27,7 @@ import { Stage4Flow, TradeDesk } from "./Stage4Flow";
 import { calculateTeamFit } from "../game/team/TeamFitService";
 import { freeAgentAttraction } from "../game/team/TeamSystemService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
-import { GameChrome, SeasonNavigation, type SeasonTab } from "./GameChrome";
+import { GameChrome, SeasonNavigation, type SeasonTab, type SaveActionOptions, type SaveActionResult } from "./GameChrome";
 import { BasketballSeamLoader } from "./BasketballSeamLoader";
 import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import {
@@ -133,7 +133,12 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const [status, setStatus] = useState(() => ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"].includes(initialState.league.currentPhase)
     ? "新赛季已开始 · 等待下一项经理决策"
     : `已进入${phaseLabel(initialState.league.currentPhase)}`);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const busyInFlight = useRef(false);
+  const setBusy = (value: boolean) => {
+    busyInFlight.current = value;
+    setBusyState(value);
+  };
   const [coachingMessage, setCoachingMessage] = useState<string | null>(null);
   const [pregameSelection, setPregameSelection] = useState<RegularPregameSelection | null>(null);
   const coachingActionInProgress = useRef(false);
@@ -383,9 +388,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     window.advanceTime = async () => Promise.resolve();
   }, [state, standings, myRecord, myTeam, myTeamFit, myTeamOverall, myFreeAgentAttraction, nextGame, latestUserGame, latestAwards, hallOfFamers.length, gmLevel, unlockedAchievements.length, simulationBlockingEvent?.eventInstanceId, activeSlot, fiveGameAnimation]);
 
-  const persistState = async (next: GameState, slot: 1 | 2 | 3): Promise<"LOCAL" | "SYNCED" | "CONFLICT"> => {
+  const persistState = async (next: GameState, slot: 1 | 2 | 3, options?: SaveActionOptions): Promise<Exclude<SaveActionResult, false>> => {
     if (!saveService) return "LOCAL";
-    const saved = await saveService.save(slot, next);
+    const saved = await saveService.save(slot, next, options);
     const summary = saveService.summaryFor(slot, saved);
     setSaveSlots((current) => [...current.filter((entry) => entry.slotId !== slot), summary].sort((left, right) => left.slotId - right.slotId));
     if (!cloudStorage) return "LOCAL";
@@ -397,12 +402,12 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       }
       return "SYNCED";
     } catch {
-      return "LOCAL";
+      return "LOCAL_SYNC_FAILED";
     }
   };
 
   const applyCoaching = async (command: CoachingCommand): Promise<void> => {
-    if (busy || coachingActionInProgress.current) return;
+    if (busyInFlight.current || coachingActionInProgress.current) return;
     coachingActionInProgress.current = true;
     setBusy(true);
     setCoachingMessage(null);
@@ -445,11 +450,11 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const changeActiveSlot = (slot: 1 | 2 | 3) => {
-    if (!busy) setActiveSlot(slot);
+    if (!busyInFlight.current) setActiveSlot(slot);
   };
 
   const run = (label: string, operation: SimulationOperation, usePregameSelection = false, selection = pregameSelection) => {
-    if (busy) return;
+    if (busyInFlight.current) return;
     const targetSlot = activeSlot;
     setBusy(true);
     setStatus(label);
@@ -489,7 +494,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const startCalendarAnimation = (label: string, target: CalendarTarget) => {
-    if (busy || coachingActionInProgress.current || fiveGameAnimation) return;
+    if (busyInFlight.current || coachingActionInProgress.current || fiveGameAnimation) return;
     setCoachingMessage(null);
     const targetSlot = activeSlot;
     setBusy(true);
@@ -567,76 +572,79 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     startCalendarAnimation(`模拟至 ${selectedCalendarDate.slice(5).replace("-", "/")}`, { kind: "DATE", date: selectedCalendarDate });
   };
 
-  const save = async (slot: 1 | 2 | 3 = activeSlot) => {
-    if (busy) return;
+  const save = async (slot: 1 | 2 | 3 = activeSlot, options?: SaveActionOptions): Promise<SaveActionResult> => {
+    if (busyInFlight.current) return false;
     setBusy(true);
-    setActiveSlot(slot);
     setStatus(`正在原子保存${slotLabel(slot)}…`);
     try {
-      const destination = await persistState(state, slot);
-      setStatus(destination === "SYNCED" ? `${slotLabel(slot)}已保存并同步` : destination === "CONFLICT" ? `${slotLabel(slot)}已保存 · 需要处理云端冲突` : `${slotLabel(slot)}已保存至本机`);
+      const destination = await persistState(state, slot, options);
+      setActiveSlot(slot);
+      setStatus(destination === "SYNCED" ? `${slotLabel(slot)}已保存并同步` : destination === "CONFLICT" ? `${slotLabel(slot)}已保存 · 需要处理云端冲突` : destination === "LOCAL_SYNC_FAILED" ? `${slotLabel(slot)}已保存至本机 · 云同步失败，请重试` : `${slotLabel(slot)}已保存至本机`);
+      return destination;
     } catch (error) {
-      setStatus(error instanceof Error ? humanizeUiText(error.message) : `${slotLabel(slot)}保存失败`);
+      const message = `${slotLabel(slot)}保存失败：${error instanceof Error && error.name === "QuotaExceededError" ? "本机存储空间不足，请释放空间后重试" : error instanceof Error ? humanizeUiText(error.message) : "请重试"}`;
+      setStatus(message);
+      throw new Error(message);
     } finally {
       setBusy(false);
     }
   };
 
   const readSlot = async (slot: 1 | 2 | 3, alreadyLoaded?: GameState): Promise<boolean> => {
-    setActiveSlot(slot);
     const loaded = alreadyLoaded ?? await saveService?.load(slot);
     if (loaded && initialState.meta.dataVersion.startsWith("hupu.nba.live-roster") && !loaded.meta.dataVersion.startsWith("hupu.nba.live-roster")) {
-      setStatus("旧版虚构名单存档与真实阵容版本不兼容，请重新开局");
-      return false;
+      throw new Error("旧版虚构名单存档与真实阵容版本不兼容，请重新开局");
     }
-    if (loaded) {
-      setManualRotationEventId(null);
-      setPregameSelection(null);
-      setOpenLoadDrawer(false);
-      focusCalendarAtCurrentDate(loaded);
-      setState(loaded);
-    }
-    setStatus(loaded ? `已载入${slotLabel(slot)}` : `${slotLabel(slot)}暂无存档`);
-    return Boolean(loaded);
+    if (!loaded) throw new Error(`${slotLabel(slot)}暂无存档`);
+    setManualRotationEventId(null);
+    setPregameSelection(null);
+    setOpenLoadDrawer(false);
+    focusCalendarAtCurrentDate(loaded);
+    setState(loaded);
+    setActiveSlot(slot);
+    setStatus(`已载入${slotLabel(slot)}`);
+    return true;
   };
 
   const load = async (slot: 1 | 2 | 3 = activeSlot) => {
-    if (busy) return false;
+    if (busyInFlight.current) return false;
     setBusy(true);
     setStatus(`正在读取${slotLabel(slot)}…`);
     try {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 32));
       return await readSlot(slot);
     } catch (error) {
-      setStatus(error instanceof Error ? humanizeUiText(error.message) : `${slotLabel(slot)}读取失败`);
-      return false;
+      const message = error instanceof Error ? humanizeUiText(error.message) : `${slotLabel(slot)}读取失败`;
+      setStatus(message);
+      await refreshSaveSlots().catch(() => undefined);
+      throw new Error(message);
     } finally {
       setBusy(false);
     }
   };
 
   const loadLatest = async () => {
-    if (busy) return false;
+    if (busyInFlight.current) return false;
     setBusy(true);
     setStatus("正在读取最近存档…");
     try {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 32));
       const latest = await saveService?.loadMostRecent();
       if (!latest) {
-        setStatus("没有可继续的存档");
-        return false;
+        throw new Error("没有可继续的存档");
       }
       return await readSlot(latest.slotId, latest.state);
     } catch (error) {
-      setStatus(error instanceof Error ? humanizeUiText(error.message) : "读取最近存档失败");
-      return false;
+      const message = error instanceof Error ? humanizeUiText(error.message) : "读取最近存档失败";
+      setStatus(message);
+      throw new Error(message);
     } finally {
       setBusy(false);
     }
   };
 
   const runExpansionCommand = async (command: ExpansionCommand) => {
-    if (!saveService) return false;
+    if (!saveService || busyInFlight.current) return false;
     const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在校验并原子提交…");
@@ -656,6 +664,10 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const runDraftCommand = async (command: DraftCommand) => {
+    if (busyInFlight.current) {
+      if (command.type === "REROLL_DRAFT_LOTTERY") throw new Error("当前操作正在保存，请完成后再重抽。");
+      return;
+    }
     if (!saveService) {
       if (command.type === "REROLL_DRAFT_LOTTERY") throw new Error("存档暂不可用，请稍后重试抽签。");
       return;
@@ -693,7 +705,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const runFreeAgencyCommand = async (command: FreeAgencyCommand) => {
-    if (!saveService) return;
+    if (!saveService || busyInFlight.current) return;
     const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在校验工资帽、报价与球员决策…");
@@ -711,7 +723,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const markTeamNotificationsRead = async (ids: string[]) => {
-    if (!saveService || busy || ids.length === 0) return;
+    if (!saveService || busyInFlight.current || ids.length === 0) return;
     const targetSlot = activeSlot;
     setBusy(true);
     try {
@@ -730,7 +742,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const runManagerCommand = async (command: TradeCommand | RosterCommand) => {
-    if (!saveService) return;
+    if (!saveService || busyInFlight.current) return;
     const targetSlot = activeSlot;
     setBusy(true); setStatus(command.type === "SET_ROTATION_PLAN" ? "正在校验并保存首发与轮换…" : command.type === "SET_TRADE_ASSETS" ? "正在保存交易筹码…" : "正在校验交易、名单与工资帽…");
     try {
@@ -751,7 +763,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const runContractCommand = async (command: ContractLifecycleCommand) => {
-    if (!saveService || busy) return;
+    if (!saveService || busyInFlight.current) return;
     const targetSlot = activeSlot;
     const isRollover = command.type === "ROLLOVER_LEAGUE_YEAR";
     const isPreDraft = command.type === "FINALIZE_OPTION_PHASE";
@@ -798,7 +810,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const runEmergencyRosterCommand = async (command: EmergencyRosterCommand) => {
-    if (!saveService) return;
+    if (!saveService || busyInFlight.current) return;
     const targetSlot = activeSlot;
     setBusy(true);
     setStatus("正在生成合法紧急名单并核算按日底薪…");
@@ -815,7 +827,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const runEventCommand = async (command: EventCommand) => {
-    if (!saveService) return;
+    if (!saveService || busyInFlight.current) return;
     const targetSlot = activeSlot;
     const enteringRegularSeason = state.eventState.queue.some((event) => event.eventInstanceId === command.payload.eventInstanceId
       && (event.definitionId === "franchise_season_opening_001"
@@ -838,7 +850,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const runFatigueVideoEvent = async (command: EventCommand) => {
-    if (!saveService || busy) return;
+    if (!saveService || busyInFlight.current) return;
     const targetSlot = activeSlot;
     setBusy(true);
     setEventError(null);
@@ -860,7 +872,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   };
 
   const resolveSaveConflict = async (choice: "LOCAL" | "CLOUD") => {
-    if (!saveService || !cloudStorage || !saveConflict) return;
+    if (!saveService || !cloudStorage || !saveConflict || busyInFlight.current) return;
     const conflictSlot = saveConflict.slotId;
     setBusy(true);
     try {
@@ -1179,9 +1191,15 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
             document.getElementById(`career-tab-${next}`)?.focus();
           }}>{({ overview: "生涯总览", achievements: "成就系统", history: "球队历史", milestones: "里程碑" })[tab]}</button>)}
         </div>
-        <CareerPages state={state} activeTab={careerSubTab} activeSlot={activeSlot} onPrepareLeaderboard={async () => {
-          await saveService?.save(activeSlot, state);
-          try { saveLeaderboardProof(state); } catch { /* The leaderboard remains readable without session storage. */ }
+        <CareerPages state={state} activeTab={careerSubTab} activeSlot={activeSlot} busy={busy} onPrepareLeaderboard={async () => {
+          if (busyInFlight.current) throw new Error("当前操作正在保存，请完成后再打开排行榜。");
+          setBusy(true);
+          try {
+            await persistState(state, activeSlot);
+            try { saveLeaderboardProof(state); } catch { /* The leaderboard remains readable without session storage. */ }
+          } finally {
+            setBusy(false);
+          }
         }} onOpenLeaderboard={() => setLeaderboardOpen(true)} onOpenPlayer={setSelectedPlayerId} onOpenGame={setSelectedCareerGame} />
       </>}
 

@@ -6,7 +6,7 @@ import { getCapSheet } from "../game/cap/CapSheetService";
 import { getExpansionDraftCandidatePlayers, getSelectableExpansionPlayers, isExpansionDraftSelectionWithinSalaryLimit, type ExpansionCommand } from "../game/expansion/ExpansionService";
 import type { ExpansionCityId, ExpansionPackage, GameState, Player } from "../game/state/types";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
-import { GameChrome } from "./GameChrome";
+import { GameChrome, type SaveActionOptions, type SaveActionResult } from "./GameChrome";
 import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import { playerRatingStyle } from "./playerRatingColor";
 import { humanizeUiText, moneyLabel, phaseLabel, positionPairLabel, slotLabel } from "./uiText";
@@ -21,7 +21,7 @@ interface ExpansionFlowProps {
   busy: boolean;
   status: string;
   onCommand: (command: ExpansionCommand) => Promise<boolean>;
-  onSave: (slot?: 1 | 2 | 3) => Promise<void>;
+  onSave: (slot?: 1 | 2 | 3, options?: SaveActionOptions) => Promise<SaveActionResult | void>;
   onLoad: (slot?: 1 | 2 | 3) => Promise<boolean>;
   onLoadLatest: () => Promise<boolean>;
   saveSlots: SaveSlotSummary[];
@@ -64,7 +64,7 @@ export function ExpansionFlow({ state, busy, status, onCommand, onSave, onLoad, 
 
       <footer>
         <label className="slot-picker">存档<select disabled={busy} value={activeSlot} onChange={(event) => onSlotChange(Number(event.target.value) as 1 | 2 | 3)}><option value={1}>{slotLabel(1)}</option><option value={2}>{slotLabel(2)}</option><option value={3}>{slotLabel(3)}</option></select></label>
-        <button className="footer-action" disabled={busy} onClick={() => void onSave()}>保存{slotLabel(activeSlot)}</button>
+        <button className="footer-action" disabled={busy} onClick={() => void onSave().catch(() => undefined)}>保存{slotLabel(activeSlot)}</button>
         <button className="footer-action" disabled={busy} onClick={() => void onLoad()}>读取{slotLabel(activeSlot)}</button>
         <span>所有关键操作均通过指令提交并自动保存</span>
       </footer>

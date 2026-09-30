@@ -239,6 +239,29 @@ describe("PlayerDevelopmentService", () => {
     expect(focused.trainingPlan).toEqual({ seasonId: state.league.seasonId, assignments: {} });
   });
 
+  it("ignores old-save assignments for players who no longer belong to the user's roster", () => {
+    const state = lifecycleState("departed-training-growth");
+    const [departedId, staleRosterId] = state.teams[state.userTeamId].playerIds;
+    state.teams[state.userTeamId].playerIds = state.teams[state.userTeamId].playerIds.filter((id) => id !== departedId);
+    state.teams.CHA.playerIds.push(departedId);
+    for (const id of [departedId, staleRosterId]) {
+      const player = state.players[id];
+      player.teamId = "CHA";
+      player.birthDate = "2005-01-10";
+      player.ageSource = "GENERATED_BIRTH_DATE";
+      player.attributes = { shooting: 60, finishing: 60, playmaking: 60, perimeterDefense: 60, interiorDefense: 60, rebounding: 60, athleticism: 60, basketballIq: 60 };
+      player.truePotential = 84;
+      player.developmentRate = 1;
+      player.developmentVolatility = 0;
+    }
+    const baseline = processOffseasonPlayerLifecycle(state);
+    state.trainingPlan = { seasonId: "2026-27", assignments: { [departedId]: "SHOOTING", [staleRosterId]: "DEFENSE", missing: "BALANCED" } };
+    const focused = processOffseasonPlayerLifecycle(state);
+    for (const id of [departedId, staleRosterId]) expect(focused.players[id].attributes).toEqual(baseline.players[id].attributes);
+    expect(focused.playerLifecycle?.trainedPlayerIds).toEqual([]);
+    expect(focused.trainingPlan?.assignments).toEqual({});
+  });
+
   it("allows an elite young prospect to reach the 90+ tail without exceeding annual caps", () => {
     let state = lifecycleState("elite-development-tail");
     const playerId = state.teams.SEA.playerIds[0];
