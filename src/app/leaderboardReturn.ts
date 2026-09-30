@@ -7,18 +7,7 @@ function parseSlot(value: string | null): LeaderboardSaveSlot | null {
 }
 
 export function leaderboardReturnSlot(): LeaderboardSaveSlot | null {
-  const fromUrl = parseSlot(new URLSearchParams(window.location.search).get("careerSlot"));
-  if (fromUrl) return fromUrl;
-  try { return parseSlot(sessionStorage.getItem(SLOT_KEY)); } catch { return null; }
-}
-
-export function rememberLeaderboardReturn(slot: LeaderboardSaveSlot): void {
-  try { sessionStorage.setItem(SLOT_KEY, String(slot)); } catch { /* URL is the fallback. */ }
-  try {
-    const url = new URL(window.location.href);
-    url.searchParams.set("careerSlot", String(slot));
-    window.history.replaceState(window.history.state, "", url.href);
-  } catch { /* Session storage remains available if this browser rejects file URL history updates. */ }
+  return parseSlot(new URLSearchParams(window.location.search).get("careerSlot"));
 }
 
 export function clearLeaderboardReturn(): void {

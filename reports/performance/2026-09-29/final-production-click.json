@@ -1,0 +1,31 @@
+{
+  "environment": "Chrome 154 headless, file:// production build, 393x852 CSS px, DPR 3, CDP 6x CPU slowdown",
+  "scenario": "Same injected initial save, continue game, simulate next game and await autosave",
+  "trials": [
+    {
+      "elapsedMs": 4036.6,
+      "maxIntervalGapMs": 273.2,
+      "maxLongTaskMs": 212,
+      "beforeDateIndex": 0,
+      "afterDateIndex": 2,
+      "saveRevision": 2,
+      "saveStateHash": "47b1b6864a9c20eb",
+      "consoleErrors": []
+    },
+    {
+      "elapsedMs": 4177.7,
+      "maxIntervalGapMs": 332.4,
+      "maxLongTaskMs": 310,
+      "beforeDateIndex": 0,
+      "afterDateIndex": 2,
+      "saveRevision": 2,
+      "saveStateHash": "47b1b6864a9c20eb",
+      "consoleErrors": []
+    }
+  ],
+  "baselineTrials": [
+    { "elapsedMs": 12000.6, "maxIntervalGapMs": 3231.5, "maxLongTaskMs": 3197 },
+    { "elapsedMs": 10146.8, "maxIntervalGapMs": 2432.6, "maxLongTaskMs": 2202 }
+  ],
+  "note": "The baseline is the git HEAD production archive with the same initial save. Final bundle contains all optimizations; the comparison does not isolate any one change."
+}

@@ -1,37 +1,13 @@
+import { decodeStoredStringInWorker, encodeStoredStringInWorker } from "../../storage/SaveCodec";
+
 export interface StorageAdapter {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
 }
 
-const bytesToBase64 = (bytes: Uint8Array): string => {
-  let binary = "";
-  for (let start = 0; start < bytes.length; start += 32_768) binary += String.fromCharCode(...bytes.subarray(start, start + 32_768));
-  return btoa(binary);
-};
-
-const base64ToBytes = (value: string): Uint8Array => {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-};
-
-export async function encodeStoredString(value: string): Promise<string> {
-  if (value.length < 1_024 || typeof CompressionStream === "undefined") return `raw:${value}`;
-  const stream = new Blob([value]).stream().pipeThrough(new CompressionStream("gzip"));
-  const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
-  return `gz:${bytesToBase64(compressed)}`;
-}
-
-export async function decodeStoredString(value: string): Promise<string> {
-  if (value.startsWith("raw:")) return value.slice(4);
-  if (!value.startsWith("gz:")) return value;
-  if (typeof DecompressionStream === "undefined") throw new Error("GZIP_STORAGE_UNSUPPORTED");
-  const compressed = base64ToBytes(value.slice(3));
-  const stream = new Blob([compressed.slice().buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return new Response(stream).text();
-}
+export const encodeStoredString = encodeStoredStringInWorker;
+export const decodeStoredString = decodeStoredStringInWorker;
 
 export class LocalStorageAdapter implements StorageAdapter {
   // Only anonymous career saves and checkpoints are stored locally; no phone number or account identifiers.
@@ -68,9 +44,9 @@ export class IndexedDbStorageAdapter implements StorageAdapter {
     return new Promise((resolve, reject) => {
       const transaction = database.transaction(this.storeName, mode);
       const request = operation(transaction.objectStore(this.storeName));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error("INDEXED_DB_OPERATION_FAILED"));
+      transaction.oncomplete = () => resolve(request.result);
       transaction.onerror = () => reject(transaction.error ?? new Error("INDEXED_DB_TRANSACTION_FAILED"));
+      transaction.onabort = () => reject(transaction.error ?? new Error("INDEXED_DB_TRANSACTION_ABORTED"));
     });
   }
 
@@ -84,8 +60,50 @@ export class IndexedDbStorageAdapter implements StorageAdapter {
     await this.transaction<IDBValidKey>("readwrite", (store) => store.put(encoded, key));
   }
 
+  async setIfAbsent(key: string, value: string): Promise<boolean> {
+    const encoded = await encodeStoredString(value);
+    try {
+      await this.transaction<IDBValidKey>("readwrite", (store) => store.add(encoded, key));
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "ConstraintError") return false;
+      throw error;
+    }
+  }
+
   async remove(key: string): Promise<void> {
     await this.transaction<undefined>("readwrite", (store) => store.delete(key));
+  }
+}
+
+/** Copies older localStorage entries into IndexedDB as they are accessed. */
+export class MigratingIndexedDbStorageAdapter implements StorageAdapter {
+  constructor(
+    private readonly current: StorageAdapter & { setIfAbsent?(key: string, value: string): Promise<boolean> } = new IndexedDbStorageAdapter(),
+    private readonly legacy: StorageAdapter = new LocalStorageAdapter(),
+  ) {}
+
+  async get(key: string): Promise<string | null> {
+    const value = await this.current.get(key);
+    if (value !== null) return value;
+    const legacyValue = await this.legacy.get(key);
+    if (legacyValue === null) return null;
+    if (this.current.setIfAbsent) await this.current.setIfAbsent(key, legacyValue);
+    else await this.current.set(key, legacyValue);
+    const migrated = await this.current.get(key);
+    if (migrated === null) throw new Error("SAVE_MIGRATION_VERIFICATION_FAILED");
+    await this.legacy.remove(key);
+    return migrated;
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    await this.current.set(key, value);
+    await this.legacy.remove(key);
+  }
+
+  async remove(key: string): Promise<void> {
+    await this.legacy.remove(key);
+    await this.current.remove(key);
   }
 }
 

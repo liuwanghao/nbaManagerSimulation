@@ -2,16 +2,8 @@ import { startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState 
 import { createPortal } from "react-dom";
 import {
   createExpansionCareer,
-  enterPostseason,
   isUserPostseasonEliminated,
   isUserPostseasonQualified,
-  simulateLeagueDay,
-  simulatePostseason,
-  simulatePostseasonGame,
-  simulatePostseasonRound,
-  simulatePostseasonToNextUserGame,
-  simulateRegularSeason,
-  simulateToNextEvent,
   standingsForConference,
 } from "../game/season/career";
 import { executeExpansionCommand, type ExpansionCommand } from "../game/expansion/ExpansionService";
@@ -70,8 +62,10 @@ import { calculateTeamOverall } from "../game/team/TeamRatingService";
 import { playerRatingStyle } from "./playerRatingColor";
 import { postgameStatLeaders, sortPostgameBoxRows } from "./postgameStats";
 import { postgameAccentColor } from "./postgameAccentColor";
-import { hasRemainingScheduledDay, userInjuryList, visibleInjuryList, visibleRecentGames, type InjuryListEntry } from "./seasonCommandView";
-import { applyRegularPregameSelection, executeCoachingCommand, fiveGameReviewView, nextPlayoffUserGame, offerCoachingReview, randomReviewMoraleTargetIds, regularCoachingView, type CoachingCommand, type RegularPregameSelection } from "../game/coaching/CoachingService";
+import { userInjuryList, visibleInjuryList, visibleRecentGames, type InjuryListEntry } from "./seasonCommandView";
+import { executeCoachingCommand, fiveGameReviewView, nextPlayoffUserGame, randomReviewMoraleTargetIds, regularCoachingView, type CoachingCommand, type RegularPregameSelection } from "../game/coaching/CoachingService";
+import { simulateInBackground, warmSimulationWorker } from "./simulationWorkerClient";
+import type { CalendarTarget, SimulationOperation } from "./simulationTask";
 import { FiveGameReviewPanel, RegularCoachingPanel } from "./CoachingPanels";
 import { coachingFatigueRewardKey, coachingMoraleRewardKey, coachingPregameRewardKey, fatigueEventRewardKey, hasConfirmedCoachingReward, runCoachingWithReward } from "./coachingReward";
 import { getRewardVideoBridge } from "./rewardVideo";
@@ -128,6 +122,11 @@ function calendarDateAtIndex(openingDate: string, dateIndex: number): string {
 
 function App({ initialState = createExpansionCareer("expansion-era-demo"), initialActiveSlot = 1, initialActiveTab = "home", openSaveOnStart = false, onExitToHome }: { initialState?: GameState; initialActiveSlot?: 1 | 2 | 3; initialActiveTab?: SeasonTab; openSaveOnStart?: boolean; onExitToHome?: () => void }) {
   const [state, setState] = useState<GameState>(() => initialState);
+  useEffect(() => {
+    if (!["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE", "PLAY_IN", "PLAYOFFS"].includes(state.league.currentPhase)) return;
+    const timer = window.setTimeout(warmSimulationWorker, 0);
+    return () => window.clearTimeout(timer);
+  }, [state.league.currentPhase]);
   const [openLoadDrawer, setOpenLoadDrawer] = useState(openSaveOnStart);
   const [standingsView, setStandingsView] = useState<StandingsView>("WEST");
   const [status, setStatus] = useState(() => ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"].includes(initialState.league.currentPhase)
@@ -439,14 +438,20 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     if (!busy) setActiveSlot(slot);
   };
 
-  const run = (label: string, operation: (current: GameState) => GameState, usePregameSelection = false) => {
+  const run = (label: string, operation: SimulationOperation, usePregameSelection = false, selection = pregameSelection) => {
+    if (busy) return;
     const targetSlot = activeSlot;
     setBusy(true);
     setStatus(label);
     window.setTimeout(() => {
       void (async () => {
         try {
-          const next = operation(usePregameSelection ? applyRegularPregameSelection(state, pregameSelection) : state);
+          const result = await simulateInBackground({ state, pregameSelection: selection, action: { kind: "OPERATION", operation, usePregameSelection } }, (completed, total) => {
+            setStatus(`${label} · 已推进 ${completed} / ${total} 天`);
+          });
+          if (result.kind !== "OPERATION") throw new Error("模拟结果类型错误");
+          const next = result.state;
+          setStatus(`${label} 正在保存…`);
           await persistState(next, targetSlot);
           if (usePregameSelection) setPregameSelection(null);
           startTransition(() => {
@@ -473,49 +478,30 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     return currentDate;
   };
 
-  const startCalendarAnimation = (label: string, stopWhen: (next: GameState, completedGames: number, simulatedDays: number) => boolean) => {
+  const startCalendarAnimation = (label: string, target: CalendarTarget) => {
     if (busy || coachingActionInProgress.current || fiveGameAnimation) return;
     setCoachingMessage(null);
     const targetSlot = activeSlot;
-    let next: GameState;
-    try {
-      next = applyRegularPregameSelection(state, pregameSelection);
-    } catch (error) {
-      setStatus(error instanceof Error && !error.message.startsWith("COACHING_") ? error.message : "备战选择已失效，请重新选择");
-      return;
-    }
-    const frames: FiveGameAnimation["frames"] = [];
-    let completedGames = 0;
-    while (hasRemainingScheduledDay(next.schedule, next.calendar.currentDateIndex, next.calendar.finalDateIndex)
-      && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next)) {
-      const dateIndex = next.calendar.currentDateIndex;
-      const knownGames = new Set(Object.keys(next.userGameDetails));
-      const day = simulateLeagueDay(next);
-      if (day === next) break;
-      const game = Object.values(day.userGameDetails).find((entry) => !knownGames.has(entry.gameId));
-      frames.push({ date: calendarDateAtIndex(next.calendar.openingDate, dateIndex), game, injuries: userInjuryList(day) });
-      if (game) completedGames += 1;
-      next = day;
-      if (stopWhen(next, completedGames, frames.length)) break;
-    }
-    if (!frames.length) {
-      setStatus("没有可推进的日期，或有待处理的经理事件");
-      return;
-    }
-    if (completedGames > 0) next = offerCoachingReview(next, frames.flatMap((frame) => frame.game ? [frame.game.gameId] : []));
-    // Single-day feedback should feel immediate; a one-game jump keeps all calendar frames
-    // visible while capping the whole hop to roughly one second.
-    const frameDelay = label === "模拟 1 场"
-      ? Math.max(90, Math.min(180, Math.floor(900 / frames.length)))
-      : 260;
-    const focusAnimationDate = (date: string) => {
-      setCalendarMonth(date.slice(0, 7));
-    };
     setBusy(true);
-    setFiveGameAnimation({ frames, completed: 0, totalGames: completedGames, label });
-    focusAnimationDate(frames[0].date);
-    setStatus(`${label} · ${frames[0].date} · 0 / ${completedGames} 场`);
-    const advance = (completed: number) => {
+    setStatus(`${label} · 正在计算…`);
+    void simulateInBackground({ state, pregameSelection, action: { kind: "CALENDAR", target } }, (completed) => {
+      setStatus(`${label} · 已计算 ${completed} 天`);
+    }).then((result) => {
+      if (result.kind !== "CALENDAR") throw new Error("模拟结果类型错误");
+      const { state: next, frames, completedGames } = result;
+      if (!frames.length) {
+        setStatus("没有可推进的日期，或有待处理的经理事件");
+        setBusy(false);
+        return;
+      }
+      const frameDelay = target.kind === "ONE_GAME"
+        ? Math.max(90, Math.min(180, Math.floor(900 / frames.length)))
+        : 260;
+      const focusAnimationDate = (date: string) => setCalendarMonth(date.slice(0, 7));
+      setFiveGameAnimation({ frames, completed: 0, totalGames: completedGames, label });
+      focusAnimationDate(frames[0].date);
+      setStatus(`${label} · ${frames[0].date} · 0 / ${completedGames} 场`);
+      const advance = (completed: number) => {
       if (completed < frames.length) {
         const current = frames[Math.min(completed, frames.length - 1)];
         const finishedGames = frames.slice(0, completed).filter((frame) => frame.game).length;
@@ -542,27 +528,26 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
           fiveGameTimer.current = null;
         }
       })();
-    };
-    fiveGameTimer.current = window.setTimeout(() => advance(1), frameDelay);
-  };
-
-  const simulateNextGame = () => startCalendarAnimation("模拟 1 场", (_next, completedGames) => completedGames >= 1);
-
-  const simulateFive = () => startCalendarAnimation("快进 5 场", (_next, completedGames) => completedGames >= 5);
-
-  const advancePostseason = (selection: RegularPregameSelection | null, wholeRound: boolean) => {
-    setCoachingMessage(null);
-    run(wholeRound ? "正在模拟整轮季后赛…" : "正在模拟下一场季后赛…", (current) => {
-      const prepared = applyRegularPregameSelection(current, selection);
-      return wholeRound ? simulatePostseasonRound(prepared) : postseasonUserEliminated ? simulatePostseasonGame(prepared) : simulatePostseasonToNextUserGame(prepared);
+      };
+      fiveGameTimer.current = window.setTimeout(() => advance(1), frameDelay);
+    }).catch((error) => {
+      setStatus(error instanceof Error ? humanizeUiText(error.message) : "模拟失败，状态未改变");
+      setBusy(false);
     });
   };
 
-  const enterPostseasonAtUserGame = (current: GameState) => simulatePostseasonToNextUserGame(enterPostseason(current));
+  const simulateNextGame = () => startCalendarAnimation("模拟 1 场", { kind: "ONE_GAME" });
+
+  const simulateFive = () => startCalendarAnimation("快进 5 场", { kind: "FIVE_GAMES" });
+
+  const advancePostseason = (selection: RegularPregameSelection | null, wholeRound: boolean) => {
+    setCoachingMessage(null);
+    run(wholeRound ? "正在模拟整轮季后赛…" : "正在模拟下一场季后赛…", wholeRound ? "POSTSEASON_ROUND" : "POSTSEASON_NEXT", true, selection);
+  };
 
   const simulateToSelectedDate = () => {
     if (!selectedCalendarDate || !selectedCalendarDateIsReachable) return;
-    startCalendarAnimation(`模拟至 ${selectedCalendarDate.slice(5).replace("-", "/")}`, (next) => calendarDateAtIndex(next.calendar.openingDate, next.calendar.currentDateIndex) > selectedCalendarDate);
+    startCalendarAnimation(`模拟至 ${selectedCalendarDate.slice(5).replace("-", "/")}`, { kind: "DATE", date: selectedCalendarDate });
   };
 
   const save = async (slot: 1 | 2 | 3 = activeSlot) => {
@@ -974,7 +959,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
         {localizePlayerNamesInText(status, Object.values(state.players))}
       </section>
 
-      {activeTab === "home" && postseasonActive && <PostseasonHome state={state} busy={busy || Boolean(simulationBlockingEvent) || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster)} onAdvance={(selection) => advancePostseason(selection, false)} onAdvanceRound={(selection) => advancePostseason(selection, true)} onSettle={() => run("正在结算剩余季后赛…", simulatePostseason)} onOpenGame={setSelectedGameId} onOpenTeam={setSelectedTeamId} onOpenStarters={() => setShowStarterMatchup(true)} onUnlockVideo={(gameId) => applyCoaching({ type: "UNLOCK_REGULAR_PREP", gameId })} coachingMessage={coachingMessage} />}
+      {activeTab === "home" && postseasonActive && <PostseasonHome state={state} busy={busy || Boolean(simulationBlockingEvent) || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster)} onAdvance={(selection) => advancePostseason(selection, false)} onAdvanceRound={(selection) => advancePostseason(selection, true)} onSettle={() => run("正在结算剩余季后赛…", "POSTSEASON")} onOpenGame={setSelectedGameId} onOpenTeam={setSelectedTeamId} onOpenStarters={() => setShowStarterMatchup(true)} onUnlockVideo={(gameId) => applyCoaching({ type: "UNLOCK_REGULAR_PREP", gameId })} coachingMessage={coachingMessage} />}
 
       {activeTab === "home" && !postseasonActive && <section className="season-command-center" aria-label="赛季中心">
         <article className="season-command-summary regular-season-summary">
@@ -1024,7 +1009,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
             <div className="season-command-honors"><span><small>总冠军</small><strong>{seasonChampion ? state.teams[seasonChampion.teamId]?.fullName ?? seasonChampion.teamId : "待公布"}</strong></span><span><small>总决赛 MVP</small><strong>{seasonFinalsMvp ? playerNameZh(seasonFinalsMvp.name, seasonFinalsMvp.id) : "待公布"}</strong></span></div>
             <button type="button" disabled={busy} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button>
             {transitionError && <p className="season-transition-error" role="alert">{transitionError}</p>}
-          </> : postseasonQualified ? <><b>常规赛程已经完成</b><p>球队获得季后赛资格。进入后可逐场模拟附加赛和季后赛。</p><button type="button" disabled={busy} onClick={() => run("正在进入季后赛…", enterPostseasonAtUserGame)}>进入季后赛</button></> : <><b>常规赛程已经完成</b><p>可以进入附加赛与季后赛结算。</p><button type="button" disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", simulatePostseason)}>{postseasonRunning ? "正在结算…" : "结算季后赛"}</button></>}</div>}
+          </> : postseasonQualified ? <><b>常规赛程已经完成</b><p>球队获得季后赛资格。进入后可逐场模拟附加赛和季后赛。</p><button type="button" disabled={busy} onClick={() => run("正在进入季后赛…", "ENTER_POSTSEASON")}>进入季后赛</button></> : <><b>常规赛程已经完成</b><p>可以进入附加赛与季后赛结算。</p><button type="button" disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", "POSTSEASON")}>{postseasonRunning ? "正在结算…" : "结算季后赛"}</button></>}</div>}
         </article>
 
         {fiveGameReview && <FiveGameReviewPanel key={fiveGameReview.afterGameId} state={state} busy={busy} onApply={applyCoaching} message={coachingMessage} moraleRewardConfirmed={moraleRewardKey ? hasConfirmedCoachingReward(moraleRewardKey) : false} fatigueRewardConfirmed={fatigueRewardKey ? hasConfirmedCoachingReward(fatigueRewardKey) : false} />}
@@ -1059,9 +1044,9 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
         <header><b>比赛日：{selectedCalendarGame.date.slice(5).replace("-", "月")}日</b><span>{displayedCalendarResult ? "比赛已结束" : animatedCalendarIndex >= 0 ? "正在模拟" : "即将进行的赛事"}</span></header>
         <div className="prototype-matchup"><div><TeamLogo team={state.teams[selectedCalendarGame.awayTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.awayTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.awayTeamId].wins, state.standings[selectedCalendarGame.awayTeamId].losses)}</small></div><strong>{displayedCalendarResult ? `${displayedCalendarResult.awayScore} - ${displayedCalendarResult.homeScore}` : "VS"}</strong><div><TeamLogo team={state.teams[selectedCalendarGame.homeTeamId]} variant="compact" /><b>{state.teams[selectedCalendarGame.homeTeamId].name}</b><small>{formatRecord(state.standings[selectedCalendarGame.homeTeamId].wins, state.standings[selectedCalendarGame.homeTeamId].losses)}</small></div></div>
         <div className="prototype-game-actions">
-          {state.league.currentPhase === "OFFSEASON" ? <button disabled={busy} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button> : phaseDone ? postseasonQualified ? <button disabled={busy} onClick={() => run("正在进入季后赛…", enterPostseasonAtUserGame)}>进入季后赛</button> : <button disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", simulatePostseason)}>结算季后赛</button> : <>{displayedCalendarResult ? <button onClick={() => setSelectedGameId(selectedCalendarGame.id)}>查看比赛详情</button> : <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateNextGame}>模拟下一场比赛</button>}<button className="secondary" data-testid="simulate-five" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateFive}>{fiveGameAnimation ? `逐日推进 · ${fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).filter((frame) => frame.game).length} / ${fiveGameAnimation.totalGames} 场` : "逐日推进 5 场赛程"}</button></>}
+          {state.league.currentPhase === "OFFSEASON" ? <button disabled={busy} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button> : phaseDone ? postseasonQualified ? <button disabled={busy} onClick={() => run("正在进入季后赛…", "ENTER_POSTSEASON")}>进入季后赛</button> : <button disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", "POSTSEASON")}>结算季后赛</button> : <>{displayedCalendarResult ? <button onClick={() => setSelectedGameId(selectedCalendarGame.id)}>查看比赛详情</button> : <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateNextGame}>模拟下一场比赛</button>}<button className="secondary" data-testid="simulate-five" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateFive}>{fiveGameAnimation ? `逐日推进 · ${fiveGameAnimation.frames.slice(0, fiveGameAnimation.completed).filter((frame) => frame.game).length} / ${fiveGameAnimation.totalGames} 场` : "逐日推进 5 场赛程"}</button></>}
         </div>
-        {!phaseDone && state.league.currentPhase !== "OFFSEASON" && <details className="prototype-more-actions"><summary>更多模拟选项</summary><div><button data-testid="simulate-next-event" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在模拟到下一经理事件…", simulateToNextEvent, true)}>模拟到下一事件</button><button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在结算完整常规赛…", simulateRegularSeason, true)}>模拟至季后赛</button></div></details>}
+        {!phaseDone && state.league.currentPhase !== "OFFSEASON" && <details className="prototype-more-actions"><summary>更多模拟选项</summary><div><button data-testid="simulate-next-event" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在模拟到下一经理事件…", "NEXT_EVENT", true)}>模拟到下一事件</button><button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={() => run("正在结算完整常规赛…", "REGULAR_SEASON", true)}>模拟至季后赛</button></div></details>}
       </section>}
 
       {activeTab === "home" && !postseasonActive && recentUserGames.length > 0 && <section className="recent-games-card regular-recent-games legacy-season-block"><div className="section-heading"><div><span className="section-kicker">比赛归档</span><h2>最近赛果</h2></div><small>{Object.keys(state.userGameDetails).length} / {userSchedule.length}</small></div><div className="recent-game-list">{recentUserGames.map((game, index) => { const won = game.winnerTeamId === state.userTeamId; const opponent = state.teams[game.homeTeamId === state.userTeamId ? game.awayTeamId : game.homeTeamId]; return <button data-testid={index === 0 ? "latest-game-detail" : undefined} key={game.gameId} onClick={() => setSelectedGameId(game.gameId)}><span className={won ? "game-result win" : "game-result loss"}>{won ? "胜" : "负"}</span><b>{opponent.name}</b><small>{game.homeTeamId === state.userTeamId ? "主场" : "客场"}</small><strong>{game.awayScore}–{game.homeScore}</strong></button>; })}</div></section>}
@@ -1099,11 +1084,11 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
           <>
             <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} onClick={simulateNextGame}>模拟下一场比赛</button>
             <button data-testid="simulate-five" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="secondary" onClick={simulateFive}>模拟 5 场</button>
-            <button data-testid="simulate-next-event" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="ghost" onClick={() => run("正在模拟到下一经理事件…", simulateToNextEvent, true)}>模拟到下一事件</button>
-            <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="ghost" onClick={() => run("正在结算完整常规赛…", simulateRegularSeason, true)}>模拟至季后赛</button>
+            <button data-testid="simulate-next-event" disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="ghost" onClick={() => run("正在模拟到下一经理事件…", "NEXT_EVENT", true)}>模拟到下一事件</button>
+            <button disabled={busy || Boolean(state.injuryState.pendingUserMajorInjury) || Boolean(state.injuryState.pendingEmergencyRoster) || Boolean(simulationBlockingEvent)} className="ghost" onClick={() => run("正在结算完整常规赛…", "REGULAR_SEASON", true)}>模拟至季后赛</button>
           </>
         ) : (
-          postseasonQualified ? <button disabled={busy} onClick={() => run("正在进入季后赛…", enterPostseasonAtUserGame)}>进入季后赛</button> : <button disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", simulatePostseason)}>结算季后赛</button>
+          postseasonQualified ? <button disabled={busy} onClick={() => run("正在进入季后赛…", "ENTER_POSTSEASON")}>进入季后赛</button> : <button disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", "POSTSEASON")}>结算季后赛</button>
         )}
       </section>
 
@@ -1214,7 +1199,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       {selectedPlayer && <PlayerDetailModal player={selectedPlayer} teamName={state.teams[selectedPlayer.teamId]?.fullName ?? "自由球员"} fromRoster={Boolean(selectedTeam)} onClose={() => setSelectedPlayerId(null)} />}
       {conflictModal}
       {transitionErrorDialog}
-      {leaderboardOpen && createPortal(<div className="leaderboard-overlay" role="dialog" aria-modal="true" aria-label="经理排行榜"><iframe ref={leaderboardFrameRef} title="经理排行榜" src={`./leaderboard/index.html?careerSlot=${activeSlot}&embedded=1`} /><button type="button" className="leaderboard-overlay-close" onClick={() => setLeaderboardOpen(false)}>返回生涯</button></div>, document.body)}
+      {leaderboardOpen && createPortal(<div className="leaderboard-overlay" role="dialog" aria-modal="true" aria-label="经理排行榜"><iframe ref={leaderboardFrameRef} title="经理排行榜" src={`./leaderboard/index.html?careerSlot=${activeSlot}&embedded=1`} /><button type="button" className="leaderboard-overlay-close" onClick={() => setLeaderboardOpen(false)}>返回生涯总览</button></div>, document.body)}
     </main>
   );
 }

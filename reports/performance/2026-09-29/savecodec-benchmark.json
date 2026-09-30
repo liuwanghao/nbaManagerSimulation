@@ -1,0 +1,22 @@
+{
+  "environment": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "stateJsonCharacters": 16230037,
+  "hashMatches": true,
+  "mainHash": {
+    "wallMs": 1611.1000000238419,
+    "maxIntervalDelayMs": 1602
+  },
+  "workerHash": {
+    "wallMs": 1640.7999999523163,
+    "maxIntervalDelayMs": 12.699999928474426
+  },
+  "workerSerialize": {
+    "wallMs": 2147,
+    "maxIntervalDelayMs": 26.699999928474426
+  },
+  "workerParse": {
+    "wallMs": 1717.6000000238419,
+    "maxIntervalDelayMs": 17.699999928474426,
+    "valid": true
+  }
+}

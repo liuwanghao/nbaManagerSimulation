@@ -1,0 +1,14 @@
+{
+  "environment": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "cpuSlowdown": 6,
+  "serializedCharacters": 16230276,
+  "previousCharacters": 16230279,
+  "original": {
+    "wallMs": 4522.600000023842,
+    "valid": true
+  },
+  "optimized": {
+    "wallMs": 2427.6999999284744,
+    "valid": true
+  }
+}

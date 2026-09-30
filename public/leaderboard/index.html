@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#060911" />
     <link rel="icon" type="image/png" href="../branding/home-logo-cutout.png" />
-    <title>经理排行榜 · 篮球经理：联盟扩军时代</title>
+    <title>篮球经理：联盟扩军时代</title>
     <style>
       :root { color-scheme: dark; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #eaf3fa; background: #070e19; font-variant-numeric: tabular-nums; }
       * { box-sizing: border-box; }
@@ -13,11 +13,10 @@
       button, a { font: inherit; }
       button:focus-visible, a:focus-visible { outline: 2px solid #00e7f4; outline-offset: 3px; }
       main { width: min(100%, 560px); min-height: 100dvh; margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) 14px max(34px, env(safe-area-inset-bottom)); }
-      header { display: flex; align-items: center; gap: 11px; padding-bottom: 13px; border-bottom: 1px solid #2a4356; }
-      .back { display: grid; width: 36px; height: 36px; flex: none; place-items: center; color: #00d9ef; border: 1px solid #3b5b6f; background: #102537; text-decoration: none; font-size: 25px; line-height: 1; }
-      .heading { min-width: 0; flex: 1; }
-      .heading small, .section-title small, .ranking-hero small { color: #00d9ef; font: 900 9px ui-monospace, monospace; letter-spacing: .14em; }
-      h1 { margin: 3px 0 0; font-size: 17px; line-height: 1.2; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 11px; padding-bottom: 13px; border-bottom: 1px solid #2a4356; }
+      .back { display: inline-flex; min-height: 36px; padding: 0 12px; flex: none; align-items: center; gap: 5px; color: #00d9ef; border: 1px solid #3b5b6f; background: #102537; text-decoration: none; font-size: 11px; font-weight: 900; }
+      .back span { font-size: 23px; font-weight: 400; line-height: 1; }
+      .section-title small, .ranking-hero small { color: #00d9ef; font: 900 9px ui-monospace, monospace; letter-spacing: .14em; }
       .refresh { padding: 8px 9px; color: #c4eaf0; border: 1px solid #3b5b6f; background: #102537; font-size: 10px; cursor: pointer; }
       .refresh:disabled { opacity: .5; cursor: wait; }
       .ranking-hero { padding: 26px 4px 21px; }
@@ -73,7 +72,7 @@
   </head>
   <body>
     <main>
-      <header><a class="back" id="back" href="../index.html" aria-label="返回生涯页面">‹</a><div class="heading"><small>GLOBAL RANK</small><h1>经理排行榜</h1></div><button class="refresh" id="refresh" type="button">刷新榜单 ↻</button></header>
+      <header><a class="back" id="back" href="../index.html"><span aria-hidden="true">‹</span>返回生涯总览</a><button class="refresh" id="refresh" type="button">刷新榜单 ↻</button></header>
       <div class="ranking-hero"><small>DYNASTY SCORE · 王朝积分</small><h2>全服经理，一较高下</h2><p>按账号最高王朝积分排名；同分时，先达到该积分的经理排在前面。</p></div>
       <section class="mine" aria-label="我的排名"><div class="mine-heading"><span>MY RANK <b>我的排名</b></span><small>账号最高成绩</small></div><div class="mine-identity"><span class="mine-emblem" aria-hidden="true">GM</span><div><strong id="my-name">正在读取经理资料</strong><small id="my-team">当前存档</small></div></div><div class="mine-values"><div><small>全服名次</small><strong id="my-rank">正在加载</strong></div><div><small>王朝积分</small><b id="my-score">—</b></div></div><div class="mine-facts"><span id="my-season">赛季 —</span><span id="my-championships">总冠军 —</span><span id="my-achievements">成就 —</span></div></section>
       <section class="submit" aria-label="成绩自动同步"><p id="local-score">从生涯总览进入后，当前成绩会自动校验并同步。</p><p class="message" id="submit-message" role="status" aria-live="polite" hidden></p><button id="retry-sync" type="button" hidden>重试同步</button></section>

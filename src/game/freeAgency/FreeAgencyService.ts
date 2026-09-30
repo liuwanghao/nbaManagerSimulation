@@ -74,10 +74,10 @@ const clamp = (value: number): number => Math.max(0, Math.min(100, value));
 const salaryDisplayRoundingTolerance = 5_000;
 const contractYearOptions: ContractYearOption[] = ["NONE", "TEAM_OPTION", "PLAYER_OPTION"];
 
-function hasSubmittedOfferInCurrentWindow(freeAgency: FreeAgencyState, teamId: string, playerId: string): boolean {
+function hasSubmittedOfferInCurrentWindow(freeAgency: FreeAgencyState, teamId: string, playerId: string, offersForPlayer?: FreeAgentOffer[]): boolean {
   const market = freeAgency?.markets[playerId];
   return market?.marketWindowStatus === "OPEN"
-    && Object.values(freeAgency.offers).some((offer) => offer.teamId === teamId
+    && (offersForPlayer ?? Object.values(freeAgency.offers)).some((offer) => offer.teamId === teamId
       && offer.playerId === playerId
       && offer.createdDay >= market.marketWindowStartDay
       && offer.status !== "WITHDRAWN");
@@ -399,7 +399,7 @@ function signAcceptedOffer(state: GameState, offer: FreeAgentOffer, destinationT
   (state.freeAgency as FreeAgencyState).transactionLog.unshift(`${player.name} 与 ${team.fullName} 签约 ${offer.years} 年 / ${Math.round(offer.totalValue / 1_000_000)}M`);
 }
 
-function createOfferMutable(state: GameState, teamId: string, playerId: string, years: number, year1Salary: number, guaranteedPercent: number, rolePromised: PromisedRole, annualRaiseRate?: number, salaryByYear?: number[], finalYearOption: ContractYearOption = "NONE"): FreeAgentOffer {
+function createOfferMutable(state: GameState, teamId: string, playerId: string, years: number, year1Salary: number, guaranteedPercent: number, rolePromised: PromisedRole, annualRaiseRate?: number, salaryByYear?: number[], finalYearOption: ContractYearOption = "NONE", offerIndex?: Map<string, FreeAgentOffer[]>): FreeAgentOffer {
   assertPhaseAllowed(state, "Submit free-agent offer", offerPhases);
   ensureRegularSeasonMarket(state);
   const freeAgency = state.freeAgency;
@@ -407,7 +407,7 @@ function createOfferMutable(state: GameState, teamId: string, playerId: string, 
   if (!freeAgency?.opened || !player || !["UFA", "RFA"].includes(player.contract.status) || player.teamId !== "FREE_AGENT") throw new Error("Player is not available in free agency");
   if (isRegularUfaPhase(state.league.currentPhase) && player.contract.status !== "UFA") throw new Error("RFA offers are not allowed during the regular season");
   if (freeAgency.markets[playerId]?.marketWindowStatus === "RFA_MATCHING") throw new Error("RFA is already in a matching window");
-  if (hasSubmittedOfferInCurrentWindow(freeAgency, teamId, playerId)) {
+  if (hasSubmittedOfferInCurrentWindow(freeAgency, teamId, playerId, offerIndex?.get(playerId))) {
     throw new Error("Team already submitted an offer to this player in the current market window");
   }
   const originalTeamId = freeAgency.markets[playerId]?.originalTeamId;
@@ -455,8 +455,13 @@ function createOfferMutable(state: GameState, teamId: string, playerId: string, 
   const ownRfaRights = player.contract.status === "RFA" && originalTeamId === teamId && hold > 0;
   if (required > available && !ownRfaRights && !hasOwnBirdUfaRights(state, player, teamId)) throw new Error("Insufficient cap space for this offer reservation");
   freeAgency.offers[offerId] = offer;
+  if (offerIndex) {
+    const indexed = offerIndex.get(playerId) ?? [];
+    indexed.push(offer);
+    offerIndex.set(playerId, indexed);
+  }
   state.capState.offerReservations.push({ offerId, playerId, teamId, amount: year1Salary });
-  const active = Object.values(freeAgency.offers).filter((entry) => entry.playerId === playerId && entry.status === "ACTIVE")
+  const active = (offerIndex?.get(playerId) ?? Object.values(freeAgency.offers)).filter((entry) => entry.playerId === playerId && entry.status === "ACTIVE")
     .sort((a, b) => b.utility - a.utility || b.guaranteedValue - a.guaranteedValue || b.year1Salary - a.year1Salary || a.offerId.localeCompare(b.offerId));
   for (const rejected of active.slice(cfg.maxActiveOffersPerPlayer)) {
     rejected.status = "REJECTED";
@@ -593,8 +598,12 @@ function generateAiOffers(state: GameState): void {
   const playerValues = new Map(players.map((player) => [player.id, publicPlayerValue(player)]));
   const finance = getSeasonFinanceConfig(state.league.seasonYear);
   const offersByTeam = new Map<string, Map<string, FreeAgentOffer[]>>();
+  const offersByPlayer = new Map<string, FreeAgentOffer[]>();
   const offersTodayByTeam = new Map<string, number>();
   for (const offer of Object.values(freeAgency.offers)) {
+    const playerOffers = offersByPlayer.get(offer.playerId) ?? [];
+    playerOffers.push(offer);
+    offersByPlayer.set(offer.playerId, playerOffers);
     if (!offersByTeam.has(offer.teamId)) offersByTeam.set(offer.teamId, new Map());
     const teamOffers = offersByTeam.get(offer.teamId) as Map<string, FreeAgentOffer[]>;
     if (!teamOffers.has(offer.playerId)) teamOffers.set(offer.playerId, []);
@@ -648,6 +657,9 @@ function generateAiOffers(state: GameState): void {
           aiFa.guaranteedPercent,
           expectedRole(target),
           undefined,
+          undefined,
+          "NONE",
+          offersByPlayer,
         );
         if (!offersByTeam.has(teamId)) offersByTeam.set(teamId, new Map());
         const teamOffers = offersByTeam.get(teamId) as Map<string, FreeAgentOffer[]>;

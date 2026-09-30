@@ -5,6 +5,8 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { PORTRAIT_ATLAS_STRIP_PATHS } from "./src/data/portraitAtlasIds.ts";
+import { compactRuntimePlayerDataset } from "./src/data/compactRuntimePlayerDataset.ts";
+import type { NbaPlayerDataset } from "./src/data/nbaPlayerDataset.ts";
 
 const MAX_CODE_FILE_BYTES = 5 * 1024 * 1024;
 const FEEDBACK_API_BASE = "https://feedback-public-d8fnf79rd0e395c3-1252166086.ap-shanghai.app.tcloudbase.com/api";
@@ -25,11 +27,27 @@ function listLocalFiles(root: string, directory = ""): string[] {
   });
 }
 
+function compactRuntimePlayerDatasetPlugin(): Plugin {
+  return {
+    name: "compact-runtime-player-dataset",
+    apply: "build",
+    enforce: "pre",
+    transform(source, id) {
+      if (!id.endsWith("/src/data/nba-player-dataset.json")) return;
+      return JSON.stringify(compactRuntimePlayerDataset(JSON.parse(source) as NbaPlayerDataset));
+    },
+  };
+}
+
 function classicStaticScript(): Plugin {
+  let outputRoot = resolve("h5");
   return {
     name: "classic-static-script",
     apply: "build",
     enforce: "post",
+    configResolved(config) {
+      outputRoot = resolve(config.root, config.build.outDir);
+    },
     transformIndexHtml(html) {
       return html
         .replace(/\s*<script data-local-file-redirect>[\s\S]*?<\/script>/u, "")
@@ -43,13 +61,14 @@ function classicStaticScript(): Plugin {
         // React's minified-error decoder only formats text; its help URL is never a game request.
         // Keep the error code but remove the non-whitelisted URL from the shipped static bundle.
         output.code = output.code.replaceAll("https://react.dev/errors/", "React error code ");
-        if (Buffer.byteLength(output.code) >= MAX_CODE_FILE_BYTES) {
-          throw new Error(`${output.fileName} exceeds the 5 MiB per-code-file upload limit`);
+        const codeBytes = Buffer.byteLength(output.code);
+        if (codeBytes >= MAX_CODE_FILE_BYTES) {
+          throw new Error(`${output.fileName} exceeds the 5 MiB per-code-file upload limit (${codeBytes} bytes)`);
         }
       }
     },
-    closeBundle() {
-      const root = resolve("h5");
+    writeBundle() {
+      const root = outputRoot;
       const publicRoot = resolve("public");
       for (const relativePath of REQUIRED_LOCAL_IMAGES) {
         if (!existsSync(resolve(root, relativePath))) throw new Error(`Missing bundled local image: ${relativePath}`);
@@ -78,7 +97,8 @@ function classicStaticScript(): Plugin {
 
 export default defineConfig({
   base: "./",
-  plugins: [react(), classicStaticScript()],
+  plugins: [compactRuntimePlayerDatasetPlugin(), react(), classicStaticScript()],
+  worker: { plugins: () => [compactRuntimePlayerDatasetPlugin()] },
   build: {
     outDir: "h5",
     emptyOutDir: true,

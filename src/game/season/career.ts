@@ -717,11 +717,13 @@ export function simulatePostseason(input: GameState): GameState {
 
 export function simulateRegularSeason(
   input: GameState,
-  options: { autoAcknowledgeMajorInjuries?: boolean; autoResolveEmergencyRosters?: boolean; autoResolveEvents?: boolean } = {},
+  options: { autoAcknowledgeMajorInjuries?: boolean; autoResolveEmergencyRosters?: boolean; autoResolveEvents?: boolean; onProgress?: (completedDays: number, totalDays: number) => void } = {},
 ): GameState {
   assertPhaseAllowed(input, "Simulate regular season", ["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"]);
   let state = cloneForLeagueDay(input);
   const lastScheduledDate = Math.max(...state.schedule.filter((game) => game.status === "SCHEDULED").map((game) => game.dateIndex));
+  const totalDays = Math.max(0, lastScheduledDate - state.calendar.currentDateIndex + 1);
+  const firstDate = state.calendar.currentDateIndex;
   for (let dateIndex = state.calendar.currentDateIndex; dateIndex <= lastScheduledDate; dateIndex += 1) {
     if (blockingEvent(state)) {
       if (!options.autoResolveEvents) break;
@@ -751,6 +753,7 @@ export function simulateRegularSeason(
         if (blockingEvent(state)) state = resolveAllEvents(state);
       }
     }
+    options.onProgress?.(dateIndex - firstDate + 1, totalDays);
   }
   return state;
 }

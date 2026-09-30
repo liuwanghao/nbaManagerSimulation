@@ -37,4 +37,13 @@ describe("Bootstrap fixture routing", () => {
     expect(markup).toContain("正在返回生涯总览");
     expect(markup).not.toContain('data-testid="start-new-game"');
   });
+
+  it("opens the launcher when an old leaderboard session marker remains without a return URL", () => {
+    vi.stubEnv("DEV", false);
+    vi.stubGlobal("window", { location: { search: "" } });
+    vi.stubGlobal("sessionStorage", { getItem: () => "3" });
+    const markup = renderToStaticMarkup(createElement(Bootstrap));
+    expect(markup).toContain('data-testid="start-new-game"');
+    expect(markup).not.toContain("正在返回生涯总览");
+  });
 });

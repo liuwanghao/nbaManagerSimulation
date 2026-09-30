@@ -11,7 +11,7 @@ import { getFranchiseLeaders } from "../game/career/FranchiseStats";
 import type { AchievementId, GameResult, GameState } from "../game/state/types";
 import { careerPostDraft, openCareerPostEditor } from "./careerShare";
 import { loadCareerRank, type ManagerRank } from "./leaderboardClient";
-import { rememberLeaderboardReturn, type LeaderboardSaveSlot } from "./leaderboardReturn";
+import type { LeaderboardSaveSlot } from "./leaderboardReturn";
 import { localizePlayerNamesInText, playerNameZh } from "./playerNameZh";
 import { awardLabel } from "./uiText";
 
@@ -199,7 +199,6 @@ export function CareerPages({ state, activeTab, activeSlot, onPrepareLeaderboard
         void (async () => {
           try {
             await onPrepareLeaderboard();
-            rememberLeaderboardReturn(activeSlot);
             setLeaderboardStatus("");
             onOpenLeaderboard();
             openingLeaderboardRef.current = false;

@@ -6,11 +6,62 @@ import { calculateAttributeOverall, calculatePlayerOverall } from "../game/playe
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import { addTeamNotification, executeTeamNotificationCommand } from "../game/notifications/TeamNotificationService";
 import { enqueueEvent, executeEventCommand } from "../game/events/EventService";
-import { MemoryStorageAdapter } from "../platform/storage/StorageAdapter";
+import { MemoryStorageAdapter, MigratingIndexedDbStorageAdapter } from "../platform/storage/StorageAdapter";
 import type { StorageAdapter } from "../platform/storage/StorageAdapter";
 import { SaveService } from "./SaveService";
 
 describe("SaveService", () => {
+  it("does not read the previous full revision when the primary is valid", async () => {
+    const backing = new MemoryStorageAdapter();
+    const reads: string[] = [];
+    const adapter: StorageAdapter = {
+      async get(key) { reads.push(key); return backing.get(key); },
+      set: (key, value) => backing.set(key, value),
+      remove: (key) => backing.remove(key),
+    };
+    const service = new SaveService(adapter);
+    const state = createCareer("avoid-unneeded-backup-read");
+    await service.save(1, state);
+    await service.save(1, simulateNextGameDay(state));
+    reads.length = 0;
+    expect(await service.load(1)).not.toBeNull();
+    expect(reads).not.toContain("basketball-manager:career:1:previous-valid");
+  });
+
+  it("migrates and recovers a legacy pending revision without losing the previous valid copy", async () => {
+    const legacy = new MemoryStorageAdapter();
+    const oldService = new SaveService(legacy);
+    const original = createCareer("indexed-db-legacy-recovery");
+    await oldService.save(1, original);
+    const primaryKey = "basketball-manager:career:1";
+    const originalSerialized = await legacy.get(primaryKey) as string;
+    const newer = simulateNextGameDay(original);
+    const nextEnvelope = await oldService.save(1, newer);
+    const newerSerialized = await legacy.get(primaryKey) as string;
+    const corrupt = JSON.parse(originalSerialized) as { state: { userTeamId: string } };
+    corrupt.state.userTeamId = "CORRUPTED";
+    await legacy.set(primaryKey, JSON.stringify(corrupt));
+    await legacy.set(`${primaryKey}:pending`, newerSerialized);
+    await legacy.set(`${primaryKey}:previous-valid`, originalSerialized);
+
+    const indexedDb = new MemoryStorageAdapter();
+    const migrated = new SaveService(new MigratingIndexedDbStorageAdapter(indexedDb, legacy));
+    expect((await migrated.load(1))?.lightweightResults.length).toBe(newer.lightweightResults.length);
+    expect(JSON.parse(await indexedDb.get(primaryKey) as string)).toMatchObject({ revision: nextEnvelope.revision });
+    expect(await indexedDb.get(`${primaryKey}:pending`)).toBeNull();
+    expect(await indexedDb.get(`${primaryKey}:previous-valid`)).toBeNull();
+    expect(await legacy.get(primaryKey)).toBeNull();
+    expect(await legacy.get(`${primaryKey}:pending`)).toBeNull();
+    expect(await legacy.get(`${primaryKey}:previous-valid`)).toBe(originalSerialized);
+
+    const damagedCurrent = JSON.parse(await indexedDb.get(primaryKey) as string) as { state: { userTeamId: string } };
+    damagedCurrent.state.userTeamId = "CORRUPTED_AGAIN";
+    await indexedDb.set(primaryKey, JSON.stringify(damagedCurrent));
+    expect((await migrated.load(1))?.seeds.careerSeed).toBe(original.seeds.careerSeed);
+    expect(await indexedDb.get(`${primaryKey}:previous-valid`)).toBe(originalSerialized);
+    expect(await legacy.get(`${primaryKey}:previous-valid`)).toBeNull();
+  });
+
   it("adds the opening MIP comparison group to unfinished older real-roster saves", async () => {
     const service = new SaveService(new MemoryStorageAdapter());
     const state = createExpansionCareerFromBundledDataset("legacy-mip-baseline");

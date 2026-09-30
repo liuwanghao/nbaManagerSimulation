@@ -1,4 +1,4 @@
-import { LocalStorageAdapter, type StorageAdapter } from "./storage/StorageAdapter";
+import { LocalStorageAdapter, MigratingIndexedDbStorageAdapter, type StorageAdapter } from "./storage/StorageAdapter";
 
 export interface PlatformUser {
   id: string;
@@ -18,7 +18,7 @@ export interface PlatformAdapter {
 
 export function createBrowserPlatform(): PlatformAdapter {
   return {
-    storage: new LocalStorageAdapter(),
+    storage: typeof window.indexedDB === "undefined" ? new LocalStorageAdapter() : new MigratingIndexedDbStorageAdapter(),
     async getCurrentUser() {
       return { id: "anonymous", nickname: "访客经理", authenticated: false };
     },

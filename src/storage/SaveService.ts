@@ -1,4 +1,4 @@
-import { stableHash, stableSerialize } from "../game/random/hash";
+import { stableHash } from "../game/random/hash";
 import { createFutureDraftPicks } from "../data/draftPicks";
 import { TEAM_DEFINITIONS } from "../data/league";
 import retiredPlayers from "../data/nba-retired-players.json";
@@ -21,6 +21,7 @@ import { encodeStoredString, type StorageAdapter } from "../platform/storage/Sto
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, upgradeLegacyAutomaticRotationPlan } from "../game/roster/RotationPlanService";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { hasOpeningMipBaselines, seedOpeningMipBaselines } from "../game/awards/OpeningMipBaseline";
+import { hashSaveState, parseValidSaveEnvelope, serializeSaveEnvelope, stringifySaveValue } from "./SaveCodec";
 
 export interface SaveEnvelope {
   saveId: string;
@@ -336,16 +337,17 @@ export class SaveService {
       revision,
       parentRevision: previous?.revision ?? null,
       syncBaseRevision: previous?.syncBaseRevision ?? null,
-      stateHash: stableHash(stableSerialize(state)),
+      stateHash: "",
       updatedAt: new Date().toISOString(),
       pendingSync: true,
       state,
     };
-    const serialized = JSON.stringify(envelope);
+    const encoded = await serializeSaveEnvelope(envelope);
+    envelope.stateHash = encoded.stateHash;
+    const serialized = encoded.serialized;
     await this.setWithQuotaRecovery(slotId, tempKey(slotId), serialized);
-    const verify = JSON.parse((await this.adapter.get(tempKey(slotId))) as string) as SaveEnvelope;
-    const verifiedStateHash = stableHash(stableSerialize(verify.state));
-    if (verify.stateHash !== envelope.stateHash || verifiedStateHash !== envelope.stateHash) {
+    const verify = await parseValidSaveEnvelope(await this.adapter.get(tempKey(slotId)), slotId);
+    if (verify?.stateHash !== envelope.stateHash) {
       throw new Error("Temporary save verification failed");
     }
     const previousSerialized = await this.adapter.get(slotKey(slotId));
@@ -364,7 +366,7 @@ export class SaveService {
   async load(slotId: number): Promise<GameState | null> {
     const envelope = await this.loadEnvelope(slotId);
     if (!envelope) return null;
-    const actualHash = stableHash(stableSerialize(envelope.state));
+    const actualHash = await hashSaveState(envelope.state);
     if (actualHash !== envelope.stateHash) throw new Error("Save checksum mismatch");
     return migrateLoadedState(envelope.state);
   }
@@ -398,10 +400,10 @@ export class SaveService {
     }
     const envelope: CheckpointEnvelope = {
       checkpointId,
-      stateHash: stableHash(stableSerialize(state)),
+      stateHash: await hashSaveState(state),
       state,
     };
-    await this.adapter.set(checkpointKey(slotId, checkpointId), JSON.stringify(envelope));
+    await this.adapter.set(checkpointKey(slotId, checkpointId), await stringifySaveValue(envelope));
     await this.adapter.set(checkpointIndexKey(slotId), JSON.stringify([...retained, checkpointId]));
   }
 
@@ -409,7 +411,7 @@ export class SaveService {
     const serialized = await this.adapter.get(checkpointKey(slotId, checkpointId));
     if (!serialized) return null;
     const envelope = JSON.parse(serialized) as CheckpointEnvelope;
-    if (stableHash(stableSerialize(envelope.state)) !== envelope.stateHash) throw new Error("Checkpoint checksum mismatch");
+    if (await hashSaveState(envelope.state) !== envelope.stateHash) throw new Error("Checkpoint checksum mismatch");
     return migrateLoadedState(envelope.state);
   }
 
@@ -425,9 +427,9 @@ export class SaveService {
   async syncWithCloud(slotId: number, cloud: StorageAdapter): Promise<SaveSyncResult | null> {
     const local = await this.loadEnvelope(slotId);
     const cloudSerialized = await cloud.get(slotKey(slotId));
-    const parsedCloudEnvelope = this.parseValidEnvelope(cloudSerialized, slotId);
+    const parsedCloudEnvelope = await parseValidSaveEnvelope(cloudSerialized, slotId);
     const cloudEnvelope = parsedCloudEnvelope ? this.normalizeEnvelopeSlot(slotId, parsedCloudEnvelope) : null;
-    if (cloudEnvelope && cloudSerialized !== JSON.stringify(cloudEnvelope)) {
+    if (cloudEnvelope && cloudSerialized !== await stringifySaveValue(cloudEnvelope)) {
       await this.writeEnvelope(cloud, slotId, cloudEnvelope);
     }
     if (!local && !cloudEnvelope) return null;
@@ -481,11 +483,11 @@ export class SaveService {
       source: "LOCAL_BEFORE_CLOUD_OVERRIDE",
       revision: status.local.revision,
       stateHash: status.local.stateHash,
-      serializedGameState: JSON.stringify(status.local.state),
+      serializedGameState: await stringifySaveValue(status.local.state),
     };
     await this.adapter.set(conflictBackupKey(slotId), JSON.stringify(backup));
     const verified = JSON.parse(await this.adapter.get(conflictBackupKey(slotId)) as string) as ConflictBackup;
-    if (stableHash(stableSerialize(JSON.parse(verified.serializedGameState))) !== verified.stateHash) throw new Error("CONFLICT_BACKUP_VERIFICATION_FAILED");
+    if (await hashSaveState(JSON.parse(verified.serializedGameState)) !== verified.stateHash) throw new Error("CONFLICT_BACKUP_VERIFICATION_FAILED");
     const resolved = { ...status.cloud, syncBaseRevision: status.cloud.revision, pendingSync: false };
     await this.writeEnvelope(this.adapter, slotId, resolved);
     return resolved;
@@ -496,19 +498,8 @@ export class SaveService {
     if (!serialized) return null;
     const backup = JSON.parse(serialized) as ConflictBackup;
     const state = JSON.parse(backup.serializedGameState) as GameState;
-    if (stableHash(stableSerialize(state)) !== backup.stateHash) throw new Error("Conflict backup checksum mismatch");
+    if (await hashSaveState(state) !== backup.stateHash) throw new Error("Conflict backup checksum mismatch");
     return migrateLoadedState(state);
-  }
-
-  private parseValidEnvelope(serialized: string | null, expectedSlotId?: number): SaveEnvelope | null {
-    if (!serialized) return null;
-    try {
-      const envelope = JSON.parse(serialized) as SaveEnvelope;
-      if (!envelope.saveId) envelope.saveId = stableHash(envelope.careerSeed, "save", expectedSlotId ?? envelope.slotId);
-      return stableHash(stableSerialize(envelope.state)) === envelope.stateHash ? envelope : null;
-    } catch {
-      return null;
-    }
   }
 
   private normalizeEnvelopeSlot(slotId: number, envelope: SaveEnvelope): SaveEnvelope {
@@ -536,23 +527,25 @@ export class SaveService {
 
   private async writeEnvelope(adapter: StorageAdapter, slotId: number, envelope: SaveEnvelope): Promise<void> {
     const normalized = this.normalizeEnvelopeSlot(slotId, envelope);
-    const serialized = JSON.stringify(normalized);
+    const serialized = await stringifySaveValue(normalized);
     await adapter.set(tempKey(slotId), serialized);
-    const verified = this.parseValidEnvelope(await adapter.get(tempKey(slotId)), slotId);
+    const verified = await parseValidSaveEnvelope(await adapter.get(tempKey(slotId)), slotId);
     if (!verified || verified.slotId !== slotId || verified.stateHash !== normalized.stateHash) throw new Error("SAVE_WRITE_VERIFICATION_FAILED");
     await adapter.set(slotKey(slotId), serialized);
     await adapter.remove(tempKey(slotId));
   }
 
   private async loadEnvelope(slotId: number): Promise<SaveEnvelope | null> {
-    const [primarySerialized, pendingSerialized, previousSerialized] = await Promise.all([
+    const [primarySerialized, pendingSerialized] = await Promise.all([
       this.adapter.get(slotKey(slotId)),
       this.adapter.get(tempKey(slotId)),
-      this.adapter.get(previousKey(slotId)),
     ]);
-    const parsedPrimary = this.parseValidEnvelope(primarySerialized, slotId);
-    const parsedPending = this.parseValidEnvelope(pendingSerialized, slotId);
-    const parsedPrevious = this.parseValidEnvelope(previousSerialized, slotId);
+    const [parsedPrimary, parsedPending] = await Promise.all([
+      parseValidSaveEnvelope(primarySerialized, slotId),
+      parseValidSaveEnvelope(pendingSerialized, slotId),
+    ]);
+    const previousSerialized = !parsedPrimary && !parsedPending ? await this.adapter.get(previousKey(slotId)) : null;
+    const parsedPrevious = await parseValidSaveEnvelope(previousSerialized, slotId);
     const primary = parsedPrimary ? this.normalizeEnvelopeSlot(slotId, parsedPrimary) : null;
     const pending = parsedPending ? this.normalizeEnvelopeSlot(slotId, parsedPending) : null;
     const previous = parsedPrevious ? this.normalizeEnvelopeSlot(slotId, parsedPrevious) : null;
@@ -561,17 +554,17 @@ export class SaveService {
       return null;
     }
     if (pending && (!primary || pending.revision > primary.revision)) {
-      await this.adapter.set(slotKey(slotId), JSON.stringify(pending));
+      await this.adapter.set(slotKey(slotId), await stringifySaveValue(pending));
       await this.adapter.remove(tempKey(slotId));
       return pending;
     }
     if (!primary && previous) {
-      await this.adapter.set(slotKey(slotId), JSON.stringify(previous));
+      await this.adapter.set(slotKey(slotId), await stringifySaveValue(previous));
       if (pendingSerialized) await this.adapter.remove(tempKey(slotId));
       return previous;
     }
     if (pendingSerialized) await this.adapter.remove(tempKey(slotId));
-    if (primary && primarySerialized !== JSON.stringify(primary)) await this.adapter.set(slotKey(slotId), JSON.stringify(primary));
+    if (primary && primarySerialized !== await stringifySaveValue(primary)) await this.adapter.set(slotKey(slotId), await stringifySaveValue(primary));
     return primary;
   }
 }
