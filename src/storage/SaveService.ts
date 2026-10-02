@@ -14,7 +14,7 @@ import { emptyPlayerSeasonStats, type GameState } from "../game/state/types";
 import { backfillNewAchievements, createAchievementState, createGmCareerState, repairInvalidWinAchievements } from "../game/career/AchievementService";
 import { backfillFranchiseStats } from "../game/career/FranchiseStats";
 import { createEventState, settleInformationalEvents } from "../game/events/EventService";
-import { addTeamNotification, ensureExpansionWelcomeNotification } from "../game/notifications/TeamNotificationService";
+import { addTeamNotification, ensureExpansionWelcomeNotification, repairCareerMilestoneNotifications } from "../game/notifications/TeamNotificationService";
 import { EVENT_DEFINITION_BY_ID } from "../data/events";
 import { createAiTeamProfiles } from "../game/ai/AIManagementService";
 import { encodeStoredString, type StorageAdapter } from "../platform/storage/StorageAdapter";
@@ -104,6 +104,7 @@ const historicalNameBySourceId = new Map([
   ...NBA_PLAYER_DATASET.historicalTemplates,
   ...RETIRED_LEGEND_TEMPLATES,
 ].map((template) => [template.sourcePlayerId, template.sourceName]));
+const retiredLegendTemplateBySourceId = new Map(RETIRED_LEGEND_TEMPLATES.map((template) => [template.sourcePlayerId, template]));
 const retiredLegendPeakBySourceId = new Map(RETIRED_LEGEND_TEMPLATES.map((template) => [template.sourcePlayerId, template.peakOverall]));
 
 function isStorageQuotaError(error: unknown): boolean {
@@ -137,6 +138,8 @@ function migrateLoadedState(input: GameState): GameState {
   for (const player of Object.values(state.players)) {
     if (player.profileSource !== "HISTORICAL_ARCHETYPE" || !player.historicalSourcePlayerId) continue;
     player.name = historicalNameBySourceId.get(player.historicalSourcePlayerId) ?? player.name;
+    const historicalTemplate = retiredLegendTemplateBySourceId.get(player.historicalSourcePlayerId);
+    if (historicalTemplate?.secondaryPosition) player.secondaryPosition = historicalTemplate.secondaryPosition;
     const peakOverall = retiredLegendPeakBySourceId.get(player.historicalSourcePlayerId);
     if (peakOverall !== undefined) {
       player.truePotential = Math.max(player.truePotential ?? 0, BALANCE_CONFIG.draft.historicalRebirth.potentialFloor, peakOverall);
@@ -225,7 +228,6 @@ function migrateLoadedState(input: GameState): GameState {
     }));
   }
   const hadQueuedMajorInjury = state.eventState.queue.some((event) => event.definitionId === "injury_core_major_001");
-  settleInformationalEvents(state);
   state.trainingPlan ??= { seasonId: state.league.seasonId, assignments: {} };
   state.injuryState ??= { recentEvents: [] };
   const pendingMajorInjury = state.injuryState.pendingUserMajorInjury;
@@ -331,6 +333,8 @@ function migrateLoadedState(input: GameState): GameState {
     && (state.schedule.length === 0 || state.schedule.some((game) => game.status === "SCHEDULED"))
     && !hasOpeningMipBaselines(state)) seedOpeningMipBaselines(state);
   ensureExpansionWelcomeNotification(state);
+  settleInformationalEvents(state);
+  repairCareerMilestoneNotifications(state);
   return state;
 }
 

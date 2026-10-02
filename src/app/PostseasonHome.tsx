@@ -15,6 +15,14 @@ function gameRound(state: GameState, game: ScheduleGame): string {
   return series ? roundName[series.round] : "季后赛";
 }
 
+function seriesWinsForTeam(state: GameState, seriesId: string | undefined, teamId: string): number | null {
+  const series = seriesId ? state.postseason?.series.find((entry) => entry.id === seriesId) : undefined;
+  if (!series || series.bestOf !== 7) return null;
+  if (series.teamAId === teamId) return series.winsA;
+  if (series.teamBId === teamId) return series.winsB;
+  return null;
+}
+
 export function PostseasonHome({ state, busy, onAdvance, onAdvanceRound, onSettle, onOpenGame, onOpenTeam, onOpenStarters, onUnlockVideo, coachingMessage }: {
   state: GameState;
   busy: boolean;
@@ -30,7 +38,8 @@ export function PostseasonHome({ state, busy, onAdvance, onAdvanceRound, onSettl
   const [pregameSelection, setPregameSelection] = useState<RegularPregameSelection | null>(null);
   const attemptedAdvance = useRef<GameState | null>(null);
   const postseason = state.postseason;
-  const nextUserGame = nextPlayoffUserGame(state)?.game;
+  const nextUserGameInfo = nextPlayoffUserGame(state);
+  const nextUserGame = nextUserGameInfo?.game;
   const userEliminated = isUserPostseasonEliminated(state);
   useEffect(() => {
     if (!postseason || nextUserGame || userEliminated || busy || attemptedAdvance.current === state) return;
@@ -45,6 +54,8 @@ export function PostseasonHome({ state, busy, onAdvance, onAdvanceRound, onSettl
   const userWins = userPlayed.filter((game) => game.winnerTeamId === state.userTeamId).length;
   const pregameView = regularCoachingView(state);
   const currentSelection = pregameSelection?.gameId === nextUserGame?.id ? pregameSelection : null;
+  const awaySeriesWins = nextUserGameInfo ? seriesWinsForTeam(state, nextUserGameInfo.seriesId, nextUserGameInfo.game.awayTeamId) : null;
+  const homeSeriesWins = nextUserGameInfo ? seriesWinsForTeam(state, nextUserGameInfo.seriesId, nextUserGameInfo.game.homeTeamId) : null;
   const pregameFocus = currentSelection?.choice === "NONE" ? null : currentSelection?.choice ?? pregameView?.selected?.focus ?? null;
   const pregameNeedsVideo = Boolean(nextUserGame && pregameFocus && !pregameView?.videoUnlocked);
   const pregameSummary = currentSelection?.choice === "NONE" ? "不备战 · 普通模拟"
@@ -67,9 +78,9 @@ export function PostseasonHome({ state, busy, onAdvance, onAdvanceRound, onSettl
       <header><div><small>{nextUserGame ? "本队下一场对阵" : userEliminated ? "本队季后赛" : "赛程推进中"}</small><b>{nextUserGame ? `${gameRound(state, nextUserGame)} · ${nextUserGame.date} · ${nextUserGame.homeTeamId === state.userTeamId ? "主场" : "客场"}` : userEliminated ? "本队赛程结束" : "正在安排本队赛程"}</b></div><span>{state.league.currentPhase === "PLAY_IN" ? "PLAY-IN" : "PLAYOFFS"}</span></header>
       {nextUserGame ? <>
         <div className="season-command-versus">
-          <SeasonMatchupTeamButton team={state.teams[nextUserGame.awayTeamId]} venue="away" meta={postseasonRecord(nextUserGame.awayTeamId)} overall={calculateTeamOverall(state, nextUserGame.awayTeamId).overall} onOpen={() => onOpenTeam(nextUserGame.awayTeamId)} />
-          <div><strong>VS</strong><small>客场 · 主场</small><button type="button" className="season-command-starters-trigger" onClick={onOpenStarters}>首发对位</button></div>
-          <SeasonMatchupTeamButton team={state.teams[nextUserGame.homeTeamId]} venue="home" meta={postseasonRecord(nextUserGame.homeTeamId)} overall={calculateTeamOverall(state, nextUserGame.homeTeamId).overall} onOpen={() => onOpenTeam(nextUserGame.homeTeamId)} />
+          <SeasonMatchupTeamButton team={state.teams[nextUserGame.awayTeamId]} venue="away" meta={postseasonRecord(nextUserGame.awayTeamId)} seriesWins={awaySeriesWins ?? undefined} overall={calculateTeamOverall(state, nextUserGame.awayTeamId).overall} onOpen={() => onOpenTeam(nextUserGame.awayTeamId)} />
+          <div className="postseason-matchup-center"><strong>VS</strong><small>客场 · 主场</small><button type="button" className="season-command-starters-trigger" onClick={onOpenStarters}>首发对位</button></div>
+          <SeasonMatchupTeamButton team={state.teams[nextUserGame.homeTeamId]} venue="home" meta={postseasonRecord(nextUserGame.homeTeamId)} seriesWins={homeSeriesWins ?? undefined} overall={calculateTeamOverall(state, nextUserGame.homeTeamId).overall} onOpen={() => onOpenTeam(nextUserGame.homeTeamId)} />
         </div>
         <p>本队下一场比赛 · 备战仅对这一场生效。</p>
         <details className="season-command-pregame postseason-preparation" key={nextUserGame.id}>

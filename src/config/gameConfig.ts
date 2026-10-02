@@ -66,6 +66,7 @@ export function validateGameConfig(): string[] {
     && finance.rosterLimits.regularSeasonMinimum <= finance.rosterLimits.regularSeasonMaximum
     && finance.rosterLimits.regularSeasonMaximum <= finance.rosterLimits.offseasonMaximum, "名单人数阈值顺序非法");
   assert(balance.playerLifecycle.retirement.ageProbability.every((entry, index, rows) => index === 0 || entry.minimumAge < rows[index - 1].minimumAge), "退役年龄档位必须按年龄降序排列");
+  assert(balance.playerLifecycle.retirement.ageProbability.every((entry) => entry.minimumAge >= balance.playerLifecycle.retirement.minimumAge), "退役概率档位不得低于最低退役年龄");
   return errors;
 }
 

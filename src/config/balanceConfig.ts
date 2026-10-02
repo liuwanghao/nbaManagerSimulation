@@ -1,11 +1,23 @@
 export const BALANCE_CONFIG = {
-  version: "balance.v19-unemployment-retirement-38",
+  version: "balance.v23-role-and-opening-fa-balance",
   freeAgency: {
     offerValidDays: 3,
     decisionWindowDays: 3,
     maxActiveOffersPerPlayer: 5,
     earlyAcceptThreshold: 85,
     minimumAcceptThreshold: 60,
+    ownTeamRenewal: {
+      minimumOverall: 74,
+      baseAcceptanceProbability: 0.45,
+      starMinimumOverall: 90,
+      starAcceptanceBonus: 0.3,
+      loyalBonus: 0.12,
+      competitiveLosingTeamPenalty: 0.2,
+      losingTeamWinRate: 0.4,
+      lowMoraleThreshold: 40,
+      lowMoralePenalty: 0.15,
+      rosterUpgradeMargin: 4,
+    },
     preferenceNoiseMin: -3,
     preferenceNoiseMax: 3,
     demand: {
@@ -106,7 +118,11 @@ export const BALANCE_CONFIG = {
       REBUILD: { currentAbility: 1, youth: 0.7, starterBonus: 0 },
     },
     draftPreference: { readinessWeight: 0.72, potentialWeight: 0.28, futureFirstPotentialWeight: 0.45, rosterNeedWeight: 1.6, agePenalty: 0.15 },
-    freeAgency: { minimumTargetValue: 0, rfaMatchValue: 70, salaryOfferMinMultiplier: 0.9, salaryOfferMaxMultiplier: 1.1, longOfferMaximumAge: 27, longOfferYears: 3, veteranOfferYears: 2, guaranteedPercent: 0.85 },
+    freeAgency: {
+      minimumTargetValue: 0, rfaMatchValue: 70, salaryOfferMinMultiplier: 0.9, salaryOfferMaxMultiplier: 1.1,
+      longOfferMaximumAge: 27, longOfferYears: 3, veteranOfferYears: 2, guaranteedPercent: 0.85,
+      openingQualityMinimumOverall: 82, openingYoungQualityMinimumOverall: 80, openingYoungQualityMaximumAge: 25,
+    },
   },
   trade: {
     performance: {
@@ -230,19 +246,11 @@ export const BALANCE_CONFIG = {
       regressionInjuryDivisor: 500,
     },
     retirement: {
-      earlyCareerMaximumAge: 34,
-      youngMaximumAge: 30,
-      earlyCareerInjuryGamesMissed: 82,
-      youngProbabilityMaximum: 0.02,
+      minimumAge: 38,
       ageProbability: [
         { minimumAge: 40, probability: 0.86 },
         { minimumAge: 39, probability: 0.7 },
         { minimumAge: 38, probability: 0.5 },
-        { minimumAge: 37, probability: 0.32 },
-        { minimumAge: 36, probability: 0.2 },
-        { minimumAge: 35, probability: 0.12 },
-        { minimumAge: 31, probability: 0.02 },
-        { minimumAge: 0, probability: 0.002 },
       ],
       overallBaseline: 70,
       overallProbabilityPerPoint: 0.012,
@@ -347,6 +355,10 @@ export const BALANCE_CONFIG = {
   randomEvents: {
     triggerEveryUserGames: 6,
     triggerProbability: 1,
+    roleRequestProbability: 0.55,
+    roleRequestMinimumOverall: 72,
+    starterRequestMaximumGap: 6,
+    roleRequestCooldownGames: 18,
     defaultCooldownGames: 10,
     defaultWeight: 20,
     categoryWeights: { INJURY: 20, MORALE: 20, ROLE: 20, BREAKOUT: 20, SLUMP: 20, TRADE: 20, STREAK: 20, ROOKIE: 20, EXPANSION: 20, PLAYOFFS: 20, FRANCHISE: 20, DRAFT: 20, FREE_AGENCY: 20, RFA: 20, AI_GM: 20 },
@@ -372,8 +384,13 @@ export const BALANCE_CONFIG = {
     },
   },
   teamOverall: {
-    rawScale: 2.4,
-    rawOffset: -110,
+    /**
+     * Add a modest team-context lift after the core/depth blend. A roster
+     * averaging around 84 rates around 90, while 95+ remains uncommon and
+     * 99 requires an exceptional 92-93 weighted average.
+     */
+    rawScale: 1,
+    rawOffset: 6,
     minimum: 50,
     maximum: 99,
   },
@@ -519,6 +536,7 @@ export const BALANCE_CONFIG = {
     optimizerSteps: 700,
   },
   replacementPlayers: {
+    autoFillMaximumOverall: 65,
     ageMinimum: 24,
     ageMaximum: 32,
     attributeBase: 57,

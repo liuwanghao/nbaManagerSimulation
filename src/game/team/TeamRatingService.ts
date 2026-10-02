@@ -1,6 +1,5 @@
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
-import { buildDefaultRotationPlan, normalizeRotationPlan } from "../roster/RotationPlanService";
 import type { GameState, Player, Team, TeamRotationPlan } from "../state/types";
 
 export interface TeamOverallRating {
@@ -8,24 +7,19 @@ export interface TeamOverallRating {
   raw: number;
 }
 
-function usablePlan(players: Player[], plan?: TeamRotationPlan): TeamRotationPlan | undefined {
-  const availableCount = players.filter((player) => player.available && !player.injury).length;
-  const minimumForMinuteCapacity = Math.ceil(
-    BALANCE_CONFIG.rotationPlan.regulationMinutes / BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes,
-  );
-  if (availableCount < Math.max(BALANCE_CONFIG.rotationPlan.minimumActivePlayers, minimumForMinuteCapacity)) return undefined;
-  return plan ? normalizeRotationPlan(players, plan) : buildDefaultRotationPlan(players);
-}
-
-export function calculateTeamOverallForPlayers(players: Player[], plan?: TeamRotationPlan): TeamOverallRating {
+export function calculateTeamOverallForPlayers(players: Player[], _plan?: TeamRotationPlan): TeamOverallRating {
   if (!players.length) return { overall: BALANCE_CONFIG.teamOverall.minimum, raw: 0 };
-  const rotation = usablePlan(players, plan);
-  const totalMinutes = Object.values(rotation?.targetMinutes ?? {}).reduce((sum, value) => sum + value, 0);
   const availablePlayers = players.filter((player) => player.available && !player.injury);
-  const fallbackPlayers = availablePlayers.length ? availablePlayers : players;
-  const raw = totalMinutes > 0
-    ? players.reduce((sum, player) => sum + calculatePlayerOverall(player) * (rotation?.targetMinutes[player.id] ?? 0) / totalMinutes, 0)
-    : fallbackPlayers.reduce((sum, player) => sum + calculatePlayerOverall(player), 0) / fallbackPlayers.length;
+  const rankedPlayers = (availablePlayers.length >= 8 ? availablePlayers : players)
+    .map((player) => ({ player, overall: calculatePlayerOverall(player) }))
+    .sort((left, right) => right.overall - left.overall || left.player.id.localeCompare(right.player.id));
+  const corePlayers = rankedPlayers.slice(0, 8);
+  const depthPlayers = rankedPlayers.slice(8, 12);
+  const coreAverage = corePlayers.reduce((sum, entry) => sum + entry.overall, 0) / corePlayers.length;
+  const depthAverage = depthPlayers.length
+    ? depthPlayers.reduce((sum, entry) => sum + entry.overall, 0) / depthPlayers.length
+    : coreAverage;
+  const raw = coreAverage * 0.9 + depthAverage * 0.1;
   const mapped = raw * BALANCE_CONFIG.teamOverall.rawScale + BALANCE_CONFIG.teamOverall.rawOffset;
   return {
     raw,

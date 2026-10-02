@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { enqueueEvent, executeEventCommand } from "../events/EventService";
 import { createCareer } from "../season/career";
-import { addTeamNotification, ensureExpansionWelcomeNotification, executeTeamNotificationCommand, getTeamInboxItems } from "./TeamNotificationService";
+import { addTeamNotification, ensureExpansionWelcomeNotification, executeTeamNotificationCommand, getTeamInboxItems, repairCareerMilestoneNotifications } from "./TeamNotificationService";
 
 describe("team notifications", () => {
+  it("preserves a read duplicate and ignores unrelated notices with the same title during milestone repair", () => {
+    const state = createCareer("legacy-read-milestone-duplicate");
+    enqueueEvent(state, "playoffs_appearance_001");
+    const original = state.teamNotifications![0];
+    state.teamNotifications!.unshift({ ...original, id: "event-read-repeat", read: true,
+      message: `${original.message} · 球迷支持 +1` });
+    addTeamNotification(state, { ...original, id: "custom-same-title", message: "另一条独立消息。" });
+    repairCareerMilestoneNotifications(state);
+    expect(state.teamNotifications).toHaveLength(2);
+    expect(state.teamNotifications).toContainEqual({ ...original, read: true });
+    expect(state.teamNotifications).toContainEqual(expect.objectContaining({ id: "custom-same-title", read: false }));
+    const repaired = structuredClone(state);
+    repairCareerMilestoneNotifications(state);
+    expect(state).toEqual(repaired);
+  });
+
   it("keeps offer feedback across phases and persists read state through a command", () => {
     const state = createCareer("team-inbox-read");
     addTeamNotification(state, {

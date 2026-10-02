@@ -5,7 +5,7 @@
     "2K26"
   ],
   "source": "nba2kapi highest available classic/all-time roster rating (community service; not affiliated with 2K)",
-  "capturedAt": "2026-09-29T07:08:31.084Z",
+  "capturedAt": "2026-10-01T17:35:01.802Z",
   "players": [
     {
       "sourcePlayerId": "nba:76003",
@@ -21,6 +21,10 @@
         "athleticism": 85,
         "basketballIq": 92
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K26",
       "team": "All-Time Milwaukee Bucks",
       "teamType": "allt"
@@ -39,6 +43,10 @@
         "athleticism": 87,
         "basketballIq": 90
       },
+      "positions": [
+        "SG",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Oklahoma City Thunder",
       "teamType": "allt"
@@ -57,6 +65,10 @@
         "athleticism": 87,
         "basketballIq": 89
       },
+      "positions": [
+        "SF",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Denver Nuggets",
       "teamType": "allt"
@@ -75,6 +87,9 @@
         "athleticism": 90,
         "basketballIq": 89
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Sacramento Kings",
       "teamType": "allt"
@@ -93,6 +108,10 @@
         "athleticism": 86,
         "basketballIq": 93
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Golden State Warriors",
       "teamType": "allt"
@@ -111,6 +130,10 @@
         "athleticism": 86,
         "basketballIq": 88
       },
+      "positions": [
+        "SF",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Golden State Warriors",
       "teamType": "allt"
@@ -129,6 +152,10 @@
         "athleticism": 91,
         "basketballIq": 92
       },
+      "positions": [
+        "SF",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Lakers",
       "teamType": "allt"
@@ -147,6 +174,10 @@
         "athleticism": 87,
         "basketballIq": 89
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Detroit Pistons",
       "teamType": "allt"
@@ -165,6 +196,10 @@
         "athleticism": 77,
         "basketballIq": 98
       },
+      "positions": [
+        "SF",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -183,6 +218,10 @@
         "athleticism": 90,
         "basketballIq": 97
       },
+      "positions": [
+        "SG",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Lakers",
       "teamType": "allt"
@@ -201,6 +240,10 @@
         "athleticism": 88,
         "basketballIq": 91
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K26",
       "team": "All-Time Golden State Warriors",
       "teamType": "allt"
@@ -219,6 +262,9 @@
         "athleticism": 86,
         "basketballIq": 94
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -237,6 +283,10 @@
         "athleticism": 82,
         "basketballIq": 93
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -255,6 +305,10 @@
         "athleticism": 86,
         "basketballIq": 86
       },
+      "positions": [
+        "SF",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Philadelphia 76ers",
       "teamType": "allt"
@@ -273,6 +327,10 @@
         "athleticism": 84,
         "basketballIq": 88
       },
+      "positions": [
+        "PF",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time New York Knicks",
       "teamType": "allt"
@@ -291,6 +349,10 @@
         "athleticism": 90,
         "basketballIq": 90
       },
+      "positions": [
+        "SG",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Portland Trail Blazers",
       "teamType": "allt"
@@ -309,6 +371,10 @@
         "athleticism": 84,
         "basketballIq": 91
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time San Antonio Spurs",
       "teamType": "allt"
@@ -327,6 +393,10 @@
         "athleticism": 93,
         "basketballIq": 95
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Brooklyn Nets",
       "teamType": "allt"
@@ -345,6 +415,10 @@
         "athleticism": 74,
         "basketballIq": 93
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time New York Knicks",
       "teamType": "allt"
@@ -363,6 +437,10 @@
         "athleticism": 89,
         "basketballIq": 94
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time New York Knicks",
       "teamType": "allt"
@@ -381,6 +459,10 @@
         "athleticism": 89,
         "basketballIq": 92
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Minnesota Timberwolves",
       "teamType": "allt"
@@ -399,6 +481,10 @@
         "athleticism": 90,
         "basketballIq": 89
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time San Antonio Spurs",
       "teamType": "allt"
@@ -417,6 +503,10 @@
         "athleticism": 82,
         "basketballIq": 94
       },
+      "positions": [
+        "SG",
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Philadelphia 76ers",
       "teamType": "allt"
@@ -435,6 +525,10 @@
         "athleticism": 86,
         "basketballIq": 94
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -453,6 +547,10 @@
         "athleticism": 83,
         "basketballIq": 92
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Washington Wizards",
       "teamType": "allt"
@@ -471,6 +569,10 @@
         "athleticism": 93,
         "basketballIq": 89
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Philadelphia 76ers",
       "teamType": "allt"
@@ -489,6 +591,10 @@
         "athleticism": 90,
         "basketballIq": 96
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Lakers",
       "teamType": "allt"
@@ -507,6 +613,10 @@
         "athleticism": 87,
         "basketballIq": 93
       },
+      "positions": [
+        "SG",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -525,6 +635,10 @@
         "athleticism": 91,
         "basketballIq": 98
       },
+      "positions": [
+        "SG",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Chicago Bulls",
       "teamType": "allt"
@@ -543,6 +657,10 @@
         "athleticism": 89,
         "basketballIq": 96
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Brooklyn Nets",
       "teamType": "allt"
@@ -561,6 +679,10 @@
         "athleticism": 74,
         "basketballIq": 91
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Sacramento Kings",
       "teamType": "allt"
@@ -579,6 +701,10 @@
         "athleticism": 87,
         "basketballIq": 96
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Utah Jazz",
       "teamType": "allt"
@@ -597,6 +723,10 @@
         "athleticism": 83,
         "basketballIq": 92
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Philadelphia 76ers",
       "teamType": "allt"
@@ -615,6 +745,10 @@
         "athleticism": 81,
         "basketballIq": 93
       },
+      "positions": [
+        "SG",
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Utah Jazz",
       "teamType": "allt"
@@ -633,6 +767,10 @@
         "athleticism": 82,
         "basketballIq": 83
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Clippers",
       "teamType": "allt"
@@ -651,6 +789,10 @@
         "athleticism": 79,
         "basketballIq": 94
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -669,6 +811,9 @@
         "athleticism": 72,
         "basketballIq": 88
       },
+      "positions": [
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Lakers",
       "teamType": "allt"
@@ -687,6 +832,10 @@
         "athleticism": 84,
         "basketballIq": 90
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Washington Wizards",
       "teamType": "allt"
@@ -705,6 +854,9 @@
         "athleticism": 83,
         "basketballIq": 94
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Phoenix Suns",
       "teamType": "allt"
@@ -723,6 +875,10 @@
         "athleticism": 75,
         "basketballIq": 91
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Dallas Mavericks",
       "teamType": "allt"
@@ -741,6 +897,10 @@
         "athleticism": 85,
         "basketballIq": 93
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Lakers",
       "teamType": "allt"
@@ -759,6 +919,10 @@
         "athleticism": 73,
         "basketballIq": 95
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Houston Rockets",
       "teamType": "allt"
@@ -777,6 +941,10 @@
         "athleticism": 72,
         "basketballIq": 86
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -795,6 +963,9 @@
         "athleticism": 89,
         "basketballIq": 96
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time New Orleans Pelicans",
       "teamType": "allt"
@@ -813,6 +984,10 @@
         "athleticism": 87,
         "basketballIq": 96
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Oklahoma City Thunder",
       "teamType": "allt"
@@ -831,6 +1006,10 @@
         "athleticism": 78,
         "basketballIq": 84
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Atlanta Hawks",
       "teamType": "allt"
@@ -849,6 +1028,10 @@
         "athleticism": 83,
         "basketballIq": 93
       },
+      "positions": [
+        "SF",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -867,6 +1050,10 @@
         "athleticism": 88,
         "basketballIq": 94
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Chicago Bulls",
       "teamType": "allt"
@@ -885,6 +1072,10 @@
         "athleticism": 81,
         "basketballIq": 86
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time New York Knicks",
       "teamType": "allt"
@@ -903,6 +1094,10 @@
         "athleticism": 86,
         "basketballIq": 97
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Sacramento Kings",
       "teamType": "allt"
@@ -921,6 +1116,10 @@
         "athleticism": 75,
         "basketballIq": 87
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time San Antonio Spurs",
       "teamType": "allt"
@@ -939,6 +1138,10 @@
         "athleticism": 87,
         "basketballIq": 88
       },
+      "positions": [
+        "PF",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Chicago Bulls",
       "teamType": "allt"
@@ -948,6 +1151,10 @@
       "sourceName": "Bill Russell",
       "peakOverall": 98,
       "peakAttributes": null,
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -966,6 +1173,10 @@
         "athleticism": 79,
         "basketballIq": 85
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Philadelphia 76ers",
       "teamType": "allt"
@@ -984,6 +1195,10 @@
         "athleticism": 84,
         "basketballIq": 91
       },
+      "positions": [
+        "SG",
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"
@@ -1002,6 +1217,10 @@
         "athleticism": 91,
         "basketballIq": 98
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Utah Jazz",
       "teamType": "allt"
@@ -1020,6 +1239,10 @@
         "athleticism": 88,
         "basketballIq": 91
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Detroit Pistons",
       "teamType": "allt"
@@ -1038,6 +1261,9 @@
         "athleticism": 84,
         "basketballIq": 86
       },
+      "positions": [
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Golden State Warriors",
       "teamType": "allt"
@@ -1056,6 +1282,10 @@
         "athleticism": 87,
         "basketballIq": 82
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Washington Wizards",
       "teamType": "allt"
@@ -1074,6 +1304,9 @@
         "athleticism": 91,
         "basketballIq": 96
       },
+      "positions": [
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Miami Heat",
       "teamType": "allt"
@@ -1092,6 +1325,10 @@
         "athleticism": 78,
         "basketballIq": 94
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Portland Trail Blazers",
       "teamType": "allt"
@@ -1110,6 +1347,10 @@
         "athleticism": 89,
         "basketballIq": 96
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Lakers",
       "teamType": "allt"
@@ -1128,6 +1369,9 @@
         "athleticism": 92,
         "basketballIq": 92
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Oklahoma City Thunder",
       "teamType": "allt"
@@ -1146,6 +1390,9 @@
         "athleticism": 79,
         "basketballIq": 83
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Oklahoma City Thunder",
       "teamType": "allt"
@@ -1164,6 +1411,10 @@
         "athleticism": 90,
         "basketballIq": 88
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Atlanta Hawks",
       "teamType": "allt"
@@ -1182,6 +1433,10 @@
         "athleticism": 89,
         "basketballIq": 89
       },
+      "positions": [
+        "SF",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Los Angeles Lakers",
       "teamType": "allt"
@@ -1200,6 +1455,9 @@
         "athleticism": 86,
         "basketballIq": 91
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time San Antonio Spurs",
       "teamType": "allt"
@@ -1218,6 +1476,10 @@
         "athleticism": 78,
         "basketballIq": 93
       },
+      "positions": [
+        "SG",
+        "SF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time San Antonio Spurs",
       "teamType": "allt"
@@ -1236,6 +1498,10 @@
         "athleticism": 79,
         "basketballIq": 88
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Toronto Raptors",
       "teamType": "allt"
@@ -1254,6 +1520,10 @@
         "athleticism": 89,
         "basketballIq": 89
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Toronto Raptors",
       "teamType": "allt"
@@ -1272,6 +1542,10 @@
         "athleticism": 86,
         "basketballIq": 90
       },
+      "positions": [
+        "SG",
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Orlando Magic",
       "teamType": "allt"
@@ -1290,6 +1564,9 @@
         "athleticism": 54,
         "basketballIq": 84
       },
+      "positions": [
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Houston Rockets",
       "teamType": "allt"
@@ -1308,6 +1585,10 @@
         "athleticism": 80,
         "basketballIq": 85
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Detroit Pistons",
       "teamType": "allt"
@@ -1326,6 +1607,10 @@
         "athleticism": 76,
         "basketballIq": 83
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Atlanta Hawks",
       "teamType": "allt"
@@ -1344,6 +1629,10 @@
         "athleticism": 90,
         "basketballIq": 91
       },
+      "positions": [
+        "SF",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Detroit Pistons",
       "teamType": "allt"
@@ -1362,6 +1651,10 @@
         "athleticism": 69,
         "basketballIq": 87
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Memphis Grizzlies",
       "teamType": "allt"
@@ -1380,6 +1673,10 @@
         "athleticism": 88,
         "basketballIq": 93
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K26",
       "team": "All-Time Detroit Pistons",
       "teamType": "allt"
@@ -1398,6 +1695,10 @@
         "athleticism": 79,
         "basketballIq": 82
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Sacramento Kings",
       "teamType": "allt"
@@ -1416,6 +1717,10 @@
         "athleticism": 81,
         "basketballIq": 90
       },
+      "positions": [
+        "C",
+        "PF"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Miami Heat",
       "teamType": "allt"
@@ -1434,6 +1739,10 @@
         "athleticism": 87,
         "basketballIq": 78
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Oklahoma City Thunder",
       "teamType": "allt"
@@ -1452,6 +1761,10 @@
         "athleticism": 77,
         "basketballIq": 78
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Phoenix Suns",
       "teamType": "allt"
@@ -1470,6 +1783,10 @@
         "athleticism": 89,
         "basketballIq": 91
       },
+      "positions": [
+        "PG",
+        "SG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Golden State Warriors",
       "teamType": "allt"
@@ -1488,6 +1805,9 @@
         "athleticism": 91,
         "basketballIq": 87
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Chicago Bulls",
       "teamType": "allt"
@@ -1506,6 +1826,10 @@
         "athleticism": 82,
         "basketballIq": 77
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "2013-14 Los Angeles Clippers",
       "teamType": "class"
@@ -1524,6 +1848,10 @@
         "athleticism": 62,
         "basketballIq": 83
       },
+      "positions": [
+        "PF",
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Portland Trail Blazers",
       "teamType": "allt"
@@ -1542,6 +1870,9 @@
         "athleticism": 68,
         "basketballIq": 92
       },
+      "positions": [
+        "C"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Memphis Grizzlies",
       "teamType": "allt"
@@ -1560,6 +1891,9 @@
         "athleticism": 83,
         "basketballIq": 90
       },
+      "positions": [
+        "PG"
+      ],
       "gameVersion": "2K27",
       "team": "All-Time Boston Celtics",
       "teamType": "allt"

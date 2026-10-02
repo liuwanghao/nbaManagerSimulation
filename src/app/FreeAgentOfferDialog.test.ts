@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { getRecommendedFreeAgentOffer } from "../game/freeAgency/FreeAgencyService";
+import { getRecommendedFreeAgentOffer, getRecommendedOwnPlayerExtension } from "../game/freeAgency/FreeAgencyService";
 import { createCareer } from "../game/season/career";
 import { FreeAgentOfferDialogContent } from "./FreeAgentOfferDialog";
 
@@ -35,5 +35,21 @@ describe("free-agent offer dialog", () => {
     }
     expect(regular).toContain("下一日历日（包括休息日）决定是否接受");
     expect(offseason).not.toContain("下一日历日（包括休息日）决定是否接受");
+  });
+
+  it("labels own-player extensions as a next-day renewal offer", () => {
+    const state = createCareer("extension-offer-dialog");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const playerId = state.teams[state.userTeamId].playerIds[0];
+    const player = state.players[playerId];
+    player.contract = { ...player.contract, status: "STANDARD", yearsRemaining: 1, salaryByYear: [player.contract.salary], currentYearIndex: 0 };
+    const draft = { ...getRecommendedOwnPlayerExtension(state, playerId), guaranteedPercent: 1, finalYearOption: "NONE" as const, rolePromised: "ROTATION" as const };
+    const markup = renderToStaticMarkup(createElement(FreeAgentOfferDialogContent, {
+      state, playerId, draft, mode: "extension", busy: false, onChange: () => {}, onClose: () => {}, onSubmit: () => {},
+    }));
+    expect(markup).toContain("提交提前续约报价");
+    expect(markup).toContain("提交续约报价");
+    expect(markup).toContain("不占用本赛季工资空间");
+    expect(markup).toContain("下一日历日（包括休息日）决定是否接受");
   });
 });

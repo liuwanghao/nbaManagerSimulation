@@ -53,6 +53,7 @@ import { RegularSeasonFreeAgents } from "./RegularSeasonFreeAgents";
 import { GameIssueFeedbackAction } from "./GameIssueFeedbackAction";
 import { buildGameIssueFeedback } from "./issueFeedback";
 import { MarketTradeRecords } from "./MarketTradeRecords";
+import { CustomTradeBuilder } from "./CustomTradeBuilder";
 import { PlayerPortrait } from "./PlayerPortrait";
 import { LINEUP_POSITIONS, effectiveStarterAssignments, planPlayerRotationResponse, projectedRotationBench } from "../game/roster/RotationPlanService";
 import { SeasonOpeningScreen } from "./SeasonOpeningScreen";
@@ -186,7 +187,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const calendarStripRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<SeasonTab>(initialActiveTab);
   const [manageSubTab, setManageSubTab] = useState<"overview" | "roster" | "contracts" | "assets">("overview");
-  const [marketSubTab, setMarketSubTab] = useState<"trade" | "free-agents" | "log">("trade");
+  const [marketSubTab, setMarketSubTab] = useState<"trade" | "custom-trade" | "free-agents" | "log">("trade");
   const [leagueSubTab, setLeagueSubTab] = useState<"standings" | "leaders" | "awards" | "schedule">("standings");
   const [careerSubTab, setCareerSubTab] = useState<CareerTab>("overview");
   const [calendarMonth, setCalendarMonth] = useState(() => calendarDateAtIndex(initialState.calendar.openingDate, initialState.calendar.currentDateIndex).slice(0, 7));
@@ -746,7 +747,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
     const targetSlot = activeSlot;
     setBusy(true); setStatus(command.type === "SET_ROTATION_PLAN" ? "正在校验并保存首发与轮换…" : command.type === "SET_TRADE_ASSETS" ? "正在保存交易筹码…" : "正在校验交易、名单与工资帽…");
     try {
-      let next = command.type === "SET_TRADE_ASSETS" || command.type === "GENERATE_TRADE_OFFERS" || command.type === "GENERATE_TARGETED_TRADE_OFFERS" || command.type === "ACCEPT_TRADE_OFFER" ? executeTradeCommand(state, command) : executeRosterCommand(state, command);
+      let next = command.type === "SET_TRADE_ASSETS" || command.type === "EXECUTE_CUSTOM_TRADE" || command.type === "GENERATE_TRADE_OFFERS" || command.type === "GENERATE_TARGETED_TRADE_OFFERS" || command.type === "ACCEPT_TRADE_OFFER" ? executeTradeCommand(state, command) : executeRosterCommand(state, command);
       const manualEvent = command.type === "SET_ROTATION_PLAN" && manualRotationEventId
         ? next.eventState.queue.find((event) => event.eventInstanceId === manualRotationEventId && ["INJURY", "FATIGUE"].includes(event.category)) : undefined;
       if (manualEvent) next = executeEventCommand(next, {
@@ -755,7 +756,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       });
       await persistState(next, targetSlot); setState(next);
       if (manualEvent) setManualRotationEventId(null);
-      setStatus(manualEvent ? "轮换已保存 · 可继续模拟" : command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "SET_TRADE_ASSETS" ? "交易筹码已保存" : command.type === "GENERATE_TRADE_OFFERS" || command.type === "GENERATE_TARGETED_TRADE_OFFERS" ? `已生成 ${next.tradeDesk.offers.length} 个动态报价 · 适配度变化已计算` : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : command.type === "SET_ROTATION_PLAN" ? command.payload.plan.selectionMode === "AUTO" ? "已自动匹配并保存首发与轮换" : "已保存首发、替补顺位与目标分钟" : "经理事务已原子提交并自动保存");
+      setStatus(manualEvent ? "轮换已保存 · 可继续模拟" : command.type === "LOCK_OPENING_ROSTER" ? "开季名单已锁定 · 新赛季正式开始" : command.type === "SET_TRADE_ASSETS" ? "交易筹码已保存" : command.type === "EXECUTE_CUSTOM_TRADE" ? "自定义交易已完成并自动保存" : command.type === "GENERATE_TRADE_OFFERS" || command.type === "GENERATE_TARGETED_TRADE_OFFERS" ? `已生成 ${next.tradeDesk.offers.length} 个动态报价 · 适配度变化已计算` : command.type === "ACCEPT_TRADE_OFFER" ? "交易已原子执行并自动保存" : command.type === "SET_ROTATION_PLAN" ? command.payload.plan.selectionMode === "AUTO" ? "已自动匹配并保存首发与轮换" : "已保存首发、替补顺位与目标分钟" : "经理事务已原子提交并自动保存");
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "操作失败，状态未改变");
       if (command.type === "SET_TRADE_ASSETS" || command.type === "GENERATE_TRADE_OFFERS" || command.type === "GENERATE_TARGETED_TRADE_OFFERS") throw error;
@@ -865,7 +866,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
         const message = result.message ?? "激励视频未完成，疲劳未改变。";
         setEventError(message);
         setStatus(message);
-      } else setStatus("高疲劳球员已恢复到 60 · 可继续赛程");
+      } else setStatus("高疲劳球员已恢复到 0 · 可继续赛程");
     } finally {
       setBusy(false);
     }
@@ -1119,7 +1120,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
           </div>
         </section>
         <section id="manage-panel-contracts" role="tabpanel" aria-labelledby="manage-tab-contracts" hidden={manageSubTab !== "contracts"} className="manage-page">
-          <ManagementContracts players={myRoster} sheet={capSheet} seasonYear={state.league.seasonYear} onOpenPlayer={setSelectedPlayerId} busy={busy} onWaive={["REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"].includes(state.league.currentPhase) ? (playerId) => runManagerCommand({ commandId: `waive-${state.league.seasonId}-${playerId}-${Object.keys(state.commandReceipts).length}`, type: "WAIVE_PLAYER", payload: { playerId } }) : undefined} />
+          <ManagementContracts players={myRoster} sheet={capSheet} seasonYear={state.league.seasonYear} state={state} onOpenPlayer={setSelectedPlayerId} busy={busy} onRenewOwnPlayer={["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE", "PRESEASON"].includes(state.league.currentPhase) ? (playerId, draft) => runFreeAgencyCommand({ commandId: `renew-own-player-${state.league.seasonId}-${playerId}-${Object.keys(state.commandReceipts).length}`, type: "SUBMIT_OWN_EXTENSION_OFFER", payload: { playerId, ...draft } }) : undefined} onWaive={["REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"].includes(state.league.currentPhase) ? (playerId) => runManagerCommand({ commandId: `waive-${state.league.seasonId}-${playerId}-${Object.keys(state.commandReceipts).length}`, type: "WAIVE_PLAYER", payload: { playerId } }) : undefined} />
         </section>
         <section id="manage-panel-assets" role="tabpanel" aria-labelledby="manage-tab-assets" hidden={manageSubTab !== "assets"} className="manage-page">
           <ManagementDraftPicks picks={Object.values(state.draftPicks)} teams={state.teams} userTeamId={state.userTeamId} />
@@ -1128,14 +1129,17 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
 
       {activeTab === "market" && <div className="market-hub">
         <div className="cyber-subnav market-tabs" role="tablist" aria-label="球员市场">
-          {(["trade", "free-agents", "log"] as const).map((tab) => <button key={tab} id={`market-tab-${tab}`} type="button" role="tab" aria-selected={marketSubTab === tab} aria-controls={`market-panel-${tab}`} className={marketSubTab === tab ? "selected" : ""} onClick={() => setMarketSubTab(tab)}>{({ trade: "交易", "free-agents": "自由球员", log: "交易记录" })[tab]}</button>)}
+          {(["trade", "free-agents", "log"] as const).map((tab) => <button key={tab} id={`market-tab-${tab}`} type="button" role="tab" aria-selected={marketSubTab === tab} aria-controls={`market-panel-${tab}`} className={marketSubTab === tab ? "selected" : ""} onClick={() => setMarketSubTab(tab)}>{({ trade: "交易", "free-agents": "自由球员", log: "交易 / 续约记录" })[tab]}</button>)}
         </div>
         <section id="market-panel-trade" role="tabpanel" aria-labelledby="market-tab-trade" hidden={marketSubTab !== "trade"} className="market-page market-page-content">
           {isTradePhaseAllowed(state.league.currentPhase) ? <TradeDesk state={state} busy={busy} onTradeCommand={runManagerCommand} /> : <div className="manage-page-heading"><div><h2>交易控制台</h2><p>当前阶段交易窗口已关闭；窗口开放后可询价与成交。</p></div><span>已关闭</span></div>}
         </section>
+        <section id="market-panel-custom-trade" role="tabpanel" aria-labelledby="market-tab-custom-trade" hidden={marketSubTab !== "custom-trade"} className="market-page market-page-content">
+          {isTradePhaseAllowed(state.league.currentPhase) ? <CustomTradeBuilder state={state} busy={busy} onTradeCommand={runManagerCommand} /> : <div className="manage-page-heading"><div><h2>自定义交易</h2><p>当前阶段交易窗口已关闭；窗口开放后可自由组合双方筹码。</p></div><span>已关闭</span></div>}
+        </section>
         <section id="market-panel-free-agents" role="tabpanel" aria-labelledby="market-tab-free-agents" hidden={marketSubTab !== "free-agents"} className="market-page market-page-content"><RegularSeasonFreeAgents state={state} onOpenPlayer={setSelectedPlayerId} onCommand={runFreeAgencyCommand} busy={busy} /></section>
         <section id="market-panel-log" role="tabpanel" aria-labelledby="market-tab-log" hidden={marketSubTab !== "log"} className="market-page market-page-content">
-          <MarketTradeRecords userTrades={state.gmCareer.tradeHistory} aiTrades={state.aiTradeState.transactionLog} players={state.players} />
+          <MarketTradeRecords userTrades={state.gmCareer.tradeHistory} aiTrades={state.aiTradeState.transactionLog} renewalRecords={(state.contractLifecycle?.transactionLog ?? []).filter((entry) => entry.includes("续约"))} players={state.players} />
         </section>
       </div>}
 
@@ -1401,8 +1405,9 @@ function EventCard({ event, state, pendingCount, busy, error, onResolve }: {
     if (event.category === "INJURY" && choice.id === "auto_adjust") return enoughPlayersForRotation ? "系统重排首发与出场时间" : "名单不足，补齐后自动重排轮换";
     if (event.category === "INJURY" && choice.id === "manual_adjust") return enoughPlayersForRotation ? "前往阵容轮换，保存后继续赛程" : "可用球员不足，需先补齐名单";
     if (event.category === "FATIGUE" && choice.id === "keep_rotation") return "保留现有首发与目标分钟，疲劳值不变";
+    if (event.category === "FATIGUE" && choice.id === "rest_next_game") return "下一场不出场，比赛结束后自动回归原轮换";
     if (event.category === "FATIGUE" && choice.id === "manual_adjust") return "前往阵容轮换，保存后继续赛程";
-    if (event.category === "FATIGUE" && choice.id === "watch_video") return "完整观看后，将疲劳高于 60 的球员恢复到 60";
+    if (event.category === "FATIGUE" && choice.id === "watch_video") return "完整观看后，将疲劳高于 60 的球员恢复到 0";
     const impact = choice.effects.map((effect) => {
       if (effect.type === "LEAGUE_LOG") return "记录至联盟动态";
       if (typeof effect.value !== "number") return "";

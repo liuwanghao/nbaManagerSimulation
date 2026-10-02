@@ -22,6 +22,9 @@ describe("Bootstrap fixture routing", () => {
       expect(markup).toContain('class="launcher-shell home-screen"');
       expect(markup).toContain('src="./branding/home-logo-display.webp"');
       expect(markup).toContain('data-testid="start-new-game"');
+      expect(markup).toContain('class="launcher-announcement"');
+      expect(markup).toContain("本次游戏优化和修复内容");
+      expect(markup).toContain("查看详情");
     },
   );
 

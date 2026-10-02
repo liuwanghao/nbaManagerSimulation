@@ -96,6 +96,19 @@ describe("regular-season management pages", () => {
     expect(markup).toContain("裁员");
   });
 
+  it("shows early renewal only for an expiring contract", () => {
+    const state = createCareer("management-renewal");
+    const players = state.teams[state.userTeamId].playerIds.map((id) => state.players[id]);
+    for (const player of players) player.contract = { ...player.contract, status: "STANDARD", yearsRemaining: 2 };
+    players[0].contract = { ...players[0].contract, status: "STANDARD", yearsRemaining: 1 };
+    players[1].contract = { ...players[1].contract, status: "STANDARD", yearsRemaining: 2 };
+    const markup = renderToStaticMarkup(createElement(ManagementContracts, {
+      state, players, sheet: getCapSheet(state, state.userTeamId), seasonYear: state.league.seasonYear, onOpenPlayer: () => {}, onRenewOwnPlayer: async () => {},
+    }));
+    expect(markup.match(/class="manage-contract-renew"/g)).toHaveLength(1);
+    expect(markup).toContain("提前续约");
+  });
+
   it("groups only owned picks by year and marks existing commitments", () => {
     const state = createCareer("management-picks");
     const ownId = state.userTeamId;

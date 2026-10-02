@@ -15,7 +15,7 @@ import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { GameChrome, type SaveActionOptions, type SaveActionResult } from "./GameChrome";
 import { getTeamInboxItems } from "../game/notifications/TeamNotificationService";
-import { contractStatusLabel, freeAgencyTransactionLabel, humanizeUiText, measurementLabel, moneyLabel, phaseLabel, positionLabel, positionPairLabel, slotLabel } from "./uiText";
+import { adaptiveMoneyLabel, contractStatusLabel, freeAgencyTransactionLabel, humanizeUiText, measurementLabel, moneyLabel, phaseLabel, positionLabel, positionPairLabel, slotLabel } from "./uiText";
 import { localizePlayerNamesInText, playerNameZh, playerSurnameZh } from "./playerNameZh";
 import { playerRatingStyle } from "./playerRatingColor";
 import { compareFreeAgentCandidates, type FreeAgentSortOption } from "./freeAgencySort";
@@ -222,7 +222,7 @@ function DraftIntroduction({ state, busy, onCommand, onTradeCommand }: Pick<Stag
       </>}
       <div className="draft-terminal-info"><span>i</span><p><b>{firstDraft ? "本届选秀规则" : "进入大厅后"}</b>{firstDraft ? "其他球队按真实选秀目标选择；目标被抢先选走时，会从剩余球员中补位。" : "可查看新秀的年龄、位置、能力、潜力评级和球探可信度。真实潜力不会公开。"}</p></div>
       <button className="draft-terminal-cta" disabled={busy} onClick={() => onCommand({ commandId: `prepare-rookie-draft-${state.league.seasonId}`, type: "PREPARE_ROOKIE_DRAFT", payload: {} })}>{firstDraft ? "进入新秀选秀大厅" : "开始乐透抽签"}<span>▶</span></button>
-      {tradeOpen && createPortal(<div className="draft-prep-trade-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setTradeOpen(false); }}><div className="draft-prep-trade-dialog market-hub" role="dialog" aria-modal="true" aria-label="选秀前交易中心"><button type="button" className="draft-prep-trade-close" aria-label="关闭交易中心" onClick={() => setTradeOpen(false)}>×</button><TradeDesk state={state} busy={busy} onTradeCommand={onTradeCommand} /></div></div>, document.body)}
+      {tradeOpen && createPortal(<div className="draft-prep-trade-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setTradeOpen(false); }}><div className="draft-prep-trade-dialog market-hub" role="dialog" aria-modal="true" aria-label="选秀前交易中心"><button type="button" className="draft-prep-trade-close" aria-label="关闭交易中心" onClick={() => setTradeOpen(false)}>×</button><TradeDesk state={state} busy={busy} onTradeCommand={onTradeCommand} /></div></div>, document.body ?? document.documentElement)}
     </section>
   );
 }
@@ -433,7 +433,7 @@ function PostDraftHub({ state, busy, onFreeAgencyCommand, onRosterCommand }: Pic
         <p>提交资质报价可保留匹配权；不提交则球员转为 UFA，但已有 Bird Rights 与对应 Cap Hold 仍保留。</p>
         <div>{pendingQualifyingOffers.map((player) => <article key={player.id}>
           <span><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · OVR {calculatePlayerOverall(player).toFixed(0)} · QO {money(getQualifyingOfferAmount(player, state.league.seasonYear))}</small></span>
-          <span><button type="button" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `qo-tender-${state.league.seasonId}-${player.id}`, type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "TENDER" } })}>提交 QO</button><button type="button" className="decline" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `qo-decline-${state.league.seasonId}-${player.id}`, type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "DECLINE" } })}>不提交</button></span>
+          <span><button type="button" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `qo-tender-${state.league.seasonId}-${player.id}`, type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "TENDER" } })}>提交资质报价</button><button type="button" className="decline" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `qo-decline-${state.league.seasonId}-${player.id}`, type: "RESOLVE_QUALIFYING_OFFER", payload: { playerId: player.id, decision: "DECLINE" } })}>放弃</button></span>
         </article>)}</div>
       </section>}
       <div className="terminal-notice"><span>i</span><p>下一阶段：开放常规交易、受限自由球员报价单与 {BALANCE_CONFIG.freeAgency.decisionWindowDays} 日决策窗口。</p></div>
@@ -634,6 +634,7 @@ export function TradeDesk({ state, busy, onTradeCommand, closeMarketDisabled = f
     </header>
     <div className="trade-console-scroll">
       <div className="trade-mode-tabs" role="group" aria-label="交易询价方式"><button type="button" className={tradeMode === "ASSET" ? "selected" : ""} aria-pressed={tradeMode === "ASSET"} onClick={() => { setTradeMode("ASSET"); setInquiryMessage(null); }}>我方筹码询价</button><button type="button" className={tradeMode === "TARGET" ? "selected" : ""} aria-pressed={tradeMode === "TARGET"} onClick={() => { setTradeMode("TARGET"); setInquiryMessage(null); }}>搜索目标球员</button></div>
+      <>
       {tradeMode === "ASSET" ? <>
       <section className="trade-console-card trade-asset-card"><div className="trade-console-card-heading"><b><em className="trade-step">01</em> 选择我方筹码</b><span>{inquiryPlayerId ? "询价中" : draftPlayerIds.length + draftPickIds.length ? `${draftPlayerIds.length} 名球员 · ${draftPickIds.length} 枚签` : "未选择"}</span></div>
         <button className="trade-asset-trigger" type="button" disabled={busy || Boolean(inquiryPlayerId)} onClick={() => setAssetDrawerOpen(true)}>{displayedPlayer ? <PlayerPortrait player={displayedPlayer} portraitPath={displayedPlayer.portraitPath} className="trade-avatar" /> : <span className="trade-avatar">签</span>}<span className="trade-asset-copy">{draftPlayerIds.length + draftPickIds.length ? <><b>{draftPlayerIds.map((id) => playerNameZh(state.players[id]?.name ?? id, id)).join("、") || "选秀权"}</b><small>{draftPickIds.length ? draftPickIds.map((id) => tradePickLabel(state, id)).join("、") : "未加入选秀权"}</small><strong>{draftPlayerIds.length} 名球员 · {draftPickIds.length} 枚签</strong></> : <b>选择我方交易筹码</b>}</span><strong className="trade-asset-change">{inquiryPlayerId ? "询价中…" : "编辑筹码　›"}</strong></button>
@@ -672,6 +673,7 @@ export function TradeDesk({ state, busy, onTradeCommand, closeMarketDisabled = f
         {tradeMode === "ASSET" && inquiryMessage && <p className="trade-inquiry-message" role="alert">{inquiryMessage}</p>}
         <div className="trade-refresh-action"><button data-testid="trade-refresh" type="button" disabled={busy || refreshBusy || Boolean(inquiryPlayerId) || !activeQuote} onClick={() => void refreshOffers()}><span>刷新报价</span><small>{refreshBusy ? "激励视频播放中…" : "观看激励视频"}</small></button><p role="status" aria-live="polite">{refreshMessage ?? "完播后才会生成新的报价；当前方案会保留至刷新成功。"}</p></div>
       </section>
+      </>
     </div>
     {assetDrawerOpen && <TradeAssetPicker
       state={state} roster={roster} selectedPlayerIds={draftPlayerIds} selectedPickIds={draftPickIds}
@@ -767,6 +769,8 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
   const players = getFreeAgents(state);
   const currentTeamId = getCurrentTeamId(state);
   const currentTeam = state.teams[currentTeamId];
+  const ownFreeAgents = players.filter((player) => player.birdTeamId === currentTeamId && player.contract.status === "RFA");
+  const marketPlayers = players.filter((player) => player.birdTeamId !== currentTeamId || player.contract.status !== "RFA");
   const sheet = getCapSheet(state, currentTeamId);
   const pending = freeAgency.pendingUserRfaDecision;
   const userOffers = Object.values(freeAgency.offers).filter((offer) => offer.teamId === currentTeamId);
@@ -800,7 +804,7 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
     });
   };
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
-  const visiblePlayers = players
+  const visiblePlayers = marketPlayers
     .filter((player) => !normalizedSearch || `${player.name} ${playerNameZh(player.name, player.id)}`.toLocaleLowerCase().includes(normalizedSearch))
     .filter((player) => positionFilter === "ALL" || player.position === positionFilter || player.secondaryPosition === positionFilter)
     .map((player) => {
@@ -811,8 +815,15 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
     .sort((left, right) => compareFreeAgentCandidates(left, right, sortOption));
   const freeAgentPositionCounts = Object.fromEntries(EXPANSION_POSITION_FILTERS.map((position) => [
     position,
-    players.filter((player) => position === "ALL" || player.position === position || player.secondaryPosition === position).length,
+    marketPlayers.filter((player) => position === "ALL" || player.position === position || player.secondaryPosition === position).length,
   ])) as Record<ExpansionPositionFilter, number>;
+  const ownFreeAgentEntries = ownFreeAgents
+    .map((player) => {
+      const ability = Math.round(calculatePlayerOverall(player));
+      const preview = getFreeAgentOfferPreview(state, player.id, currentTeamId);
+      return { player, ability, preview, offer: preview.draft, id: player.id, age: player.age, suggestedSalary: preview.draft.year1Salary };
+    })
+    .sort((left, right) => compareFreeAgentCandidates(left, right, sortOption));
   const finance = getSeasonFinanceConfig(state.league.seasonYear);
   const capScaleMax = finance.secondApron;
   const capUsagePercent = Math.min(100, (sheet.total / capScaleMax) * 100);
@@ -823,53 +834,55 @@ function FreeAgencyHub({ state, busy, onFreeAgencyCommand }: Pick<Stage4FlowProp
     { key: "first", label: "第一土豪线", value: finance.firstApron },
     { key: "second", label: "第二土豪线", value: finance.secondApron },
   ];
+  const renderFreeAgentCard = ({ player, ability, preview, offer }: (typeof visiblePlayers)[number]) => {
+    const market = freeAgency.markets[player.id];
+    const submittedOffer = market?.marketWindowStatus === "OPEN"
+      ? userOffers.filter((entry) => entry.playerId === player.id
+        && entry.createdDay >= market.marketWindowStartDay
+        && entry.status !== "WITHDRAWN")
+        .sort((left, right) => right.createdDay - left.createdDay || right.offerId.localeCompare(left.offerId))[0]
+      : undefined;
+    const existing = submittedOffer?.status === "ACTIVE" ? submittedOffer : undefined;
+    const previouslyRejected = !submittedOffer && market?.marketWindowStatus === "CLOSED_NO_SIGNING"
+      && userOffers.some((entry) => entry.playerId === player.id && entry.status === "REJECTED");
+    const structurallyBlocked = ["球队名单已满", "球员已不在自由市场", "RFA 正在等待原球队匹配", "原球队不能提交 RFA 报价单", "自由市场尚未开启"].includes(preview.reason ?? "");
+    const waitingForFirstOffer = !existing && !preview.reason && market?.marketWindowStatus !== "OPEN";
+    const resolvedOfferStatus = submittedOffer?.status === "REJECTED"
+      ? "报价已被拒绝"
+      : submittedOffer?.status === "EXPIRED" ? "报价已到期" : undefined;
+    const statusText = existing
+      ? `等待决定 · 签约意愿 ${existing.utility.toFixed(0)}/100 · 第 ${market?.decisionDeadline ?? existing.expiresDay} 天截止`
+      : resolvedOfferStatus
+        ? `${resolvedOfferStatus} · 第 ${market?.decisionDeadline ?? submittedOffer?.expiresDay} 天截止`
+        : preview.reason ?? (previouslyRejected ? "此前报价被拒绝，可调整条件重新报价" : market?.marketWindowStatus === "OPEN" ? `第 ${market.decisionDeadline} 天截止` : "等待首份报价");
+    return <article className="fa-reference-player-card" key={player.id} role="button" tabIndex={0} aria-label={`查看${playerNameZh(player.name, player.id)}球员详情`} onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; setSelectedPlayerId(player.id); }} onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); setSelectedPlayerId(player.id); }}>
+      <div className="fa-player-copy">
+        <div className="fa-player-name"><b>{playerNameZh(player.name, player.id)}</b><em>{positionPairLabel(player.position, player.secondaryPosition)}</em></div>
+        <small className="fa-player-meta-line"><span className={`fa-status-badge ${player.contract.status.toLowerCase()}`} title={player.contract.status === "RFA" ? "受限制自由球员：原球队拥有报价匹配权" : "完全自由球员：签约不受原球队匹配限制"}><strong>{player.contract.status}</strong></span><i>·</i><span><strong>{player.age}岁</strong></span><i>·</i><span className="fa-player-contract-summary" title={`${submittedOffer ? "报价首年" : "当前要价"} ${money(submittedOffer?.year1Salary ?? offer.year1Salary)} · ${submittedOffer?.years ?? offer.years} 年`}>{submittedOffer ? "报价首年" : "当前要价"} <strong className="cyan">{money(submittedOffer?.year1Salary ?? offer.year1Salary)}</strong> · {submittedOffer?.years ?? offer.years} 年</span></small>
+        <small className="fa-player-value-line">参考估值 {money(getProjectedMarketSalary(player, state.league.seasonYear))}{submittedOffer && ` · 当前要价 ${money(getCurrentFreeAgentAsk(state, player))}`}</small>
+        <small className={`fa-player-status-line deadline${waitingForFirstOffer ? " waiting-first-offer" : ""}${!existing && preview.reason ? " blocked" : ""}`} title={statusText}>{statusText}</small>
+      </div>
+      <span className="fa-player-ovr" aria-label={`OVR ${ability}`}><small>OVR</small><strong className="player-rating-tone" style={playerRatingStyle(ability)}>{ability}</strong></span>
+      {existing
+        ? <button className="withdraw" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `withdraw-${existing.offerId}`, type: "WITHDRAW_FA_OFFER", payload: { offerId: existing.offerId } })}>撤回</button>
+        : submittedOffer
+          ? <button className="withdraw" disabled>{submittedOffer.status === "EXPIRED" ? "已到期" : "已拒绝"}</button>
+          : <button className="fa-offer-button" data-testid={`open-fa-offer-${player.id}`} title={structurallyBlocked ? preview.reason : "查看并编辑合同报价"} disabled={busy || structurallyBlocked} onClick={() => openOfferEditor(player.id)}>{structurallyBlocked ? preview.reason === "球队名单已满" ? "名单已满" : "暂不可报价" : previouslyRejected ? "重新报价" : "发起报价"}</button>}
+    </article>;
+  };
   return (
     <section className="flow-card free-agency-terminal fa-reference-market reference-expansion-draft">
       <div className="fa-reference-scroll">
-      <section className="fa-title-card"><div><h2>自由球员签约 <span>{state.league.seasonYear} 赛季</span></h2><p>可选择报价，也可直接进入季前调整</p></div><strong><small>休赛期名单</small>{roster.length} / {LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum}</strong></section>
+      <section className="fa-title-card"><div><h2>自由球员签约 <span>{state.league.seasonYear} 赛季</span></h2><p>完全自由球员与受限制自由球员均可提交报价争取签约</p></div><strong><small>休赛期名单</small>{roster.length} / {LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum}</strong></section>
       {pending && <div className="rfa-decision"><b>请先处理受限自由球员报价单</b><span>{playerNameZh(state.players[pending.playerId].name, state.players[pending.playerId].id)} · 匹配截止：自由市场第 {pending.deadline} 天。继续推进市场前必须完成决定。</span></div>}
-      <section className="draft-cap-dashboard" aria-label={`${currentTeam.fullName}薪资情况`}><header><span><span className="draft-team-mark">{currentTeam.logoUrl ? <img src={currentTeam.logoUrl} alt="" /> : currentTeam.abbreviation}</span><b>{currentTeam.fullName}</b></span><em>实时校验</em></header><div className="draft-cap-meter"><div className="draft-cap-meter-heading"><span>薪资进度</span><span>帽下空间 <b className={sheet.availableCapSpace < 0 ? "negative" : ""}>{money(sheet.availableCapSpace)}</b></span></div><div className="draft-cap-meter-track" role="progressbar" aria-label="球队工资帽占用" aria-valuemin={0} aria-valuemax={capScaleMax} aria-valuenow={Math.min(sheet.total, capScaleMax)}><span className="draft-cap-meter-fill" style={{ width: `${capUsagePercent}%` }} />{capThresholds.map((threshold) => <i key={threshold.key} className={`threshold-${threshold.key}`} style={{ left: `${(threshold.value / capScaleMax) * 100}%` }} aria-hidden="true" />)}</div><div className="draft-cap-meter-legend">{capThresholds.map((threshold) => <span className={`threshold-${threshold.key}`} key={threshold.key}><small>{threshold.label}</small><b>{money(threshold.value)}</b></span>)}</div><small className="draft-cap-status">{capStatus} · {sheet.availableCapSpace < finance.minimumSalary ? "帽下空间不足，普通自由球员报价不可提交" : "报价需同时满足名单名额与薪资空间"}</small></div></section>
+      <section className="draft-cap-dashboard" aria-label={`${currentTeam.fullName}薪资情况`}><header><span><span className="draft-team-mark">{currentTeam.logoUrl ? <img src={currentTeam.logoUrl} alt="" /> : currentTeam.abbreviation}</span><b>{currentTeam.fullName}</b></span><em>实时校验</em></header><div className="draft-cap-meter"><div className="draft-cap-meter-heading"><span>薪资进度</span><span>帽下空间 <b className={sheet.availableCapSpace < 0 ? "negative" : ""}>{adaptiveMoneyLabel(sheet.availableCapSpace)}</b></span></div><div className="draft-cap-meter-track" role="progressbar" aria-label="球队工资帽占用" aria-valuemin={0} aria-valuemax={capScaleMax} aria-valuenow={Math.min(sheet.total, capScaleMax)}><span className="draft-cap-meter-fill" style={{ width: `${capUsagePercent}%` }} />{capThresholds.map((threshold) => <i key={threshold.key} className={`threshold-${threshold.key}`} style={{ left: `${(threshold.value / capScaleMax) * 100}%` }} aria-hidden="true" />)}</div><div className="draft-cap-meter-legend">{capThresholds.map((threshold) => <span className={`threshold-${threshold.key}`} key={threshold.key}><small>{threshold.label}</small><b>{adaptiveMoneyLabel(threshold.value)}</b></span>)}</div><small className="draft-cap-status">{capStatus} · {sheet.availableCapSpace < finance.minimumSalary ? "帽下空间不足，普通自由球员报价不可提交" : "报价需同时满足名单名额与薪资空间"}</small></div></section>
       <details className="draft-current-roster-panel" open={rosterOpen} onToggle={(event) => setRosterOpen(event.currentTarget.open)} data-testid="free-agency-current-roster"><summary><span><span className="draft-team-mark">{currentTeam.logoUrl ? <img src={currentTeam.logoUrl} alt="" /> : currentTeam.abbreviation}</span><span><b>当前球队阵容</b><small>{roster.length} / {LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum} 人 · {rosterOpen ? "报价后实时更新" : rosterPositionSummary}</small></span></span><em>{rosterOpen ? "收起阵容" : "展开阵容"}</em></summary><div className="draft-current-roster-body"><div className="draft-current-roster-filter" role="group" aria-label="按第一位置筛选当前阵容">{EXPANSION_POSITION_FILTERS.map((position) => { const count = position === "ALL" ? roster.length : rosterPositionCounts.find((entry) => entry.position === position)?.count ?? 0; return <button type="button" key={position} className={rosterPositionFilter === position ? "active" : ""} aria-pressed={rosterPositionFilter === position} onClick={() => setRosterPositionFilter(position)}><b>{position === "ALL" ? "全部" : position}</b><small>{count}</small></button>; })}</div>{roster.length > 0 ? <div className="draft-current-roster-grid">{filteredRoster.map((player) => <button type="button" data-testid={`free-agency-roster-player-${player.id}`} key={player.id} onClick={() => setSelectedPlayerId(player.id)}><span><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · 年薪 {money(player.contract.salary)}</small></span><em className="player-rating-tone" style={playerRatingStyle(calculatePlayerOverall(player))}><small>OVR</small>{calculatePlayerOverall(player).toFixed(0)}</em></button>)}{filteredRoster.length === 0 && <div className="draft-current-roster-empty"><b>该位置暂无球员</b><span>请选择其他第一位置查看阵容。</span></div>}</div> : <div className="draft-current-roster-empty"><b>当前阵容暂无球员</b><span>完成签约后，球员会显示在这里。</span></div>}</div></details>
       <div className="fa-notice"><b>名单规则</b><span>休赛期 {roster.length}/{LEAGUE_FINANCE_CONFIG.rosterLimits.offseasonMaximum} · 开季上限 {LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum}{roster.length > LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum ? ` · 需调整 ${roster.length - LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum} 人` : ""}</span></div>
       {freeAgency.transactionLog.length > 0 && <div className="transaction-feed"><b>联盟动态</b>{freeAgency.transactionLog.slice(0, 5).map((entry, index) => <span key={`${index}-${entry}`}>{localizePlayerNamesInText(freeAgencyTransactionLabel(entry), Object.values(state.players))}</span>)}</div>}
-      <div className="fa-market-heading"><div><b>自由球员列表</b><small>({visiblePlayers.length}/{players.length} 人)</small></div></div>
+      {ownFreeAgentEntries.length > 0 && <section className="fa-own-free-agent-section" aria-labelledby="own-free-agent-title"><div className="fa-market-heading"><div><b id="own-free-agent-title">本队自由球员</b><small>{ownFreeAgentEntries.length} 人 · 拥有签回权</small></div><span>优先处理</span></div><p className="fa-own-free-agent-note">这些球员曾效力于本队，签回时可使用本队球员权利。</p><div className="free-agency-player-list fa-reference-player-list">{ownFreeAgentEntries.map(renderFreeAgentCard)}</div></section>}
+      <div className="fa-market-heading"><div><b>自由球员列表</b><small>({visiblePlayers.length}/{marketPlayers.length} 人)</small></div></div>
       <PlayerListFilters ariaLabel="筛选自由球员" searchValue={searchQuery} onSearchChange={setSearchQuery} sortValue={sortOption} onSortChange={setSortOption} sortOptions={FREE_AGENT_SORT_OPTIONS} positionValue={positionFilter} onPositionChange={setPositionFilter} positionCounts={freeAgentPositionCounts} testIdPrefix="free-agent" />
-      <div className="free-agency-player-list fa-reference-player-list">{visiblePlayers.length === 0 ? <div className="fa-empty">当前筛选条件下暂无可用自由球员</div> : visiblePlayers.map(({ player, ability, preview, offer }) => {
-        const market = freeAgency.markets[player.id];
-        const submittedOffer = market?.marketWindowStatus === "OPEN"
-          ? userOffers.filter((offer) => offer.playerId === player.id
-            && offer.createdDay >= market.marketWindowStartDay
-            && offer.status !== "WITHDRAWN")
-            .sort((left, right) => right.createdDay - left.createdDay || right.offerId.localeCompare(left.offerId))[0]
-          : undefined;
-        const existing = submittedOffer?.status === "ACTIVE" ? submittedOffer : undefined;
-        const previouslyRejected = !submittedOffer && market?.marketWindowStatus === "CLOSED_NO_SIGNING"
-          && userOffers.some((offer) => offer.playerId === player.id && offer.status === "REJECTED");
-        const structurallyBlocked = ["球队名单已满", "球员已不在自由市场", "RFA 正在等待原球队匹配", "原球队不能提交 RFA 报价单", "自由市场尚未开启"].includes(preview.reason ?? "");
-        const waitingForFirstOffer = !existing && !preview.reason && market?.marketWindowStatus !== "OPEN";
-        const resolvedOfferStatus = submittedOffer?.status === "REJECTED"
-          ? "报价已被拒绝"
-          : submittedOffer?.status === "EXPIRED" ? "报价已到期" : undefined;
-        const statusText = existing
-          ? `等待决定 · 签约意愿 ${existing.utility.toFixed(0)}/100 · 第 ${market?.decisionDeadline ?? existing.expiresDay} 天截止`
-          : resolvedOfferStatus
-            ? `${resolvedOfferStatus} · 第 ${market?.decisionDeadline ?? submittedOffer?.expiresDay} 天截止`
-            : preview.reason ?? (previouslyRejected ? "此前报价被拒绝，可调整条件重新报价" : market?.marketWindowStatus === "OPEN" ? `第 ${market.decisionDeadline} 天截止` : "等待首份报价");
-        return <article className="fa-reference-player-card" key={player.id} role="button" tabIndex={0} aria-label={`查看${playerNameZh(player.name, player.id)}球员详情`} onClick={(event) => { if ((event.target as HTMLElement).closest("button")) return; setSelectedPlayerId(player.id); }} onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); setSelectedPlayerId(player.id); }}>
-          <div className="fa-player-copy">
-            <div className="fa-player-name"><b>{playerNameZh(player.name, player.id)}</b><em>{positionPairLabel(player.position, player.secondaryPosition)}</em></div>
-            <small className="fa-player-meta-line"><span className={`fa-status-badge ${player.contract.status.toLowerCase()}`} title={player.contract.status === "RFA" ? "受限制自由球员：原球队拥有报价匹配权" : "完全自由球员：签约不受原球队匹配限制"}><strong>{player.contract.status}</strong></span><i>·</i><span><strong>{player.age}岁</strong></span><i>·</i><span className="fa-player-contract-summary" title={`${submittedOffer ? "报价首年" : "当前要价"} ${money(submittedOffer?.year1Salary ?? offer.year1Salary)} · ${submittedOffer?.years ?? offer.years} 年`}>{submittedOffer ? "报价首年" : "当前要价"} <strong className="cyan">{money(submittedOffer?.year1Salary ?? offer.year1Salary)}</strong> · {submittedOffer?.years ?? offer.years} 年</span></small>
-            <small className="fa-player-value-line">参考估值 {money(getProjectedMarketSalary(player, state.league.seasonYear))}{submittedOffer && ` · 当前要价 ${money(getCurrentFreeAgentAsk(state, player))}`}</small>
-            <small className={`fa-player-status-line deadline${waitingForFirstOffer ? " waiting-first-offer" : ""}${!existing && preview.reason ? " blocked" : ""}`} title={statusText}>{statusText}</small>
-          </div>
-          <span className="fa-player-ovr" aria-label={`OVR ${ability}`}><small>OVR</small><strong className="player-rating-tone" style={playerRatingStyle(ability)}>{ability}</strong></span>
-          {existing
-            ? <button className="withdraw" disabled={busy} onClick={() => onFreeAgencyCommand({ commandId: `withdraw-${existing.offerId}`, type: "WITHDRAW_FA_OFFER", payload: { offerId: existing.offerId } })}>撤回</button>
-            : submittedOffer
-              ? <button className="withdraw" disabled>{submittedOffer.status === "EXPIRED" ? "已到期" : "已拒绝"}</button>
-              : <button className="fa-offer-button" data-testid={`open-fa-offer-${player.id}`} title={structurallyBlocked ? preview.reason : "查看并编辑合同报价"} disabled={busy || structurallyBlocked} onClick={() => openOfferEditor(player.id)}>{structurallyBlocked ? preview.reason === "球队名单已满" ? "名单已满" : "暂不可报价" : previouslyRejected ? "重新报价" : "发起报价"}</button>}
-        </article>;
-      })}</div>
+      <div className="free-agency-player-list fa-reference-player-list">{visiblePlayers.length === 0 ? <div className="fa-empty">当前筛选条件下暂无可用自由球员</div> : visiblePlayers.map(renderFreeAgentCard)}</div>
       {selectedPlayer && <div className="player-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedPlayerId(null); }}><section className="reference-player-dialog" role="dialog" aria-modal="true" aria-label={`${playerNameZh(selectedPlayer.name, selectedPlayer.id)} 球员详情`}><button className="detail-close" type="button" onClick={() => setSelectedPlayerId(null)} aria-label="关闭球员详情">×</button><ReferencePlayerCard player={selectedPlayer} teamName={selectedPlayerTeamName} /></section></div>}
       {offerEditor && offerPlayer && offerDraft && <FreeAgentOfferDialog
         state={state}

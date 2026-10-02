@@ -176,13 +176,9 @@ function updateUnemployment(player: Player): void {
 }
 
 function retirementProbability(player: Player): number {
-  const career = ensureCareer(player);
   const retirement = cfg.retirement;
-  if (player.age <= retirement.earlyCareerMaximumAge) {
-    const severeInjury = player.injuryRating < retirement.lowInjuryRatingThreshold
-      && career.careerInjuryGamesMissed >= retirement.earlyCareerInjuryGamesMissed;
-    if (!severeInjury) return 0;
-  }
+  if (player.age < retirement.minimumAge) return 0;
+  const career = ensureCareer(player);
   const longUnemployment = player.teamId === "FREE_AGENT" && player.contract.status === "UFA"
     && player.age >= retirement.unemploymentAgeMinimum
     && career.unemployedLeagueYears >= retirement.unemploymentYearsThreshold;
@@ -208,10 +204,7 @@ function retirementProbability(player: Player): number {
     && !longUnemployment) {
     probability *= retirement.competitiveVeteranProbabilityMultiplier;
   }
-  return Math.max(retirement.probabilityMin, Math.min(
-    player.age <= retirement.youngMaximumAge ? retirement.youngProbabilityMaximum : retirement.probabilityMax,
-    probability,
-  ));
+  return Math.max(retirement.probabilityMin, Math.min(retirement.probabilityMax, probability));
 }
 
 function hallOfFameScore(player: Player): number {

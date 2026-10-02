@@ -1,10 +1,11 @@
-import { EVENT_DEFINITION_BY_ID } from "../../data/events";
+import { CAREER_MILESTONE_EVENTS, EVENT_DEFINITION_BY_ID } from "../../data/events";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { addTeamNotification } from "../notifications/TeamNotificationService";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, planPlayerRotationResponse, validateRotationPlan } from "../roster/RotationPlanService";
 import { stableHash } from "../random/hash";
 import { projectedFatigueAfterRest } from "../simulation/PlayerStatusService";
 import { SIMULATION_CONFIG } from "../simulation/config";
+import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import type { EventDefinition, EventEffectDefinition, EventInstance, GameResult, GameState, Player } from "../state/types";
 
 export type EventCommand = {
@@ -122,7 +123,7 @@ function settleInformationalEvent(state: GameState, event: EventInstance): void 
   }
 }
 
-/** Removes acknowledgement-only notices from older saves after their gameplay effects have already happened. */
+/** Settles legacy notices and automatic injury decisions after player state has been upgraded. */
 export function settleInformationalEvents(state: GameState): void {
   for (const event of state.eventState.queue) {
     if (event.status !== "PENDING") continue;
@@ -134,6 +135,9 @@ export function settleInformationalEvents(state: GameState): void {
       if (!state.eventState.resolvedInstanceIds.includes(event.eventInstanceId)) {
         state.eventState.resolvedInstanceIds.push(event.eventInstanceId);
       }
+    } else if (["injury_core_major_001", "injury_depth_test_001", "injury_recovery_001"].includes(event.definitionId)
+      && event.choices.some((choice) => choice.id === "auto_adjust")) {
+      resolveEventInPlace(state, event.eventInstanceId, "auto_adjust");
     } else if (isInformationalEvent(event)) settleInformationalEvent(state, event);
   }
   state.eventState.queue = state.eventState.queue.filter((event) => event.status === "PENDING");
@@ -178,6 +182,7 @@ export function enqueueEvent(
     effectivePause,
     autoEffects: definition.autoEffects.map((effect) => snapshotEffect(effect, context)),
     choices: definition.choices.map((choice) => ({ ...choice, effects: choice.effects.map((effect) => snapshotEffect(effect, context)) })),
+    ...(context.player_id ? { targetPlayerId: context.player_id } : {}),
     status: "PENDING",
   };
   state.eventState.lastOccurrenceByDefinition[definition.id] = { seasonId: state.league.seasonId, careerGame: careerGameCount(state) };
@@ -197,6 +202,12 @@ export function enqueueEvent(
   }
   state.eventState.queue.push(instance);
   sortQueue(state);
+  // Injuries are informational: apply the automatic rotation immediately and
+  // leave the notice in the team inbox. Only an emergency roster shortage
+  // remains a simulation block because it requires signing replacement players.
+  if (["injury_core_major_001", "injury_depth_test_001", "injury_recovery_001"].includes(definitionId)) {
+    resolveEventInPlace(state, eventInstanceId, "auto_adjust");
+  }
   return instance;
 }
 
@@ -211,10 +222,17 @@ export function blockingEvent(state: GameState): EventInstance | undefined {
 /** Adds newly available decisions to pending events stored by older saves. */
 export function choicesForEvent(event: EventInstance): EventInstance["choices"] {
   if (event.definitionId === "fatigue_management_001") {
+    const restNextGame = EVENT_DEFINITION_BY_ID[event.definitionId].choices.find((choice) => choice.id === "rest_next_game");
     const keepRotation = EVENT_DEFINITION_BY_ID[event.definitionId].choices.find((choice) => choice.id === "keep_rotation");
-    return keepRotation && !event.choices.some((choice) => choice.id === "keep_rotation")
-      ? [{ ...keepRotation, effects: [] }, ...event.choices]
-      : event.choices;
+    const withoutUnavailableRest = event.targetPlayerId
+      ? event.choices
+      : event.choices.filter((choice) => choice.id !== "rest_next_game");
+    const choices = restNextGame && event.targetPlayerId && !withoutUnavailableRest.some((choice) => choice.id === "rest_next_game")
+      ? [{ ...restNextGame, effects: [] }, ...withoutUnavailableRest]
+      : withoutUnavailableRest;
+    return keepRotation && !choices.some((choice) => choice.id === "keep_rotation")
+      ? [{ ...keepRotation, effects: [] }, ...choices]
+      : choices;
   }
   const legacyAcknowledgement = event.choices.length === 1 && event.choices[0]?.id === "acknowledge";
   if (!["MORALE", "ROLE"].includes(event.category)) return event.choices;
@@ -237,7 +255,10 @@ export function choicesForEvent(event: EventInstance): EventInstance["choices"] 
 }
 
 export function resolveEvent(input: GameState, eventInstanceId: string, choiceId: string): GameState {
-  const state = structuredClone(input);
+  return resolveEventInPlace(structuredClone(input), eventInstanceId, choiceId);
+}
+
+function resolveEventInPlace(state: GameState, eventInstanceId: string, choiceId: string): GameState {
   const event = state.eventState.queue.find((candidate) => candidate.eventInstanceId === eventInstanceId && candidate.status === "PENDING");
   if (!event) throw new Error("EVENT_NOT_PENDING");
   const choices = choicesForEvent(event);
@@ -262,11 +283,28 @@ export function resolveEvent(input: GameState, eventInstanceId: string, choiceId
     for (const playerId of state.teams[state.userTeamId].playerIds) {
       const player = state.players[playerId];
       if (player && player.fatigue > SIMULATION_CONFIG.coaching.highFatigueThreshold) {
-        player.fatigue = SIMULATION_CONFIG.coaching.highFatigueThreshold;
+        player.fatigue = 0;
       }
     }
   }
+  if (event.definitionId === "fatigue_management_001" && choiceId === "rest_next_game") {
+    const player = event.targetPlayerId ? state.players[event.targetPlayerId] : undefined;
+    const nextUserGame = state.schedule
+      .filter((game) => game.status === "SCHEDULED"
+        && (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId))
+      .sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id))[0];
+    const healthyAvailable = state.teams[state.userTeamId].playerIds
+      .map((id) => state.players[id])
+      .filter((candidate) => candidate?.available && !candidate.injury && candidate.contract.status === "STANDARD");
+    if (!player || player.teamId !== state.userTeamId || !player.available || player.injury
+      || !nextUserGame || (state.teams[state.userTeamId].rotationPlan?.targetMinutes[player.id] ?? 0) <= 0) {
+      throw new Error("FATIGUE_REST_TARGET_UNAVAILABLE");
+    }
+    if (healthyAvailable.length < 6) throw new Error("FATIGUE_REST_REQUIRES_SIX_AVAILABLE_PLAYERS");
+    state.scheduledRest = { gameId: nextUserGame.id, playerIds: [player.id] };
+  }
   event.status = "RESOLVED";
+  event.effectivePause = false;
   event.selectedChoiceId = choiceId;
   const choice = choices.find((candidate) => candidate.id === choiceId) as EventInstance["choices"][number];
   applyEffects(state, event, choice.effects ?? []);
@@ -308,13 +346,27 @@ function consecutiveUserResults(state: GameState): GameResult[] {
   return streak;
 }
 
+export function isStarterRequestEligible(state: GameState, player: Player): boolean {
+  const plan = state.teams[state.userTeamId].rotationPlan;
+  if (!plan || Object.values(plan.starters).includes(player.id)) return false;
+  const matchingStarterId = plan?.starters[player.position] ?? (player.secondaryPosition ? plan?.starters[player.secondaryPosition] : undefined);
+  if (!matchingStarterId) return false;
+  const matchingStarter = state.players[matchingStarterId];
+  if (!matchingStarter) return false;
+  return calculatePlayerOverall(player) + BALANCE_CONFIG.randomEvents.starterRequestMaximumGap >= calculatePlayerOverall(matchingStarter);
+}
+
 function chooseConversationPlayer(state: GameState, definition: EventDefinition, featured: Player, rollHash: string): Player | undefined {
   if (definition.category !== "MORALE" && definition.category !== "ROLE") return featured;
   const plan = state.teams[state.userTeamId].rotationPlan;
   const available = state.teams[state.userTeamId].playerIds.map((id) => state.players[id])
     .filter((player) => player?.available && !player.injury && (plan?.targetMinutes[player.id] ?? 0) < BALANCE_CONFIG.rotationPlan.regularSeasonMaximumMinutes);
   const eligible = available.filter((player) => {
-    if (definition.id === "role_starter_claim_001") return player.rotationRole !== "STARTER";
+    if ((definition.category === "ROLE" || definition.id === "morale_minutes_001")
+      && calculatePlayerOverall(player) < BALANCE_CONFIG.randomEvents.roleRequestMinimumOverall) return false;
+    if (definition.id === "role_starter_claim_001") {
+      return isStarterRequestEligible(state, player);
+    }
     if (definition.id === "role_sixth_man_001") return player.rotationRole === "SIXTH_MAN";
     if (definition.id === "role_rookie_growth_001") return player.serviceYears <= 2;
     if (definition.id === "role_veteran_reduced_001" || definition.id === "morale_veteran_voice_001") return player.age >= 32;
@@ -376,6 +428,7 @@ export function enqueueAfterUserGameEvents(state: GameState): void {
       const leader = fatigued[0];
       const predicted = Math.round(projectedFatigueAfterRest(leader.fatigue, restDays));
       enqueueEvent(state, "fatigue_management_001", {
+        player_id: leader.id,
         fatigue_summary: fatigued.length === 1
           ? `${leader.name} 下一场赛前预计疲劳 ${predicted}，休息日恢复后仍高于 ${highFatigueThreshold}`
           : `${leader.name} 等 ${fatigued.length} 名轮换球员下一场赛前预计疲劳仍高于 ${highFatigueThreshold}（最高 ${predicted}）`,
@@ -404,7 +457,9 @@ export function enqueueAfterUserGameEvents(state: GameState): void {
         && (definition.id !== "breakout_rookie_001" || rookieContext));
       const rollHash = stableHash(state.seeds.seasonSeed, "dynamic-event", userResults.length, top.playerId);
       const probabilityRoll = Number.parseInt(rollHash.slice(0, 8), 16) / 0xffffffff;
-      if (candidates.length && probabilityRoll < eventConfig.triggerProbability) {
+      const roleRequest = candidates.some((definition) => definition.category === "ROLE");
+      const triggerProbability = roleRequest ? eventConfig.roleRequestProbability : eventConfig.triggerProbability;
+      if (candidates.length && probabilityRoll < triggerProbability) {
         const ordered = candidates.sort((left, right) => left.id.localeCompare(right.id));
         const weighted = ordered.map((definition) => ({
           definition,
@@ -427,22 +482,8 @@ export function enqueueAfterUserGameEvents(state: GameState): void {
 }
 
 export function enqueueCareerMilestoneEvents(state: GameState): void {
-  const map = {
-    EXPANSION_COMPLETE: "expansion_complete_001",
-    FIRST_WIN: "franchise_first_win_001",
-    TEN_WINS: "franchise_ten_wins_001",
-    FIRST_PLAYOFFS: "playoffs_appearance_001",
-    FIRST_SERIES_WIN: "playoffs_series_win_001",
-    FINALS_APPEARANCE: "playoffs_finals_001",
-    FIRST_CHAMPIONSHIP: "playoffs_champion_001",
-    FIFTY_WIN_SEASON: "franchise_fifty_wins_001",
-    SIXTY_WIN_SEASON: "franchise_sixty_wins_001",
-    HOMEGROWN_ALL_STAR: "franchise_all_star_001",
-    ROOKIE_OF_YEAR: "rookie_award_001",
-    DYNASTY_TWO_OF_THREE: "franchise_dynasty_001",
-  } as const;
-  for (const [achievementId, definitionId] of Object.entries(map)) {
-    if (state.achievements[achievementId as keyof typeof map]?.unlocked) enqueueEvent(state, definitionId);
+  for (const [achievementId, definitionId] of Object.entries(CAREER_MILESTONE_EVENTS)) {
+    if (state.achievements[achievementId as keyof typeof CAREER_MILESTONE_EVENTS]?.unlocked) enqueueEvent(state, definitionId);
   }
 }
 

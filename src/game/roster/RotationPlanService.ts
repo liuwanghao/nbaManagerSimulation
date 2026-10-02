@@ -237,7 +237,13 @@ export function planPlayerRotationResponse(
       || calculatePlayerOverall(players.find((candidate) => candidate.id === plan.starters[left])!)
         - calculatePlayerOverall(players.find((candidate) => candidate.id === plan.starters[right])!)
       || left.localeCompare(right))[0];
-    plan.starters[slot] = playerId;
+    const currentStarter = players.find((candidate) => candidate.id === plan.starters[slot]);
+    // A role request can earn more minutes without displacing a clearly
+    // stronger starter. Only promote when the requested player is at least as
+    // capable as the starter in the best-fitting slot.
+    if (!currentStarter || calculatePlayerOverall(player) >= calculatePlayerOverall(currentStarter)) {
+      plan.starters[slot] = playerId;
+    }
   }
   const starterIds = new Set(Object.values(plan.starters));
   const active = players.filter((candidate) => (plan.targetMinutes[candidate.id] ?? 0) > 0);

@@ -13,15 +13,16 @@ export function TeamLogo({ team, variant = "large" }: { team: Team; variant?: "l
   </span>;
 }
 
-export function SeasonMatchupTeamButton({ team, venue, meta, overall, onOpen }: {
+export function SeasonMatchupTeamButton({ team, venue, meta, overall, onOpen, seriesWins }: {
   team: Team;
   venue: "away" | "home";
   meta: string;
   overall: number;
   onOpen: () => void;
+  seriesWins?: number;
 }) {
   return <button type="button" data-venue={venue} data-team-id={team.id} onClick={onOpen} aria-label={`查看${team.fullName}阵容`}>
-    <TeamLogo team={team} /><b>{team.name}</b><small>{meta}</small><strong className="player-rating-tone" style={playerRatingStyle(overall)}>{overall}</strong>
+    <TeamLogo team={team} /><b>{team.name}</b><small>{meta}</small>{seriesWins !== undefined && <small className="postseason-team-series-score">系列赛胜场 {seriesWins}</small>}<strong className="player-rating-tone" style={playerRatingStyle(overall)}>{overall}</strong>
   </button>;
 }
 

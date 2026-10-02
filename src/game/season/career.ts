@@ -203,6 +203,9 @@ export function simulateLeagueDay(
   const injuryEvents: InjuryEvent[] = [];
   for (const game of games) {
     const coaching = consumeRegularCoachingForGame(state, game);
+    const restPlayerIds = state.scheduledRest?.gameId === game.id
+      ? new Set(state.scheduledRest.playerIds)
+      : undefined;
     const result = simulateGame(
       game,
       state.teams[game.homeTeamId],
@@ -211,9 +214,11 @@ export function simulateLeagueDay(
       state.seeds.seasonSeed,
       false,
       coaching,
+      restPlayerIds,
     );
     applyPlayerStatusAfterGame(state, [result.homeBoxScore, result.awayBoxScore], backToBackTeamIds);
     commitGameResult(state, game, result);
+    if (state.scheduledRest?.gameId === game.id) state.scheduledRest = undefined;
     injuryEvents.push(...(result.injuryEvents ?? []));
   }
   recordInjuryMissedGames(state, participatingTeamIds);
@@ -796,10 +801,6 @@ export function advanceSeason(input: GameState): GameState {
   }
   state.league.currentPhase = "PRESEASON";
   state = lockOpeningRoster(state, true);
-  for (const player of Object.values(state.players)) {
-    player.seasonStats = emptyPlayerSeasonStats();
-    player.postseasonStats = emptyPlayerSeasonStats();
-  }
   return state;
 }
 

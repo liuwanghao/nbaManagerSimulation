@@ -21,6 +21,10 @@ describe("retired legend templates", () => {
     expect(retiredLegend2kRatings.unmatched.map((player) => player.sourceName)).toEqual(["Charles Barkley", "Reggie Miller", "Yi Jianlian"]);
     expect(new Set([...retiredLegend2kRatings.players, ...retiredLegend2kRatings.unmatched].map((player) => player.sourcePlayerId)))
       .toEqual(new Set(RETIRED_LEGEND_IDS));
+    expect(RETIRED_LEGEND_TEMPLATES.every((template) => template.secondaryPosition)).toBe(true);
+    expect(RETIRED_LEGEND_TEMPLATES.find((template) => template.sourceName === "Michael Jordan")?.secondaryPosition).toBe("SF");
+    expect(RETIRED_LEGEND_TEMPLATES.find((template) => template.sourceName === "Jerry West")?.secondaryPosition).toBe("PG");
+    expect(RETIRED_LEGEND_TEMPLATES.find((template) => template.sourceName === "Charles Barkley")?.secondaryPosition).toBe("SF");
   });
 
   it("preserves measured bundled templates and marks newly derived profiles as curated", () => {
@@ -46,6 +50,9 @@ describe("retired legend templates", () => {
     }
     expect(RETIRED_LEGEND_TEMPLATES.find((template) => template.sourceName === "Ben Wallace")?.position).toBe("C");
     expect(RETIRED_LEGEND_TEMPLATES.find((template) => template.sourceName === "Dwyane Wade")?.position).toBe("SG");
+    const iverson = RETIRED_LEGEND_TEMPLATES.find((template) => template.sourcePlayerId === "nba:947");
+    expect(iverson?.position).toBe("SG");
+    expect(iverson?.secondaryPosition).toBe("PG");
     for (const rating of retiredLegendDesignRatings.players) {
       expect(RETIRED_LEGEND_TEMPLATES.find((template) => template.sourcePlayerId === rating.sourcePlayerId)?.peakOverall)
         .toBe(rating.peakOverall);

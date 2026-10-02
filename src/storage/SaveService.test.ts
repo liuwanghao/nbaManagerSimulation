@@ -5,7 +5,7 @@ import { executeDraftCommand } from "../game/draft/DraftService";
 import { calculateAttributeOverall, calculatePlayerOverall } from "../game/player/PlayerRatingService";
 import { calculateMarketPreference } from "../game/player/MarketPreferenceService";
 import { addTeamNotification, executeTeamNotificationCommand } from "../game/notifications/TeamNotificationService";
-import { enqueueEvent, executeEventCommand } from "../game/events/EventService";
+import { enqueueCareerMilestoneEvents, enqueueEvent, executeEventCommand } from "../game/events/EventService";
 import { LocalStorageAdapter, MemoryStorageAdapter, MigratingIndexedDbStorageAdapter } from "../platform/storage/StorageAdapter";
 import type { StorageAdapter } from "../platform/storage/StorageAdapter";
 import { SaveService } from "./SaveService";
@@ -561,6 +561,61 @@ describe("SaveService", () => {
     expect((await service.load(2))?.teamNotifications).toEqual([]);
   });
 
+  it.each([true, false])("repairs repeated legacy playoff milestone notices and preserves read=%s on reload", async (read) => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("legacy-repeated-playoff-notices");
+    state.achievements.FIRST_PLAYOFFS = { unlocked: true, unlockedAt: `${state.league.seasonId}:D0`, seasonId: state.league.seasonId };
+    enqueueCareerMilestoneEvents(state);
+    const original = state.teamNotifications![0];
+    original.read = read;
+    original.date = "2026-10-20";
+    state.teamNotifications!.unshift({ ...original, id: "event-legacy-repeat", read: false, date: "2026-11-20" });
+    addTeamNotification(state, { id: "unrelated-season-notice", category: "SEASON", seasonId: state.league.seasonId,
+      title: "其他赛季消息", message: "保留这条通知。" });
+    delete state.eventState.lastOccurrenceByDefinition.playoffs_appearance_001;
+    const support = state.teams[state.userTeamId].fanSupport;
+    const score = state.gmCareer.dynastyScore;
+    await service.save(1, state);
+    const loaded = (await service.load(1))!;
+    expect(loaded.teamNotifications?.filter((notice) => notice.title === "季后赛初体验")).toEqual([original]);
+    expect(loaded.teamNotifications).toContainEqual(expect.objectContaining({ id: "unrelated-season-notice", read: false }));
+    expect(loaded.eventState.lastOccurrenceByDefinition.playoffs_appearance_001).toBeDefined();
+    enqueueCareerMilestoneEvents(loaded);
+    expect(loaded.teamNotifications).toHaveLength(2);
+    expect(loaded.teams[state.userTeamId].fanSupport).toBe(support);
+    expect(loaded.gmCareer.dynastyScore).toBe(score);
+    await service.save(1, loaded);
+    expect((await service.load(1))?.teamNotifications).toEqual(loaded.teamNotifications);
+  });
+
+  it("upgrades player state before automatically settling a saved depth-injury decision", async () => {
+    const service = new SaveService(new MemoryStorageAdapter());
+    const state = createCareer("legacy-depth-auto-save");
+    const player = state.players[state.teams[state.userTeamId].rotationPlan!.starters.PG];
+    const event = enqueueEvent(state, "injury_depth_test_001", {
+      player_id: player.id, player_name: player.name, injury_duration: "预计伤停约 3 天", games_out: "2",
+    })!;
+    state.eventState.queue = [{ ...event, status: "PENDING", selectedChoiceId: undefined, effectivePause: true,
+      choices: [{ id: "auto_adjust", label: "一键自动调整轮换", effects: [] }, { id: "manual_adjust", label: "手动调整轮换", effects: [] }],
+    }];
+    state.eventState.resolvedInstanceIds = [];
+    state.teamNotifications = [];
+    player.injury = { injuryId: "legacy-depth-injury", severity: "SHORT", daysRemaining: 3, gamesRemaining: 2,
+      occurredSeasonId: state.league.seasonId, occurredGameId: "legacy-game", previousRotationRole: "STARTER" };
+    player.available = true;
+    Reflect.deleteProperty(player, "contract");
+    Reflect.deleteProperty(state, "injuryState");
+    await service.save(1, state);
+    const loaded = await service.load(1);
+    expect(loaded?.eventState.queue).toEqual([]);
+    expect(loaded?.players[player.id].available).toBe(false);
+    expect(loaded?.teams[state.userTeamId].rotationPlan?.targetMinutes[player.id]).toBe(0);
+    expect(loaded?.teams[state.userTeamId].rotationPlan?.selectionMode).toBe("AUTO");
+    expect(loaded?.teamNotifications).toEqual([expect.objectContaining({ title: "轮换球员受伤", read: false })]);
+    await service.save(1, loaded!);
+    expect((await service.load(1))?.teamNotifications).toHaveLength(1);
+  });
+
   it("clears a saved acknowledgement-only injury card while preserving consequential choices", async () => {
     const service = new SaveService(new MemoryStorageAdapter());
     const state = createCareer("legacy-informational-event");
@@ -568,6 +623,9 @@ describe("SaveService", () => {
     const choice = enqueueEvent(state, "morale_minutes_001", { player_id: state.teams[state.userTeamId].playerIds[0] });
     if (!notice || !choice) throw new Error("Expected both event fixtures");
     notice.choices = [{ id: "acknowledge", label: "确认", effects: [] }];
+    notice.status = "PENDING";
+    notice.effectivePause = true;
+    state.eventState.queue.push(notice);
     delete notice.selectedChoiceId;
     state.eventState.resolvedInstanceIds = state.eventState.resolvedInstanceIds.filter((id) => id !== notice.eventInstanceId);
     state.teamNotifications = [];
@@ -581,7 +639,7 @@ describe("SaveService", () => {
     }));
   });
 
-  it("keeps a new injury rotation decision pending after a save reload", async () => {
+  it("keeps an automatically resolved injury rotation and its notice after a save reload", async () => {
     const service = new SaveService(new MemoryStorageAdapter());
     const state = createCareer("injury-decision-save");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
@@ -590,13 +648,10 @@ describe("SaveService", () => {
     })!;
     await service.save(1, state);
     const loaded = await service.load(1);
-    expect(loaded?.eventState.queue.map((entry) => entry.eventInstanceId)).toContain(event.eventInstanceId);
-    expect(loaded?.eventState.queue.find((entry) => entry.eventInstanceId === event.eventInstanceId)?.choices.map((choice) => choice.id)).toEqual(["auto_adjust", "manual_adjust"]);
-    const resolved = executeEventCommand(loaded!, {
-      commandId: "saved-injury-auto", type: "RESOLVE_EVENT",
-      payload: { eventInstanceId: event.eventInstanceId, choiceId: "auto_adjust" },
-    });
-    expect(resolved.eventState.queue).toEqual([]);
+    expect(loaded?.eventState.queue).toEqual([]);
+    expect(loaded?.eventState.resolvedInstanceIds.filter((id) => id === event.eventInstanceId)).toHaveLength(1);
+    expect(loaded?.teamNotifications?.filter((notice) => notice.id === `event-${event.eventInstanceId}`)).toHaveLength(1);
+    expect(loaded?.teams[loaded.userTeamId].rotationPlan?.selectionMode).toBe("AUTO");
   });
 
   it("turns an older major-injury pause into an unread notice on load", async () => {

@@ -24,9 +24,15 @@ export function estimatedInjuryMissedGames(state: GameState, player: Player): nu
   if (days === null) return null;
   const start = state.calendar.currentDateIndex;
   if (["REGULAR_SEASON", "REGULAR_PRE_DEADLINE", "REGULAR_POST_DEADLINE"].includes(state.league.currentPhase)) {
-    return state.schedule.filter((game) => game.status === "SCHEDULED"
+    const upcomingGames = state.schedule.filter((game) => game.status === "SCHEDULED"
       && game.dateIndex >= start && game.dateIndex < start + days
       && (game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)).length;
+    // A positive injury duration means the player misses at least the next
+    // team game. Sparse calendar windows (especially 1–2 day injuries) can
+    // otherwise round the displayed estimate down to an impossible 0.
+    return upcomingGames > 0 ? upcomingGames : state.schedule.some((game) => game.status === "SCHEDULED"
+      && game.dateIndex >= start
+      && (game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)) ? 1 : 0;
   }
   return Math.round(days * REGULAR_SEASON_GAMES / REGULAR_SEASON_DAYS);
 }

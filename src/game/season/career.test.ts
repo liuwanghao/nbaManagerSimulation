@@ -32,6 +32,31 @@ describe("season loop", () => {
     expect(next.calendar.currentDateIndex).toBeGreaterThan(0);
   });
 
+  it("consumes a scheduled rest for one game and lets the player return in the following game", () => {
+    const initial = createCareer("scheduled-rest-season-loop");
+    const userGames = initial.schedule
+      .filter((game) => game.status === "SCHEDULED" && (game.homeTeamId === initial.userTeamId || game.awayTeamId === initial.userTeamId))
+      .sort((left, right) => left.dateIndex - right.dateIndex || left.id.localeCompare(right.id));
+    const restedGame = userGames[0];
+    const returningGame = userGames.find((game) => game.dateIndex > restedGame.dateIndex);
+    if (!restedGame || !returningGame) throw new Error("Expected two user games");
+    const restedPlayerId = initial.teams[initial.userTeamId].playerIds.find((id) => initial.players[id].available && !initial.players[id].injury);
+    if (!restedPlayerId) throw new Error("Expected an available player");
+    initial.scheduledRest = { gameId: restedGame.id, playerIds: [restedPlayerId] };
+    initial.calendar.currentDateIndex = restedGame.dateIndex;
+
+    const afterRest = simulateLeagueDay(initial, restedGame.dateIndex);
+    const restedBox = afterRest.userGameDetails[restedGame.id];
+    expect(restedBox.homeBoxScore?.playerStats.some((stat) => stat.playerId === restedPlayerId)
+      || restedBox.awayBoxScore?.playerStats.some((stat) => stat.playerId === restedPlayerId)).toBe(false);
+    expect(afterRest.scheduledRest).toBeUndefined();
+
+    const afterReturn = simulateLeagueDay(afterRest, returningGame.dateIndex);
+    const returningBox = afterReturn.userGameDetails[returningGame.id];
+    expect(returningBox.homeBoxScore?.playerStats.some((stat) => stat.playerId === restedPlayerId)
+      || returningBox.awayBoxScore?.playerStats.some((stat) => stat.playerId === restedPlayerId)).toBe(true);
+  });
+
   it("stops batch simulation when the next manager-facing event is queued", () => {
     const initial = createCareer("next-event");
     const next = simulateToNextEvent(initial);

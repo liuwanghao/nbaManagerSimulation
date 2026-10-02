@@ -5,6 +5,9 @@ import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { getFreeAgents } from "../freeAgency/FreeAgencyService";
 import { getCapSheet } from "../cap/CapSheetService";
 import { getSeasonFinanceConfig } from "../../config/leagueFinance";
+import { calculatePlayerOverall } from "../player/PlayerRatingService";
+import { SaveService } from "../../storage/SaveService";
+import { MemoryStorageAdapter } from "../../platform/storage/StorageAdapter";
 import { executeRosterCommand, lockOpeningRoster, setTeamRole, setTrainingFocus, waivePlayer } from "./RosterService";
 
 describe("RosterService", () => {
@@ -32,7 +35,75 @@ describe("RosterService", () => {
     expect(locked.teams[locked.userTeamId].playerIds.length).toBeGreaterThanOrEqual(14);
     expect(locked.schedule).toHaveLength(1312);
     expect(locked.eventState.queue.map((event) => event.definitionId)).not.toContain("franchise_season_opening_001");
-    expect(locked.teamNotifications).toEqual([]);
+    expect(locked.teamNotifications).toEqual([expect.objectContaining({ title: "开幕名单已自动补齐", read: false })]);
+  });
+
+  it.each([false, true])("fills only low-ability players and notifies the user (low free agent available: %s)", (hasLowFreeAgent) => {
+    const state = createCareer(`safe-opening-fill-${hasLowFreeAgent}`);
+    state.league.currentPhase = "PRESEASON";
+    const team = state.teams[state.userTeamId];
+    const released = team.playerIds.splice(12);
+    const aiTeam = state.teams.BOS;
+    released.push(...aiTeam.playerIds.splice(12));
+    for (const id of released) {
+      state.players[id].teamId = "FREE_AGENT";
+      state.players[id].contract.status = "UFA";
+      state.players[id].available = true;
+    }
+    for (const player of Object.values(state.players).filter((entry) => entry.teamId === "FREE_AGENT")) {
+      player.overallAdjustment = 97 - calculatePlayerOverall(player);
+    }
+    const low = state.players[released[0]];
+    if (hasLowFreeAgent) low.overallAdjustment = (low.overallAdjustment ?? 0) - 33;
+    const originalIds = new Set(team.playerIds);
+    const before = stableSerialize(state);
+    const opened = lockOpeningRoster(state, true);
+    expect(stableSerialize(state)).toBe(before);
+    const additions = opened.teams[team.id].playerIds.filter((id) => !originalIds.has(id)).map((id) => opened.players[id]);
+    expect(additions).toHaveLength(2);
+    expect(additions.every((player) => calculatePlayerOverall(player) <= 65)).toBe(true);
+    const aiAdditions = opened.teams.BOS.playerIds.filter((id) => !aiTeam.playerIds.includes(id));
+    expect(aiAdditions).toHaveLength(2);
+    expect(aiAdditions.every((id) => calculatePlayerOverall(opened.players[id]) <= 65)).toBe(true);
+    const allRosterIds = Object.values(opened.teams).flatMap((entry) => entry.playerIds);
+    expect(new Set(allRosterIds).size).toBe(allRosterIds.length);
+    if (hasLowFreeAgent) expect(additions.map((player) => player.id)).toContain(low.id);
+    expect(released.slice(hasLowFreeAgent ? 1 : 0).every((id) => opened.players[id].teamId === "FREE_AGENT")).toBe(true);
+    const notice = opened.teamNotifications?.find((item) => item.title === "开幕名单已自动补齐");
+    expect(notice?.read).toBe(false);
+    expect(notice?.message).toContain("14 人");
+    expect(notice?.message).toContain("一年底薪");
+    for (const player of additions) {
+      expect(notice?.message).toContain(player.name);
+      expect(notice?.message).toContain(String(Math.round(calculatePlayerOverall(player))));
+      expect(player.contract.salary).toBe(getSeasonFinanceConfig(state.league.seasonYear).minimumSalary);
+      expect(player.teamRole).toBe("BENCH");
+    }
+    if (!hasLowFreeAgent) expect(stableSerialize(lockOpeningRoster(state, true))).toBe(stableSerialize(opened));
+  });
+
+  it("does not send a fill notice when the opening roster is already complete", () => {
+    const state = createCareer("no-opening-fill");
+    state.league.currentPhase = "PRESEASON";
+    expect(lockOpeningRoster(state, true).teamNotifications).toEqual([]);
+  });
+
+  it("preserves replacement signings and the unread notice through command replay and save reload", async () => {
+    let state = createCareer("opening-fill-save-replay");
+    state.league.currentPhase = "PRESEASON";
+    while (state.teams[state.userTeamId].playerIds.length >= 14) state = waivePlayer(state, state.teams[state.userTeamId].playerIds[0]);
+    const command = { commandId: "safe-opening-once", type: "LOCK_OPENING_ROSTER", payload: { confirmMinimumFill: true } } as const;
+    const opened = executeRosterCommand(state, command);
+    expect(executeRosterCommand(opened, command)).toBe(opened);
+    const notice = opened.teamNotifications?.find((entry) => entry.title === "开幕名单已自动补齐")!;
+    const service = new SaveService(new MemoryStorageAdapter());
+    await service.save(1, opened);
+    const restored = (await service.load(1))!;
+    expect(restored.teams[state.userTeamId].playerIds).toEqual(opened.teams[state.userTeamId].playerIds);
+    expect(restored.teamNotifications).toContainEqual(notice);
+    expect(notice.read).toBe(false);
+    expect(executeRosterCommand(restored, command)).toBe(restored);
+    expect(restored.teamNotifications?.filter((entry) => entry.id === notice.id)).toHaveLength(1);
   });
 
   it("starts the new regular season with rested players", () => {
@@ -54,6 +125,8 @@ describe("RosterService", () => {
       }
       const player = getFreeAgents(state).find((entry) => entry.contract.status === "UFA");
       if (!player) throw new Error("Free agent required for roster fill");
+      for (const candidate of getFreeAgents(state)) candidate.overallAdjustment = 70 - calculatePlayerOverall(candidate);
+      player.overallAdjustment = (player.overallAdjustment ?? 0) - 6;
       const originalBirdTeam = originalTeamIsUser ? state.userTeamId
         : Object.keys(state.teams).find((teamId) => teamId !== state.userTeamId)!;
       player.birdTeamId = originalBirdTeam;

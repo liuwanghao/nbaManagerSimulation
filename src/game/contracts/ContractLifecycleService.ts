@@ -6,7 +6,7 @@ import { getProjectedMarketSalary } from "../freeAgency/FreeAgencyService";
 import { assertPhaseAllowed } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
-import type { GameState, Player, PlayerContract } from "../state/types";
+import { emptyPlayerSeasonStats, type GameState, type Player, type PlayerContract } from "../state/types";
 import { processOffseasonPlayerLifecycle } from "../development/PlayerDevelopmentService";
 import { compressHistoricalArchives } from "../history/HistoryCompressionService";
 import { getRfaCapHoldAmount } from "./ContractRules";
@@ -72,6 +72,9 @@ function expireContract(state: GameState, player: Player, rfaEligible: boolean, 
   player.contract.guaranteedAmount = 0;
   player.contract.qualifyingOfferDecision = rfaEligible ? "PENDING" : undefined;
   if (oldTeamId) player.birdTeamId = oldTeamId;
+  if (state.contractLifecycle && reason !== "TEAM_OPTION_DECLINED") {
+    (state.contractLifecycle.renewalEligiblePlayerIds ??= []).push(player.id);
+  }
   state.contractLifecycle?.transactionLog.push(`${player.name} · ${reason} · 成为${player.contract.status}`);
 }
 
@@ -168,7 +171,7 @@ export function rolloverLeagueYear(input: GameState): GameState {
   state.seeds.seasonSeed = stableHash(state.seeds.careerSeed, "season", seasonId);
   state.scheduleCycleYear = (state.scheduleCycleYear + 1) % 6;
   state.calendar = { currentDateIndex: 0, openingDate: openingDateForYear(seasonYear), finalDateIndex: 173 };
-  state.contractLifecycle = { rolloverSeasonId: seasonId, pendingUserTeamOptionPlayerIds: [], transactionLog: [], completed: false };
+  state.contractLifecycle = { rolloverSeasonId: seasonId, pendingUserTeamOptionPlayerIds: [], renewalEligiblePlayerIds: [], transactionLog: [], completed: false };
   state.capState.offerReservations = [];
   state.capState.capHolds = [];
   state.freeAgency = undefined;
@@ -177,6 +180,13 @@ export function rolloverLeagueYear(input: GameState): GameState {
   state.injuryState.lastProcessedDateIndexByTeam = undefined;
   state.tradeDesk = { offers: [] };
   state = processOffseasonPlayerLifecycle(state);
+  // Snapshot the completed season before clearing the live totals. The UI's
+  // season transition enters here directly, so it must establish fresh stats
+  // without relying on the headless advance helper.
+  for (const player of Object.values(state.players)) {
+    player.seasonStats = emptyPlayerSeasonStats();
+    player.postseasonStats = emptyPlayerSeasonStats();
+  }
   for (const player of Object.values(state.players).sort((a, b) => a.id.localeCompare(b.id))) advancePlayerContract(state, player);
   addFuturePickInventory(state);
   return state;
@@ -199,7 +209,7 @@ export function resolveTeamOption(input: GameState, playerId: string, decision: 
 function maxSalary(player: Player, seasonYear: number): number {
   const finance = getSeasonFinanceConfig(seasonYear);
   const percentages = finance.maximumSalaryPercentages;
-  return finance.salaryCap * (player.serviceYears >= 10 ? percentages.tenPlusYears : player.serviceYears >= 7 ? percentages.sevenToNineYears : percentages.zeroToSixYears);
+  return Math.round(finance.salaryCap * (player.serviceYears >= 10 ? percentages.tenPlusYears : player.serviceYears >= 7 ? percentages.sevenToNineYears : percentages.zeroToSixYears));
 }
 
 function createCapHolds(state: GameState): void {

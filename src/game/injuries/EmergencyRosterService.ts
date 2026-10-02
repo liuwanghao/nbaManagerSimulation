@@ -1,12 +1,9 @@
 import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
-import { BALANCE_CONFIG } from "../../config/balanceConfig";
-import { createFictionalPlayerProfile } from "../../data/playerProfiles";
-import { publicPlayerValue } from "../ai/AIValueService";
 import { stableHash } from "../random/hash";
-import { createRng } from "../random/xoshiro";
-import { emptyPlayerSeasonStats, type GameState, type Player, type PlayerAttributes, type Position } from "../state/types";
+import type { GameState, Player } from "../state/types";
 import { availablePlayerCount, standardAvailablePlayerCount } from "../simulation/injuries";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan } from "../roster/RotationPlanService";
+import { getAutomaticRosterReplacement, notifyAutomaticRosterFill } from "../roster/AutomaticRosterFillService";
 
 export type EmergencyRosterCommand = {
   commandId: string;
@@ -14,79 +11,8 @@ export type EmergencyRosterCommand = {
   payload: { teamId: string };
 };
 
-const POSITIONS: Position[] = ["PG", "SG", "SF", "PF", "C"];
-function replacementAttributes(seed: string): PlayerAttributes {
-  const rng = createRng(seed);
-  const config = BALANCE_CONFIG.replacementPlayers;
-  const rating = (modifier = 0) => Math.max(config.attributeMinimum, Math.min(config.attributeMaximum,
-    config.attributeBase + modifier + rng.int(-config.attributeNoise, config.attributeNoise)));
-  return {
-    shooting: rating(),
-    finishing: rating(1),
-    playmaking: rating(-1),
-    perimeterDefense: rating(),
-    interiorDefense: rating(),
-    rebounding: rating(),
-    athleticism: rating(1),
-    basketballIq: rating(2),
-  };
-}
-
-function createReplacementPlayer(state: GameState, teamId: string): Player {
-  const ordinal = Object.keys(state.players).filter((id) => id.startsWith(`EMG-${state.league.seasonId}-${teamId}-`)).length;
-  const id = `EMG-${state.league.seasonId}-${teamId}-${String(ordinal + 1).padStart(2, "0")}`;
-  const seed = stableHash(state.seeds.seasonSeed, "emergency-player", id);
-  const rng = createRng(seed);
-  const config = BALANCE_CONFIG.replacementPlayers;
-  const position = POSITIONS[rng.int(0, POSITIONS.length - 1)];
-  const age = rng.int(config.ageMinimum, config.ageMaximum);
-  const profile = createFictionalPlayerProfile(state.seeds.careerSeed, Object.keys(state.players).length + ordinal, id, position, age);
-  return {
-    id,
-    teamId: "FREE_AGENT",
-    ...profile,
-    age,
-    position,
-    attributes: replacementAttributes(seed),
-    threeRate: config.threeRateMinimum + rng.nextFloat() * config.threeRateRange,
-    assistRate: config.assistRateMinimum + rng.nextFloat() * config.assistRateRange,
-    rimRate: config.rimRateMinimum + rng.nextFloat() * config.rimRateRange,
-    usageTendency: rng.int(config.usageMinimum, config.usageMaximum),
-    health: 100,
-    morale: config.initialMorale,
-    fatigue: 0,
-    form: 0,
-    rotationRole: "OUT",
-    teamRole: "BENCH",
-    available: true,
-    serviceRosterDays: 0,
-    birdTeamId: null,
-    birdYears: 0,
-    contract: {
-      salary: 0,
-      yearsRemaining: 0,
-      guaranteedAmount: 0,
-      status: "UFA",
-      optionType: "NONE",
-      optionDecision: "NOT_APPLICABLE",
-    },
-    seasonStats: emptyPlayerSeasonStats(),
-    postseasonStats: emptyPlayerSeasonStats(),
-  };
-}
-
-function bestEmergencyCandidate(state: GameState): Player {
-  const candidate = Object.values(state.players)
-    .filter((player) => player.teamId === "FREE_AGENT" && player.contract.status === "UFA" && player.available && !player.injury)
-    .sort((left, right) => publicPlayerValue(right) - publicPlayerValue(left) || left.id.localeCompare(right.id))[0];
-  if (candidate) return candidate;
-  const replacement = createReplacementPlayer(state, "POOL");
-  state.players[replacement.id] = replacement;
-  return replacement;
-}
-
 function signEmergencyPlayer(state: GameState, teamId: string): Player {
-  const player = bestEmergencyCandidate(state);
+  const player = getAutomaticRosterReplacement(state);
   const remainingDays = Math.max(1, state.calendar.finalDateIndex - state.calendar.currentDateIndex + 1);
   const dailySalary = Math.ceil(getSeasonFinanceConfig(state.league.seasonYear).minimumSalary / LEAGUE_FINANCE_CONFIG.emergencyContract.fullSeasonDays);
   player.teamId = teamId;
@@ -149,7 +75,10 @@ export function resolveEmergencyTerminations(state: GameState, teamId: string): 
 
 export function fillEmergencyRoster(state: GameState, teamId: string): void {
   if (!state.teams[teamId]) throw new Error("EMERGENCY_TEAM_NOT_FOUND");
-  while (availablePlayerCount(state, teamId) < LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget) signEmergencyPlayer(state, teamId);
+  const signedPlayers: Player[] = [];
+  while (availablePlayerCount(state, teamId) < LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget) {
+    signedPlayers.push(signEmergencyPlayer(state, teamId));
+  }
   if (teamId === state.userTeamId && state.injuryState.pendingAutoRotationAfterEmergency) {
     const players = state.teams[teamId].playerIds.map((id) => state.players[id]).filter(Boolean);
     state.teams[teamId].rotationPlan = buildDefaultRotationPlan(players.filter((player) => player.contract.status === "STANDARD"));
@@ -157,6 +86,7 @@ export function fillEmergencyRoster(state: GameState, teamId: string): void {
     state.injuryState.pendingAutoRotationAfterEmergency = undefined;
   }
   if (state.injuryState.pendingEmergencyRoster?.teamId === teamId) state.injuryState.pendingEmergencyRoster = undefined;
+  if (teamId === state.userTeamId) notifyAutomaticRosterFill(state, signedPlayers, "EMERGENCY");
 }
 
 export function prepareEmergencyRostersForDay(state: GameState, teamIds: string[]): void {

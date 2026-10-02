@@ -66,7 +66,28 @@ describe("simulation contract", () => {
     expect(Math.max(...Object.values(seconds))).toBeLessThanOrEqual(2_400);
   });
 
-  it("applies the frozen morale penalty curve without rewarding high morale", () => {
+  it("keeps a one-game rested player out of the box score while preserving legal team minutes", () => {
+    const fixture = createFixtureDataset("one-game-rest");
+    const home = fixture.teams.SEA;
+    const away = fixture.teams.BOS;
+    const restedId = home.playerIds[0];
+    const game = {
+      id: "one-game-rest",
+      seasonId: "2026-27",
+      dateIndex: 0,
+      date: "2026-10-20",
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      matchupOrdinal: 1,
+      status: "SCHEDULED" as const,
+    };
+    const result = simulateGame(game, home, away, fixture.players, "one-game-rest-season", false, undefined, new Set([restedId]));
+    expect(result.homeBoxScore!.playerStats.some((stat) => stat.playerId === restedId)).toBe(false);
+    expect(sum(result.homeBoxScore!.playerStats, "seconds")).toBe(14_400 + result.overtimePeriods * 1_500);
+    expect(result.homeBoxScore!.playerStats.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("preserves the low morale penalty curve", () => {
     const fixture = createFixtureDataset("morale-curve-test");
     const players = fixture.teams.SEA.playerIds.slice(0, 5).map((id) => fixture.players[id]);
     const seconds = Object.fromEntries(players.map((player) => [player.id, 2_880]));
@@ -76,6 +97,52 @@ describe("simulation contract", () => {
     expect(moraleEfficiencyModifier(players, seconds)).toBeCloseTo(-0.75, 8);
     players.forEach((player) => { player.morale = 5; });
     expect(moraleEfficiencyModifier(players, seconds)).toBe(-1.5);
+  });
+
+  it.each([
+    [50, 0], [55, 0], [60, 0], [61, 0.0075], [80, 0.15], [100, 0.3], [110, 0.3],
+  ])("applies a capped small bonus at morale %s", (morale, expected) => {
+    const fixture = createFixtureDataset("morale-bonus-test");
+    const player = { ...fixture.players[fixture.teams.SEA.playerIds[0]], morale };
+    expect(moraleEfficiencyModifier([player], { [player.id]: 2_880 })).toBeCloseTo(expected, 8);
+  });
+
+  it("weights morale by playing time and ignores players who do not play", () => {
+    const fixture = createFixtureDataset("morale-weighting-test");
+    const players = fixture.teams.SEA.playerIds.slice(0, 3).map((id, index) => ({
+      ...fixture.players[id], morale: index === 0 ? 100 : 0,
+    }));
+    const seconds = { [players[0].id]: 2_400, [players[1].id]: 600, [players[2].id]: 0 };
+    expect(moraleEfficiencyModifier(players, seconds)).toBeCloseTo(0.15, 8);
+    expect(moraleEfficiencyModifier(players, {})).toBe(0);
+  });
+
+  it("gives high morale a small scoring benefit while preserving replay and box score totals", () => {
+    const fixture = createFixtureDataset("morale-scoring-test");
+    const boostedPlayers = structuredClone(fixture.players);
+    for (const id of fixture.teams.SEA.playerIds) {
+      fixture.players[id].morale = 60;
+      boostedPlayers[id].morale = 100;
+    }
+    let totalBenefit = 0;
+    for (let index = 0; index < 32; index += 1) {
+      const game = {
+        id: `morale-scoring-${index}`, seasonId: "2026-27", dateIndex: 0, date: "2026-10-20",
+        homeTeamId: "SEA", awayTeamId: "BOS", matchupOrdinal: 1, status: "SCHEDULED" as const,
+      };
+      const baseline = simulateGame(game, fixture.teams.SEA, fixture.teams.BOS, fixture.players, "season-seed");
+      const boosted = simulateGame(game, fixture.teams.SEA, fixture.teams.BOS, boostedPlayers, "season-seed");
+      expect(boosted).toEqual(simulateGame(game, fixture.teams.SEA, fixture.teams.BOS, boostedPlayers, "season-seed"));
+      expectLegalBoxScore(boosted.homeBoxScore as TeamBoxScore, boosted.overtimePeriods);
+      expectLegalBoxScore(boosted.awayBoxScore as TeamBoxScore, boosted.overtimePeriods);
+      if (baseline.overtimePeriods || boosted.overtimePeriods) continue;
+      expect(boosted.awayScore).toBe(baseline.awayScore);
+      const benefit = boosted.homeScore - baseline.homeScore;
+      expect(benefit).toBeGreaterThanOrEqual(0);
+      expect(benefit).toBeLessThanOrEqual(1);
+      totalBenefit += benefit;
+    }
+    expect(totalBenefit).toBeGreaterThan(0);
   });
 
   it("uses one deterministic engine and emits conserved box scores", () => {

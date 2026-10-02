@@ -15,6 +15,46 @@ import { MarketTradeRecords } from "./MarketTradeRecords";
 import { targetedTradeInquiryCommandId, tradeAssetPositionCounts, tradeInquiryCommandId, tradeOfferPortraitPlayer, tradeOfferStatusLabel, tradePickLabel } from "./tradeView";
 
 describe("regular-season market", () => {
+  it.each([0, 5])("shows every offseason UFA alongside %i RFAs and reserves own-team renewals for RFAs", (rfaCount) => {
+    const state = createCareer(`offseason-all-free-agents-${rfaCount}`);
+    state.league.currentPhase = "OFFSEASON_POST_DRAFT";
+    state.freeAgency = { opened: true, currentDay: 1, offers: {}, markets: {}, settledPlayerDay: {}, transactionLog: [] };
+    const release = (teamId: string, status: "UFA" | "RFA") => {
+      const playerId = state.teams[teamId].playerIds.pop()!;
+      const player = state.players[playerId];
+      player.teamId = "FREE_AGENT";
+      player.contract.status = status;
+      player.contract.yearsRemaining = 0;
+      player.birdTeamId = teamId;
+      return playerId;
+    };
+    const otherTeamId = Object.keys(state.teams).find((id) => id !== state.userTeamId)!;
+    const ownUfaId = release(state.userTeamId, "UFA");
+    const marketUfaId = release(otherTeamId, "UFA");
+    const ownRfaId = rfaCount > 0 ? release(state.userTeamId, "RFA") : undefined;
+    for (let index = 1; index < rfaCount; index += 1) release(otherTeamId, "RFA");
+    const freeAgents = getFreeAgents(state);
+    const markup = renderToStaticMarkup(createElement(App, { initialState: state }));
+    expect(markup.match(/class="fa-reference-player-card"/g)).toHaveLength(freeAgents.length);
+    for (const player of freeAgents) expect(markup).toContain(`data-testid="open-fa-offer-${player.id}"`);
+    const marketSection = markup.slice(markup.indexOf("自由球员列表"));
+    expect(marketSection).toContain(`data-testid="open-fa-offer-${ownUfaId}"`);
+    expect(marketSection).toContain(`data-testid="open-fa-offer-${marketUfaId}"`);
+    if (ownRfaId) {
+      const ownSection = markup.slice(markup.indexOf('class="fa-own-free-agent-section"'), markup.indexOf("自由球员列表"));
+      expect(ownSection).toContain(`data-testid="open-fa-offer-${ownRfaId}"`);
+      expect(ownSection).not.toContain(`data-testid="open-fa-offer-${ownUfaId}"`);
+      expect(ownSection).not.toContain(`data-testid="open-fa-offer-${marketUfaId}"`);
+      expect(marketSection).not.toContain(`data-testid="open-fa-offer-${ownRfaId}"`);
+    } else {
+      expect(markup).not.toContain('class="fa-own-free-agent-section"');
+    }
+    const marketCount = freeAgents.length - (ownRfaId ? 1 : 0);
+    expect(markup).toContain(`(${marketCount}/${marketCount} 人)`);
+    expect(markup).not.toContain("当前显示受限制自由球员");
+    expect(markup).not.toContain("当前筛选条件下暂无可用自由球员");
+  });
+
   it("uses a fresh command id when an offseason offer is withdrawn and retried on the same day", () => {
     const state = createCareer("offseason-offer-ids");
     state.freeAgency = { opened: true, currentDay: 1, offers: {}, markets: {}, settledPlayerDay: {}, transactionLog: [] };
@@ -32,7 +72,8 @@ describe("regular-season market", () => {
     const playerId = userTeam.playerIds.pop();
     if (!playerId) throw new Error("Expected a roster player");
     state.players[playerId].teamId = "FREE_AGENT";
-    state.players[playerId].contract.status = "UFA";
+    state.players[playerId].contract.status = "RFA";
+    state.players[playerId].birdTeamId = state.userTeamId;
     for (const id of userTeam.playerIds) state.players[id].contract.salary = 0;
     state.capState.capHolds = [];
     state.capState.offerReservations = [];
@@ -43,7 +84,7 @@ describe("regular-season market", () => {
         offerId: "rejected", playerId, teamId: state.userTeamId, createdDay: 1, expiresDay: 3,
         years: 2, year1Salary: 4_000_000, totalValue: 8_000_000, guaranteedValue: 8_000_000,
         rolePromised: "ROTATION", capReservation: 4_000_000, utility: 30,
-        status: "REJECTED", resolutionReason: "PLAYER_REJECTED", kind: "UFA_OFFER",
+        status: "REJECTED", resolutionReason: "PLAYER_REJECTED", kind: "RFA_OWN_TEAM_OFFER",
       } },
     };
     const markup = renderToStaticMarkup(createElement(App, { initialState: state }));
@@ -139,8 +180,12 @@ describe("regular-season market", () => {
     const records = renderToStaticMarkup(createElement(MarketTradeRecords, {
       userTrades: [{ offerId: "user-offer", seasonId: "2026-27", summary: "我方成交：LeBron James" }],
       aiTrades: ["凯尔特人 / 灰熊：Paul George ↔ Jerami Grant"],
+      renewalRecords: ["Jayson Tatum 与 凯尔特人 在自由市场开放前完成续约"],
       players: state.players,
     }));
+    expect(records).toContain("交易 / 续约记录");
+    expect(records).toContain("交易");
+    expect(records).toContain("续约");
     expect(records).toContain("我方成交");
     expect(records).toContain("联盟交易");
     expect(records).not.toMatch(/TRADE HISTORY|MY TRADES|LEAGUE TRADES/);
@@ -149,7 +194,8 @@ describe("regular-season market", () => {
     expect(records).toContain("保罗·乔治");
     expect(records).toContain("杰拉米·格兰特");
     expect(records).not.toContain("Paul George");
-    expect(records).toContain("2 笔");
+    expect(records).toContain("3 笔");
+    expect(records).toContain("提前续约");
   });
 
   it("shows every inquiry offer directly and gives each saved inquiry a fresh id", () => {

@@ -394,7 +394,7 @@ export interface FreeAgentOffer {
   pricedAgainstAsk?: number;
   status: FreeAgentOfferStatus;
   resolutionReason?: FreeAgentOfferResolutionReason;
-  kind: "UFA_OFFER" | "RFA_OWN_TEAM_OFFER" | "RFA_OFFER_PROPOSAL";
+  kind: "UFA_OFFER" | "RFA_OWN_TEAM_OFFER" | "RFA_OFFER_PROPOSAL" | "OWN_EXTENSION_OFFER";
 }
 
 export interface PlayerMarketWindow {
@@ -462,6 +462,7 @@ export interface AiTradeState {
 export interface ContractLifecycleState {
   rolloverSeasonId: string;
   pendingUserTeamOptionPlayerIds: string[];
+  renewalEligiblePlayerIds?: string[];
   transactionLog: string[];
   completed: boolean;
 }
@@ -589,6 +590,8 @@ export interface EventInstance {
   choices: EventChoiceDefinition[];
   status: "PENDING" | "RESOLVED" | "SKIPPED_UNKNOWN";
   selectedChoiceId?: string;
+  /** Stable target for fatigue and player-specific events; absent on older saves. */
+  targetPlayerId?: string;
 }
 
 export interface EventState {
@@ -818,6 +821,8 @@ export interface GameState {
   userGameDetails: Record<string, GameResult>;
   postseason?: PostseasonState;
   coaching?: CoachingState;
+  /** A one-game DNP chosen by the manager; consumed when the referenced game is played. */
+  scheduledRest?: { gameId: string; playerIds: string[] };
   franchiseStats: FranchiseStatsState;
   history: {
     champions: Array<{ seasonId: string; teamId: string }>;

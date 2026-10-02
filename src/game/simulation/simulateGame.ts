@@ -10,8 +10,8 @@ import { generateGameInjuries } from "./injuries";
 import { calculateTeamFitForPlayers } from "../team/TeamFitService";
 import { effectiveStarterAssignments } from "../roster/RotationPlanService";
 
-const playersForTeam = (team: Team, players: Record<string, Player>): Player[] =>
-  team.playerIds.map((id) => players[id]).filter(Boolean);
+const playersForTeam = (team: Team, players: Record<string, Player>, restPlayerIds?: ReadonlySet<string>): Player[] =>
+  team.playerIds.map((id) => players[id]).filter((player): player is Player => Boolean(player) && !restPlayerIds?.has(player.id));
 
 function splitPeriodScores(total: number, periods: number, seed: string): number[] {
   const rng = createRng(seed);
@@ -60,6 +60,11 @@ export function moraleEfficiencyModifier(teamPlayers: Player[], seconds: Record<
   const total = Object.values(seconds).reduce((sum, value) => sum + value, 0);
   if (total <= 0) return 0;
   const morale = teamPlayers.reduce((sum, player) => sum + (player.morale ?? SIMULATION_CONFIG.defaultMorale) * (seconds[player.id] ?? 0) / total, 0);
+  if (morale > SIMULATION_CONFIG.moraleBonusThreshold) {
+    return SIMULATION_CONFIG.moraleMaxBonus
+      * (Math.min(SIMULATION_CONFIG.moraleBonusCeiling, morale) - SIMULATION_CONFIG.moraleBonusThreshold)
+      / (SIMULATION_CONFIG.moraleBonusCeiling - SIMULATION_CONFIG.moraleBonusThreshold);
+  }
   if (morale >= SIMULATION_CONFIG.moraleNoPenaltyThreshold) return 0;
   return -SIMULATION_CONFIG.moraleMaxPenalty
     * (SIMULATION_CONFIG.moraleNoPenaltyThreshold - Math.max(SIMULATION_CONFIG.moralePenaltyFloor, morale))
@@ -74,10 +79,11 @@ export function simulateGame(
   seasonSeed: string,
   postseason = false,
   coaching?: CoachingGameModifier,
+  restPlayerIds?: ReadonlySet<string>,
 ): GameResult {
   const gameSeed = stableHash(seasonSeed, "game", game.id);
-  const homePlayers = playersForTeam(homeTeam, players);
-  const awayPlayers = playersForTeam(awayTeam, players);
+  const homePlayers = playersForTeam(homeTeam, players, restPlayerIds);
+  const awayPlayers = playersForTeam(awayTeam, players, restPlayerIds);
   const homeStarters = effectiveStarterAssignments(homePlayers, homeTeam.rotationPlan);
   const awayStarters = effectiveStarterAssignments(awayPlayers, awayTeam.rotationPlan);
   const regulationHomeSeconds = solveRotationSeconds(homePlayers, postseason, homeTeam.rotationPlan);

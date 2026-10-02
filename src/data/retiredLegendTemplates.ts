@@ -5,7 +5,7 @@ import type { PlayerAttributes, PlayerTrait, Position } from "../game/state/type
 import { calculateAttributeOverall } from "../game/player/PlayerRatingService";
 
 type Archetype = "CREATOR" | "SCORER" | "SHOOTER" | "SLASHER" | "DEFENDER" | "INTERIOR" | "REBOUNDER";
-type LegendEntry = readonly [nbaId: string, name: string, chineseName: string, position: Position, archetype: Archetype];
+type LegendEntry = readonly [nbaId: string, name: string, chineseName: string, position: Position, archetype: Archetype, secondaryPosition?: Position];
 
 // Curated retired NBA roster. NBA IDs identify the real player; the generated game ratings below
 // are positional archetypes for gameplay and must not be presented as official NBA statistics.
@@ -15,7 +15,7 @@ const ROSTER: readonly LegendEntry[] = [
   ["2546", "Carmelo Anthony", "卡梅隆·安东尼", "SF", "SCORER"],
   ["76054", "Nate Archibald", "内特·阿奇博尔德", "PG", "CREATOR"],
   ["76056", "Paul Arizin", "保罗·阿里金", "SF", "SCORER"],
-  ["787", "Charles Barkley", "查尔斯·巴克利", "PF", "REBOUNDER"],
+  ["787", "Charles Barkley", "查尔斯·巴克利", "PF", "REBOUNDER", "SF"],
   ["600013", "Rick Barry", "里克·巴里", "SF", "SCORER"],
   ["76127", "Elgin Baylor", "埃尔金·贝勒", "SF", "SLASHER"],
   ["76166", "Dave Bing", "戴夫·宾", "PG", "SCORER"],
@@ -36,7 +36,7 @@ const ROSTER: readonly LegendEntry[] = [
   ["76882", "Hal Greer", "哈尔·格里尔", "SG", "SHOOTER"],
   ["76970", "John Havlicek", "约翰·哈夫利切克", "SF", "DEFENDER"],
   ["76979", "Elvin Hayes", "埃尔文·海耶斯", "PF", "INTERIOR"],
-  ["947", "Allen Iverson", "阿伦·艾弗森", "SG", "SCORER"],
+  ["947", "Allen Iverson", "阿伦·艾弗森", "SG", "SCORER", "PG"],
   ["77142", "Magic Johnson", "埃尔文·约翰逊", "PG", "CREATOR"],
   ["77196", "Sam Jones", "萨姆·琼斯", "SG", "SCORER"],
   ["893", "Michael Jordan", "迈克尔·乔丹", "SG", "SCORER"],
@@ -48,7 +48,7 @@ const ROSTER: readonly LegendEntry[] = [
   ["77498", "Bob McAdoo", "鲍勃·麦卡杜", "C", "SCORER"],
   ["1450", "Kevin McHale", "凯文·麦克海尔", "PF", "INTERIOR"],
   ["600012", "George Mikan", "乔治·麦肯", "C", "INTERIOR"],
-  ["397", "Reggie Miller", "雷吉·米勒", "SG", "SHOOTER"],
+  ["397", "Reggie Miller", "雷吉·米勒", "SG", "SHOOTER", "SF"],
   ["600006", "Earl Monroe", "厄尔·门罗", "SG", "SCORER"],
   ["959", "Steve Nash", "史蒂夫·纳什", "PG", "CREATOR"],
   ["1717", "Dirk Nowitzki", "德克·诺维茨基", "PF", "SHOOTER"],
@@ -99,7 +99,7 @@ const ROSTER: readonly LegendEntry[] = [
   ["200746", "LaMarcus Aldridge", "拉马库斯·阿尔德里奇", "PF", "SCORER"],
   ["201188", "Marc Gasol", "马克·加索尔", "C", "CREATOR"],
   ["200765", "Rajon Rondo", "拉简·朗多", "PG", "CREATOR"],
-  ["201146", "Yi Jianlian", "易建联", "PF", "SHOOTER"],
+  ["201146", "Yi Jianlian", "易建联", "PF", "SHOOTER", "C"],
 ];
 
 const BASE_ATTRIBUTES: Record<Position, PlayerAttributes> = {
@@ -140,9 +140,14 @@ const peakRatingsById = new Map(
   (retiredLegend2kRatings.players as SourcedPeak[])
     .map((entry) => [entry.sourcePlayerId, entry]),
 );
+type SourcedPositions = { sourcePlayerId: string; positions?: string[] };
+const sourcedPositionsById = new Map(
+  (retiredLegend2kRatings.players as SourcedPositions[])
+    .map((entry) => [entry.sourcePlayerId, entry.positions ?? []]),
+);
 const designPeaksById = new Map(retiredLegendDesignRatings.players.map((entry) => [entry.sourcePlayerId, entry.peakOverall]));
 
-function archetypeTemplate([nbaId, name, , position, archetype]: LegendEntry): HistoricalPlayerTemplate {
+function archetypeTemplate([nbaId, name, , position, archetype, secondaryPosition]: LegendEntry): HistoricalPlayerTemplate {
   const base = BASE_ATTRIBUTES[position];
   const bonuses = ATTRIBUTE_BONUSES[archetype];
   const rookieAttributes = Object.fromEntries(
@@ -157,6 +162,7 @@ function archetypeTemplate([nbaId, name, , position, archetype]: LegendEntry): H
     peakSeason: "CURATED",
     era: "LEGEND",
     position,
+    ...(secondaryPosition ? { secondaryPosition } : {}),
     heightCm,
     weightKg,
     rookieAttributes,
@@ -183,12 +189,15 @@ export const RETIRED_LEGEND_NAMES_ZH: Record<string, string> = Object.fromEntrie
 export const RETIRED_LEGEND_TEMPLATES: HistoricalPlayerTemplate[] = ROSTER.map((entry) => {
   const existing = existingTemplates.get(`nba:${entry[0]}`);
   const template = existing ? { ...existing, position: entry[3], eligible: true } : archetypeTemplate(entry);
+  const sourcedSecondaryPosition = sourcedPositionsById.get(template.sourcePlayerId)
+    ?.find((position): position is Position => position !== entry[3] && ["PG", "SG", "SF", "PF", "C"].includes(position));
+  const secondaryPosition = sourcedSecondaryPosition ?? entry[5] ?? entry[3];
   const designPeak = designPeaksById.get(template.sourcePlayerId);
-  if (designPeak !== undefined) return { ...template, peakOverall: designPeak };
+  if (designPeak !== undefined) return { ...template, secondaryPosition, peakOverall: designPeak };
   const sourcedPeak = peakRatingsById.get(template.sourcePlayerId);
-  if (!sourcedPeak || !Number.isInteger(sourcedPeak.peakOverall) || sourcedPeak.peakOverall < 25 || sourcedPeak.peakOverall > 99) return template;
+  if (!sourcedPeak || !Number.isInteger(sourcedPeak.peakOverall) || sourcedPeak.peakOverall < 25 || sourcedPeak.peakOverall > 99) return { ...template, secondaryPosition };
   if (!sourcedPeak.peakAttributes || Object.values(sourcedPeak.peakAttributes).some((value) => !Number.isInteger(value) || value < 25 || value > 99)) {
-    return { ...template, peakOverall: sourcedPeak.peakOverall };
+    return { ...template, secondaryPosition, peakOverall: sourcedPeak.peakOverall };
   }
   // Historic rosters describe a mature player, not his debut year. Keep the
   // existing rookie OVR and borrow only the sourced eight-attribute shape.
@@ -201,5 +210,5 @@ export const RETIRED_LEGEND_TEMPLATES: HistoricalPlayerTemplate[] = ROSTER.map((
       Math.max(25, Math.min(99, Math.round(sourcedPeak.peakAttributes![key] + adjustment))),
     ]),
   ) as unknown as PlayerAttributes;
-  return { ...template, peakOverall: sourcedPeak.peakOverall, rookieAttributes };
+  return { ...template, secondaryPosition, peakOverall: sourcedPeak.peakOverall, rookieAttributes };
 });

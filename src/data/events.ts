@@ -1,17 +1,32 @@
 import type { EventDefinition, EventEffectDefinition, EventScope } from "../game/state/types";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 
+export const CAREER_MILESTONE_EVENTS = {
+  EXPANSION_COMPLETE: "expansion_complete_001",
+  FIRST_WIN: "franchise_first_win_001",
+  TEN_WINS: "franchise_ten_wins_001",
+  FIRST_PLAYOFFS: "playoffs_appearance_001",
+  FIRST_SERIES_WIN: "playoffs_series_win_001",
+  FINALS_APPEARANCE: "playoffs_finals_001",
+  FIRST_CHAMPIONSHIP: "playoffs_champion_001",
+  FIFTY_WIN_SEASON: "franchise_fifty_wins_001",
+  SIXTY_WIN_SEASON: "franchise_sixty_wins_001",
+  HOMEGROWN_ALL_STAR: "franchise_all_star_001",
+  ROOKIE_OF_YEAR: "rookie_award_001",
+  DYNASTY_TWO_OF_THREE: "franchise_dynasty_001",
+} as const;
+
 type EventSeed = [id: string, title: string, description: string, priority?: number, pause?: boolean, scope?: EventScope];
 
 const seedGroups: Record<string, EventSeed[]> = {
   INJURY: [
-    ["injury_core_major_001", "核心球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。请选择如何调整首发与轮换。", 90, true],
-    ["injury_recovery_001", "伤员回归", "{{player_name}}已恢复出战。请选择如何重新安排首发与轮换。", 45, true],
+    ["injury_core_major_001", "核心球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。", 90],
+    ["injury_recovery_001", "伤员回归", "{{player_name}}已恢复出战。", 45],
     ["injury_emergency_roster_001", "紧急名单", "可用球员不足，球队启用紧急名单。", 95, true],
-    ["injury_depth_test_001", "轮换球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。请选择如何调整首发与轮换。", 55, true],
+    ["injury_depth_test_001", "轮换球员受伤", "{{player_name}}受伤，{{injury_duration}}，预计缺席 {{games_out}} 场。", 55],
   ],
   FATIGUE: [
-    ["fatigue_management_001", "体能预警", "{{fatigue_summary}}。你可以保持当前轮换、调整轮换分担出场时间，或观看激励视频将当前高疲劳球员恢复到 60。", 68, true],
+    ["fatigue_management_001", "体能预警", "{{fatigue_summary}}。你可以安排重点球员下一场轮休、调整轮换分担出场时间，或观看激励视频将当前高疲劳球员恢复到 0。", 68, true],
   ],
   MORALE: [
     ["morale_role_unhappy_001", "角色不满", "经理，我想在轮换里承担更多责任。能多给我一些上场时间吗？", 70, true],
@@ -100,7 +115,9 @@ function definition(category: string, seed: EventSeed): EventDefinition {
   const [id, title, description, priority = 40, pauseSimulation = false, scope = "PLAYER_TEAM"] = seed;
   const seasonOpening = id === "franchise_season_opening_001";
   const expansionComplete = id === "expansion_complete_001";
+  const careerMilestone = Object.values(CAREER_MILESTONE_EVENTS).some((definitionId) => definitionId === id);
   const injuryRotationDecision = ["injury_core_major_001", "injury_depth_test_001", "injury_recovery_001"].includes(id);
+  const automaticInjuryRotation = id === "injury_depth_test_001";
   const fatigueDecision = id === "fatigue_management_001";
   const choiceEffects: EventEffectDefinition[] = seasonOpening ? [] : category === "MORALE" || category === "ROLE"
     ? [{ effectId: "morale_response", type: "PLAYER_MORALE", target: "{{player_id}}", value: category === "MORALE" ? 6 : 4, executionPhase: "ON_CHOICE" }]
@@ -113,6 +130,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
           : [{ effectId: "event_log", type: "LEAGUE_LOG", value: title, executionPhase: "ON_CHOICE" }];
   const choices = fatigueDecision
     ? [
+      { id: "rest_next_game", label: "安排下一场轮休", effects: [] },
       { id: "keep_rotation", label: "保持当前轮换", effects: [] },
       { id: "manual_adjust", label: "手动调整轮换", effects: [] },
       { id: "watch_video", label: "观看激励视频", effects: [] },
@@ -120,7 +138,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     : injuryRotationDecision
     ? [
       { id: "auto_adjust", label: "一键自动调整轮换", effects: [] },
-      { id: "manual_adjust", label: "手动调整轮换", effects: [] },
+      ...(automaticInjuryRotation ? [] : [{ id: "manual_adjust", label: "手动调整轮换", effects: [] }]),
     ]
     : category === "MORALE" || category === "ROLE"
     ? [
@@ -141,7 +159,7 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     : [{ id: "acknowledge", label: "确认", effects: choiceEffects }];
   return {
     id,
-    version: injuryRotationDecision || fatigueDecision ? 2 : 1,
+    version: automaticInjuryRotation ? 3 : fatigueDecision ? 3 : injuryRotationDecision || careerMilestone ? 2 : 1,
     type: category,
     category,
     scope,
@@ -150,9 +168,11 @@ function definition(category: string, seed: EventSeed): EventDefinition {
     trigger: { mode: seasonOpening ? "MANUAL" : "CONDITION", checkPoint: category === "FREE_AGENCY" || category === "DRAFT" ? "OFFSEASON" : "AFTER_GAME" },
     conditions: {},
     weight: (BALANCE_CONFIG.randomEvents.categoryWeights as Record<string, number>)[category] ?? BALANCE_CONFIG.randomEvents.defaultWeight,
-    cooldownGames: seasonOpening || fatigueDecision ? 0 : BALANCE_CONFIG.randomEvents.defaultCooldownGames,
+    cooldownGames: seasonOpening || fatigueDecision ? 0
+      : category === "ROLE" ? BALANCE_CONFIG.randomEvents.roleRequestCooldownGames
+        : BALANCE_CONFIG.randomEvents.defaultCooldownGames,
     oncePerSeason: category === "FRANCHISE" || id.includes("first_") || id.includes("award") || id.includes("champion") || id.includes("complete"),
-    oncePerCareer: !seasonOpening && (category === "FRANCHISE" || category === "EXPANSION" || id.includes("first_") || id.includes("complete_001") || id.includes("dynasty")),
+    oncePerCareer: !seasonOpening && (careerMilestone || category === "FRANCHISE" || category === "EXPANSION" || id.includes("first_") || id.includes("complete_001") || id.includes("dynasty")),
     pauseSimulation: expansionComplete ? false : pauseSimulation,
     visual: { useIllustration: true, illustrationKey: id.replace(/_\d+$/u, "") },
     content: { title, description },

@@ -1,5 +1,5 @@
 export const SIMULATION_CONFIG = {
-  version: "simulation.v9",
+  version: "simulation.v12",
   ratings: {
     minimum: 25,
     maximum: 99,
@@ -28,6 +28,9 @@ export const SIMULATION_CONFIG = {
   moralePenaltyFloor: 15,
   moraleNoPenaltyThreshold: 50,
   moraleMaxPenalty: 1.5,
+  moraleBonusThreshold: 60,
+  moraleBonusCeiling: 100,
+  moraleMaxBonus: 0.3,
   defaultMorale: 50,
   fatigue: {
     noPenaltyThreshold: 60,
@@ -38,8 +41,8 @@ export const SIMULATION_CONFIG = {
     backToBackLoad: 5,
     ageLoadAfter30: 0.32,
     athleticismRelief: 0.08,
-    recoveryPerRestDay: 8,
-    recoveryPerFatiguePoint: 0.08,
+    recoveryPerRestDay: 15,
+    recoveryPerFatiguePoint: 0,
   },
   coaching: {
     regularEfficiencyPoints: 1,

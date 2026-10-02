@@ -87,6 +87,13 @@ describe("Stage 4 rookie draft", () => {
     expect(drafted.players[drafted.rookieDraft!.pickOrder[0].playerId!].contract.salary).toBe(salary);
   });
 
+  it("consumes the current year's draft pick assets after the draft completes", () => {
+    const state = finishRookieDraft("consume-used-draft-picks");
+    expect(state.league.currentPhase).toBe("OFFSEASON_POST_DRAFT");
+    expect(Object.values(state.draftPicks).some((pick) => pick.year === state.league.seasonYear)).toBe(false);
+    expect(Object.values(state.draftPicks).some((pick) => pick.year > state.league.seasonYear)).toBe(true);
+  });
+
   it("keeps future rookies' entry ratings below established stars across fixed seeds", () => {
     const topEightRatings: number[] = [];
     const historicalRookieRatings: number[] = [];
@@ -571,6 +578,7 @@ describe("Stage 4 rookie draft", () => {
     expect(reborn).toHaveLength(3);
     expect(new Set(reborn.map((player) => player.historicalSourcePlayerId)).size).toBe(reborn.length);
     expect(reborn.every((player) => player.name === RETIRED_LEGEND_TEMPLATES.find((template) => template.sourcePlayerId === player.historicalSourcePlayerId)?.sourceName)).toBe(true);
+    expect(reborn.every((player) => player.secondaryPosition === RETIRED_LEGEND_TEMPLATES.find((template) => template.sourcePlayerId === player.historicalSourcePlayerId)?.secondaryPosition)).toBe(true);
     expect(state.history.rebornHistoricalSourceIds).toEqual(reborn.map((player) => player.historicalSourcePlayerId));
     expect(getAvailableDraftProspects(state).every((player) => !JSON.stringify(player).includes("historicalSourcePlayerId"))).toBe(true);
   });

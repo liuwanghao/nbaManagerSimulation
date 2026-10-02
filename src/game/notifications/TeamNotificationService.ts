@@ -1,4 +1,5 @@
 import { stableHash } from "../random/hash";
+import { CAREER_MILESTONE_EVENTS, EVENT_DEFINITION_BY_ID } from "../../data/events";
 import type { GameState, TeamNotification } from "../state/types";
 import { estimatedInjuryMissedGames, injuryDaysRemaining, injuryDurationLabel } from "../simulation/injuryEstimate";
 
@@ -70,6 +71,26 @@ export function ensureExpansionWelcomeNotification(state: GameState): void {
     title: `新球队诞生：${team.fullName}`,
     message: "扩军组队完成，新的赛季正式开始。赛季页可模拟比赛、查看赛程；管理页调整阵容与合同；市场页询价、交易及签约；联盟页查看排名与数据，生涯页记录球队荣誉。",
   });
+}
+
+/** Keeps the original milestone notice without replaying effects from legacy duplicates. */
+export function repairCareerMilestoneNotifications(state: GameState): void {
+  for (const definitionId of Object.values(CAREER_MILESTONE_EVENTS)) {
+    const definition = EVENT_DEFINITION_BY_ID[definitionId];
+    const notices = (state.teamNotifications ?? []).filter((notice) => notice.id.startsWith("event-")
+      && notice.category === "SEASON" && notice.title === definition.content.title
+      && notificationMessage(notice.message) === definition.content.description);
+    // The inbox stores newest first, so the last match is the original occurrence.
+    const original = notices.at(-1);
+    if (!original) continue;
+    state.eventState.lastOccurrenceByDefinition[definitionId] ??= {
+      seasonId: original.seasonId, careerGame: 0,
+    };
+    if (notices.length <= 1) continue;
+    original.read = notices.some((notice) => notice.read);
+    const duplicateIds = new Set(notices.slice(0, -1).map((notice) => notice.id));
+    state.teamNotifications = state.teamNotifications?.filter((notice) => !duplicateIds.has(notice.id));
+  }
 }
 
 export function getTeamInboxItems(state: GameState): TeamInboxItem[] {

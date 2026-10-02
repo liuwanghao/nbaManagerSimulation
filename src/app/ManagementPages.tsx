@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../config/leagueFinance";
 import type { CapSheet } from "../game/cap/CapSheetService";
+import { getRecommendedOwnPlayerExtension, type FreeAgentOfferDraft } from "../game/freeAgency/FreeAgencyService";
 import { calculatePlayerOverall } from "../game/player/PlayerRatingService";
-import type { DraftPickAsset, Player, StandingRecord, Team } from "../game/state/types";
+import type { DraftPickAsset, GameState, Player, StandingRecord, Team } from "../game/state/types";
 import { fitGrade, type TeamFitBreakdown } from "../game/team/TeamFitService";
 import { EXPANSION_POSITION_FILTERS, getCurrentRosterPositionCounts, matchesExpansionPosition, type ExpansionPositionFilter } from "./expansionDraftView";
 import { PlayerPortrait } from "./PlayerPortrait";
 import { playerNameZh } from "./playerNameZh";
 import { playerRatingStyle } from "./playerRatingColor";
 import { adaptiveMoneyLabel as moneyLabel, conferenceLabel, contractStatusLabel, positionPairLabel } from "./uiText";
+import { FreeAgentOfferDialog } from "./FreeAgentOfferDialog";
 
 type PlayerSort = "minutes" | "points" | "overall";
 
@@ -94,15 +96,18 @@ function contractOptionLabel(player: Player): string {
   return contractStatusLabel(player.contract.status);
 }
 
-export function ManagementContracts({ players, sheet, seasonYear, onOpenPlayer, onWaive, busy = false }: {
+export function ManagementContracts({ players, sheet, seasonYear, state, onOpenPlayer, onWaive, onRenewOwnPlayer, busy = false }: {
   players: Player[];
   sheet: CapSheet;
   seasonYear: number;
+  state?: GameState;
   onOpenPlayer: (playerId: string) => void;
   onWaive?: (playerId: string) => Promise<void>;
+  onRenewOwnPlayer?: (playerId: string, draft: FreeAgentOfferDraft) => Promise<void>;
   busy?: boolean;
 }) {
   const [pendingWaiveId, setPendingWaiveId] = useState<string | null>(null);
+  const [renewalEditor, setRenewalEditor] = useState<{ playerId: string; draft: FreeAgentOfferDraft } | null>(null);
   const pendingWaive = pendingWaiveId ? players.find((player) => player.id === pendingWaiveId) : undefined;
   const finance = getSeasonFinanceConfig(seasonYear);
   const thresholds = [
@@ -115,6 +120,8 @@ export function ManagementContracts({ players, sheet, seasonYear, onOpenPlayer, 
   const meterMaximum = finance.secondApron;
   const usagePercent = Math.max(0, Math.min(100, sheet.total / meterMaximum * 100));
   const contracts = [...players].sort((left, right) => right.contract.salary - left.contract.salary || left.id.localeCompare(right.id));
+  const expiring = (player: Player) => player.contract.status === "STANDARD" && player.contract.yearsRemaining === 1;
+  const renewalPlayer = renewalEditor ? players.find((player) => player.id === renewalEditor.playerId) : undefined;
   return <div className="manage-page-content manage-contracts">
     <header className="manage-page-heading"><div><h2>合同与薪资</h2><p>本赛季工资帽占用与球员合同</p></div><span>{sheet.activeStandardContracts} 份合同</span></header>
     <section className="manage-section-card manage-cap-card" aria-label="薪资总览">
@@ -126,8 +133,18 @@ export function ManagementContracts({ players, sheet, seasonYear, onOpenPlayer, 
       </div>
     </section>
     <section className="manage-section-card" aria-label="薪资构成"><div className="manage-section-heading"><div><h3>占用构成</h3></div><span>合计 {moneyLabel(sheet.total)}</span></div><div className="manage-cap-breakdown">{capLines(sheet).map(([label, amount]) => <span key={label}><small>{label}</small><b>{moneyLabel(amount)}</b></span>)}</div></section>
-    <section className="manage-section-card" aria-label="球员合同"><div className="manage-section-heading"><div><h3>球员合同</h3></div><span>按本年薪资排序</span></div><div className="manage-contract-list">{contracts.map((player) => <article key={player.id} className="manage-contract-row"><button type="button" className="manage-contract-detail" onClick={() => onOpenPlayer(player.id)}><PlayerPortrait player={player} portraitPath={player.portraitPath} className="manage-player-avatar" /><span className="manage-contract-player"><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · {contractOptionLabel(player)}</small></span><span className="manage-contract-value"><b>{moneyLabel(player.contract.salary)}</b><small>剩余 {player.contract.yearsRemaining} 年</small></span></button>{onWaive && <button type="button" className="manage-contract-waive" disabled={busy || players.length <= LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget} onClick={() => setPendingWaiveId(player.id)}>裁员</button>}</article>)}</div></section>
+    <section className="manage-section-card" aria-label="球员合同"><div className="manage-section-heading"><div><h3>球员合同</h3></div><span>按本年薪资排序</span></div><div className="manage-contract-list">{contracts.map((player) => { const pendingRenewal = Boolean(state?.freeAgency?.offers && Object.values(state.freeAgency.offers).some((offer) => offer.playerId === player.id && offer.kind === "OWN_EXTENSION_OFFER" && offer.status === "ACTIVE")); return <article key={player.id} className="manage-contract-row"><button type="button" className="manage-contract-detail" onClick={() => onOpenPlayer(player.id)}><PlayerPortrait player={player} portraitPath={player.portraitPath} className="manage-player-avatar" /><span className="manage-contract-player"><b>{playerNameZh(player.name, player.id)}</b><small>{positionPairLabel(player.position, player.secondaryPosition)} · {contractOptionLabel(player)}</small></span><span className="manage-contract-value"><b>{moneyLabel(player.contract.salary)}</b><small>剩余 {player.contract.yearsRemaining} 年</small></span></button>{onRenewOwnPlayer && state && expiring(player) && <button type="button" className="manage-contract-renew" disabled={busy || pendingRenewal} onClick={() => setRenewalEditor({ playerId: player.id, draft: { ...getRecommendedOwnPlayerExtension(state, player.id), guaranteedPercent: 1, finalYearOption: "NONE", rolePromised: "ROTATION" } })}>{pendingRenewal ? "等待球员决定" : "提前续约"}</button>}{onWaive && <button type="button" className="manage-contract-waive" disabled={busy || players.length <= LEAGUE_FINANCE_CONFIG.rosterLimits.emergencyTarget} onClick={() => setPendingWaiveId(player.id)}>裁员</button>}</article>; })}</div></section>
     {pendingWaive && onWaive && <div className="manage-waive-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setPendingWaiveId(null); }}><section className="manage-waive-dialog" role="alertdialog" aria-modal="true" aria-labelledby="manage-waive-title" aria-describedby="manage-waive-description"><h2 id="manage-waive-title">裁掉 {playerNameZh(pendingWaive.name, pendingWaive.id)}？</h2><p id="manage-waive-description">裁员后球员会进入自由球员池，合同剩余保障金额仍按原合同年份计入死钱，不能立即释放全部薪资。</p><div><span>剩余保障金额 <b>{moneyLabel(pendingWaive.contract.guaranteedAmount)}</b></span><span>裁员后名单 <b>{players.length - 1} 人</b></span></div><footer><button type="button" disabled={busy} onClick={() => setPendingWaiveId(null)}>取消</button><button type="button" className="danger" disabled={busy} onClick={() => void onWaive(pendingWaive.id).finally(() => setPendingWaiveId(null))}>{busy ? "处理中…" : "确认裁员"}</button></footer></section></div>}
+    {renewalEditor && renewalPlayer && onRenewOwnPlayer && state && <FreeAgentOfferDialog
+      state={state}
+      playerId={renewalPlayer.id}
+      draft={renewalEditor.draft}
+      mode="extension"
+      busy={busy}
+      onChange={(patch) => setRenewalEditor((current) => current ? { ...current, draft: { ...current.draft, ...patch } } : current)}
+      onClose={() => setRenewalEditor(null)}
+      onSubmit={() => { void onRenewOwnPlayer(renewalPlayer.id, renewalEditor.draft).then(() => setRenewalEditor(null)); }}
+    />}
   </div>;
 }
 

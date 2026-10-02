@@ -12,6 +12,7 @@ import { getCapSheet } from "../cap/CapSheetService";
 import { advanceFreeAgencyDay, finishMainFreeAgencyAfterSettlement } from "../freeAgency/FreeAgencyService";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, reconcileRotationAfterRosterChange, validateRotationPlan } from "./RotationPlanService";
 import { getRosterTrainingAssignments } from "./TrainingPlanService";
+import { getAutomaticRosterReplacement, notifyAutomaticRosterFill } from "./AutomaticRosterFillService";
 
 export type RosterCommand =
   | { commandId: string; type: "CLOSE_FREE_AGENCY"; payload: Record<string, never> }
@@ -114,6 +115,8 @@ function signMinimum(state: GameState, teamId: string, player: Player): void {
   const birdYears = player.birdTeamId === teamId ? (player.birdYears ?? 0) : 1;
   player.teamId = teamId;
   delete player.freeAgentDemand;
+  player.teamRole = "BENCH";
+  player.rotationRole = "BENCH";
   player.birdTeamId = teamId;
   player.birdYears = birdYears;
   player.contract = {
@@ -126,11 +129,6 @@ function signMinimum(state: GameState, teamId: string, player: Player): void {
   };
   if (player.career) { player.career.unemployedGameDays = 0; player.career.unemployedLeagueYears = 0; }
   state.teams[teamId].playerIds.push(player.id);
-}
-
-function availableFreeAgents(state: GameState): Player[] {
-  return Object.values(state.players).filter((player) => player.teamId === "FREE_AGENT" && player.contract.status !== "RFA")
-    .sort((a, b) => publicPlayerValue(b) - publicPlayerValue(a) || a.id.localeCompare(b.id));
 }
 
 function aiRosterRetentionScore(player: Player): number {
@@ -169,8 +167,7 @@ function normalizeAiRosters(state: GameState): void {
   for (const team of Object.values(state.teams).filter((entry) => entry.id !== state.userTeamId)) {
     trimAiRoster(state, team.id, LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMaximum);
     while (team.playerIds.length < LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMinimum) {
-      const player = availableFreeAgents(state)[0];
-      if (!player) throw new Error("Not enough free agents to complete AI rosters");
+      const player = getAutomaticRosterReplacement(state);
       signMinimum(state, team.id, player);
     }
   }
@@ -202,10 +199,11 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
   if (size < LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMinimum && !confirmMinimumFill) throw new Error("MINIMUM_FILL_CONFIRMATION_REQUIRED");
   const state = structuredClone(input);
   if (state.trainingPlan) state.trainingPlan.assignments = getRosterTrainingAssignments(state);
+  const additions: Player[] = [];
   while (state.teams[state.userTeamId].playerIds.length < LEAGUE_FINANCE_CONFIG.rosterLimits.regularSeasonMinimum) {
-    const player = availableFreeAgents(state)[0];
-    if (!player) throw new Error("No free agent is available for minimum roster fill");
+    const player = getAutomaticRosterReplacement(state);
     signMinimum(state, state.userTeamId, player);
+    additions.push(player);
   }
   normalizeAiRosters(state);
   recordOpeningSalaryFloorShortfalls(state);
@@ -220,6 +218,7 @@ export function lockOpeningRoster(input: GameState, confirmMinimumFill: boolean)
   for (const player of Object.values(state.players)) player.fatigue = 0;
   state.calendar.currentDateIndex = 0;
   state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+  notifyAutomaticRosterFill(state, additions, "OPENING");
   ensureExpansionWelcomeNotification(state);
   enqueueCareerMilestoneEvents(state);
   if (state.expansion?.finalized && state.league.seasonYear === BALANCE_CONFIG.playerLifecycle.snapshotSeasonYear) {

@@ -287,9 +287,10 @@ function historicalProspect(
     heightCm: template.heightCm || profile.heightCm,
     weightKg: template.weightKg || profile.weightKg,
     position: template.position,
+    secondaryPosition: template.secondaryPosition ?? template.position,
     profileSource: "HISTORICAL_ARCHETYPE",
     projectionSource: "HISTORICAL_REBIRTH_V1",
-    projectionDataVersion: `${NBA_PLAYER_DATASET.datasetVersion}+retired-legends-90-v3`,
+    projectionDataVersion: `${NBA_PLAYER_DATASET.datasetVersion}+retired-legends-90-v4`,
     historicalSourcePlayerId: template.sourcePlayerId,
     portraitPath: sourceNbaId && bundledRetiredPortraitIds.has(sourceNbaId)
       ? `./retired-portraits/nba-${sourceNbaId}.webp`
@@ -625,6 +626,12 @@ function completeDraft(state: GameState): void {
   if (draft.currentPickIndex !== draft.pickOrder.length) throw new Error(`Rookie Draft cannot finalize before ${draft.pickOrder.length} picks`);
   draft.completed = true;
   const year = state.league.seasonYear;
+  // A draft pick is consumed when its draft completes. Remove the live asset
+  // so the used year's picks cannot reappear in trade/asset selectors or be
+  // mistaken for available picks after the next season rolls over.
+  for (const [pickId, pick] of Object.entries(state.draftPicks)) {
+    if (pick.year === year) delete state.draftPicks[pickId];
+  }
   state.history.draftFirstRoundResults = [
     ...(state.history.draftFirstRoundResults ?? []).filter((pick) => pick.year >= year - 2 && pick.year !== year),
     ...draft.pickOrder.filter((pick) => pick.round === 1).map((pick) => ({ year, pickNumber: pick.pickNumber, originalTeamId: pick.originalTeamId })),

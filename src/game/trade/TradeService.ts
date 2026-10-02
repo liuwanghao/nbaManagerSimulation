@@ -13,6 +13,7 @@ import { playerTradeWaitingReason } from "./TradeTimingPolicy";
 
 export type TradeCommand =
   | { commandId: string; type: "SET_TRADE_ASSETS"; payload: TradeSelection }
+  | { commandId: string; type: "EXECUTE_CUSTOM_TRADE"; payload: TradePackage }
   | { commandId: string; type: "GENERATE_TRADE_OFFERS"; payload: ({ playerId: string; refresh: boolean } | { playerIds: string[]; pickIds: string[]; refresh: boolean }) }
   | { commandId: string; type: "GENERATE_TARGETED_TRADE_OFFERS"; payload: { targetPlayerIds: string[]; refresh?: boolean } }
   | { commandId: string; type: "ACCEPT_TRADE_OFFER"; payload: { offerId: string } };
@@ -28,7 +29,7 @@ export interface TradePackage {
 
 export interface TradeSelection { playerIds: string[]; pickIds: string[] }
 
-export const TRADE_PHASES = ["OFFSEASON_PRE_DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON", "REGULAR_PRE_DEADLINE", "REGULAR_SEASON"] as const;
+export const TRADE_PHASES = ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON", "REGULAR_PRE_DEADLINE", "REGULAR_SEASON"] as const;
 export type TradePhase = typeof TRADE_PHASES[number];
 
 export interface TradeOfferEvaluation {
@@ -59,7 +60,7 @@ function isTradeWindowOpen(state: GameState): boolean {
 }
 
 function firstTradablePickYear(state: GameState): number {
-  return state.league.currentPhase === "OFFSEASON_PRE_DRAFT" ? state.league.seasonYear : state.league.seasonYear + 1;
+  return ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT"].includes(state.league.currentPhase) ? state.league.seasonYear : state.league.seasonYear + 1;
 }
 
 function validatePickRule(state: GameState, movingPickIds: string[], fromTeamId: string): void {
@@ -193,6 +194,23 @@ export function applyTradePackage(state: GameState, trade: TradePackage): void {
   }
   for (const id of trade.leftPickIds) state.draftPicks[id].ownerTeamId = right.id;
   for (const id of trade.rightPickIds) state.draftPicks[id].ownerTeamId = left.id;
+}
+
+export function executeCustomTrade(input: GameState, trade: TradePackage): GameState {
+  assertPhaseAllowed(input, "Execute custom trade", TRADE_PHASES);
+  validateTradePackage(input, trade);
+  const state = structuredClone(input);
+  applyTradePackage(state, trade);
+  const playerName = (id: string) => state.players[id]?.name ?? id;
+  const pickName = (id: string) => {
+    const pick = state.draftPicks[id];
+    return pick ? `${pick.year}年${pick.round === 1 ? "首轮" : "次轮"}签` : id;
+  };
+  const outgoing = [...trade.leftPlayerIds.map(playerName), ...trade.leftPickIds.map(pickName)].join("、") || "选秀权";
+  const incoming = [...trade.rightPlayerIds.map(playerName), ...trade.rightPickIds.map(pickName)].join("、") || "选秀权";
+  state.gmCareer.tradeHistory.push({ seasonId: state.league.seasonId, offerId: `custom-${stableHash(trade)}`, summary: `${outgoing} → ${incoming}` });
+  state.tradeDesk = { offers: [], selectedPlayerIds: [], selectedPickIds: [], targetPlayerIds: [] };
+  return state;
 }
 
 function candidatePlayerBundles(players: Player[], maxSize: number): string[][] {
@@ -574,6 +592,8 @@ export function executeTradeCommand(state: GameState, command: TradeCommand): Ga
   if (receipt) { if (receipt.payloadHash !== payloadHash) throw new Error("Command ID 已被不同 Payload 使用"); return state; }
   const next = command.type === "SET_TRADE_ASSETS"
     ? setTradeAssets(state, command.payload)
+    : command.type === "EXECUTE_CUSTOM_TRADE"
+      ? executeCustomTrade(state, command.payload)
     : command.type === "GENERATE_TRADE_OFFERS"
       ? generateTradeOffers(state, "playerId" in command.payload ? command.payload.playerId : command.payload, command.payload.refresh)
       : command.type === "GENERATE_TARGETED_TRADE_OFFERS"

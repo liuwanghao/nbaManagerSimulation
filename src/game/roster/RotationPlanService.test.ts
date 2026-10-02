@@ -32,8 +32,8 @@ describe("RotationPlanService", () => {
     const reserve = players.find((player) => player.available && !player.injury && !Object.values(plan.starters).includes(player.id))!;
     reserve.position = "SF";
     reserve.secondaryPosition = "PF";
-    players.find((player) => player.id === plan.starters.SF)!.overallAdjustment = 50;
-    players.find((player) => player.id === plan.starters.PF)!.overallAdjustment = -50;
+    players.find((player) => player.id === plan.starters.SF)!.overallAdjustment = -50;
+    players.find((player) => player.id === plan.starters.PF)!.overallAdjustment = 50;
     const response = planPlayerRotationResponse(players, plan, reserve.id, true);
     expect(response?.starters.SF).toBe(reserve.id);
   });

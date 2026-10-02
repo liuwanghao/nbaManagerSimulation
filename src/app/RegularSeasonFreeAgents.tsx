@@ -21,9 +21,10 @@ export function getUpcomingFreeAgents(state: GameState): Player[] {
   return Object.values(state.players).filter((player) => {
     if (!state.teams[player.teamId] || player.contract.status !== "STANDARD") return false;
     const salaryYears = player.contract.salaryByYear;
-    return salaryYears?.length && player.contract.currentYearIndex !== undefined
-      ? player.contract.currentYearIndex + 1 >= salaryYears.length
-      : player.contract.yearsRemaining === 1;
+    if (salaryYears?.length && player.contract.currentYearIndex !== undefined) {
+      return player.contract.currentYearIndex + 1 >= salaryYears.length;
+    }
+    return player.contract.yearsRemaining === 1;
   });
 }
 

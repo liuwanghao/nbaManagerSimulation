@@ -11,6 +11,13 @@ const versionsEndpoint = "https://api.nba2kapi.com/api/versions";
 const endpoint = (gameVersion, teamType) => `https://api.nba2kapi.com/api/versions/${gameVersion}/players/bulk?teamType=${teamType}`;
 const nameKey = (value) => String(value ?? "").normalize("NFKD").replace(/[^a-z0-9]/giu, "").toLowerCase();
 const clamp = (value) => Math.max(25, Math.min(99, Math.round(value)));
+const VALID_POSITIONS = new Set(["PG", "SG", "SF", "PF", "C"]);
+
+function normalizedPositions(value) {
+  if (!Array.isArray(value)) return null;
+  const positions = [...new Set(value.filter((position) => VALID_POSITIONS.has(position)))];
+  return positions.length ? positions : null;
+}
 
 function mappedAttributes(raw, mapping) {
   if (!raw || typeof raw !== "object") return null;
@@ -54,11 +61,13 @@ export function buildPeakRatings(templates, rows, mapping) {
       unmatched.push({ sourcePlayerId: template.sourcePlayerId, sourceName: template.sourceName });
       continue;
     }
+    const positions = normalizedPositions(row.positions);
     players.push({
       sourcePlayerId: template.sourcePlayerId,
       sourceName: template.sourceName,
       peakOverall: row.overall,
       peakAttributes: mappedAttributes(row.attributes, mapping),
+      ...(positions ? { positions } : {}),
       gameVersion: row.gameVersion,
       team: row.team,
       teamType: row.teamType,

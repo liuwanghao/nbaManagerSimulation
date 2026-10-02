@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
-import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
+import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
 import { EXPANSION_BRAND_PRESETS } from "../../data/expansionBrands";
 import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { getCapSheet } from "../cap/CapSheetService";
@@ -19,9 +19,14 @@ import {
   getFreeAgentCustomOfferPreview,
   getFreeAgentOfferPreview,
   getFreeAgents,
+  getOwnPlayerExtensionPreview,
+  getRecommendedOwnPlayerExtension,
+  enterFreeAgency,
   getPendingUserQualifyingOfferPlayers,
   getProjectedMarketSalary,
   getRecommendedFreeAgentOffer,
+  renewOwnPlayer,
+  submitOwnPlayerExtensionOffer,
 } from "./FreeAgencyService";
 
 function postDraftState(seed: string, bundled = false): GameState {
@@ -48,6 +53,329 @@ function postDraftState(seed: string, bundled = false): GameState {
   }
   return state;
 }
+
+function expiringStarState(seed: string) {
+  const state = postDraftState(seed);
+  const player = state.players[state.teams.ATL.playerIds[0]];
+  for (const key of Object.keys(player.attributes) as Array<keyof typeof player.attributes>) player.attributes[key] = 92;
+  player.overallAdjustment = 0;
+  player.age = 27;
+  player.personality = "LOYAL";
+  player.morale = 80;
+  player.birdTeamId = "ATL";
+  player.birdYears = 4;
+  player.teamId = "FREE_AGENT";
+  player.contract = {
+    salary: 30_000_000, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA",
+    optionType: "NONE", optionDecision: "NOT_APPLICABLE", contractType: "STANDARD",
+    contractId: "expiring-star", startSeason: state.league.seasonYear - 3, endSeason: state.league.seasonYear - 1,
+    currentYearIndex: 3, salaryByYear: [30_000_000, 30_000_000, 30_000_000, 30_000_000], signedTeamId: "ATL",
+  };
+  state.teams.ATL.playerIds = state.teams.ATL.playerIds.filter((id) => id !== player.id);
+  state.contractLifecycle = { rolloverSeasonId: state.league.seasonId, pendingUserTeamOptionPlayerIds: [], renewalEligiblePlayerIds: [player.id], transactionLog: [], completed: true };
+  return { state, player };
+}
+
+describe("AI renewals before the public market", () => {
+  it("retains a willing expiring star at market salary with Bird rights and deterministic atomic settlement", () => {
+    const { state, player } = expiringStarState("pre-market-renewal");
+    for (const id of state.teams.ATL.playerIds) state.players[id].contract.salary = 30_000_000;
+    const before = stableSerialize(state);
+    const next = enterFreeAgency(state);
+    const renewed = next.players[player.id];
+    expect(renewed.teamId).toBe("ATL");
+    expect(renewed.contract.status).toBe("STANDARD");
+    expect(renewed.contract.yearsRemaining).toBe(3);
+    expect(renewed.contract.salary).toBeCloseTo(getProjectedMarketSalary(player, state.league.seasonYear), -4);
+    expect(renewed.contract.signedTeamId).toBe("ATL");
+    expect(renewed.contract.startSeason).toBe(state.league.seasonYear);
+    expect(renewed.contract.guaranteedAmount).toBe(renewed.contract.salaryByYear!.reduce((sum, salary) => sum + salary, 0));
+    expect(renewed.birdYears).toBe(4);
+    expect(getFreeAgents(next).some((entry) => entry.id === player.id)).toBe(false);
+    expect(next.capState.capHolds.some((entry) => entry.playerId === player.id)).toBe(false);
+    expect(next.capState.offerReservations.some((entry) => entry.playerId === player.id)).toBe(false);
+    expect(next.freeAgency!.transactionLog.some((entry) => entry.includes(player.name) && entry.includes("续约"))).toBe(true);
+    expect(next.contractLifecycle?.transactionLog.some((entry) => entry.includes(player.name) && entry.includes("续约"))).toBe(true);
+    expect(stableHash(stableSerialize(state))).toBe(stableHash(before));
+    expect(stableHash(stableSerialize(enterFreeAgency(structuredClone(state))))).toBe(stableHash(stableSerialize(next)));
+    const loaded = JSON.parse(JSON.stringify(state)) as GameState;
+    expect(stableHash(JSON.stringify(enterFreeAgency(loaded)))).toBe(stableHash(JSON.stringify(next)));
+    expect(enterFreeAgency(next)).toBe(next);
+  });
+
+  it("keeps unaffordable non-Bird stars available without leaving a partial offer", () => {
+    const { state, player } = expiringStarState("pre-market-renewal");
+    player.birdYears = 1;
+    for (const id of state.teams.ATL.playerIds) state.players[id].contract.salary = 30_000_000;
+    const next = enterFreeAgency(state);
+    expect(next.players[player.id].teamId).toBe("FREE_AGENT");
+    expect(Object.values(next.freeAgency!.offers).some((entry) => entry.playerId === player.id)).toBe(false);
+    expect(next.capState.offerReservations).toHaveLength(0);
+  });
+
+  it("leaves the user's expirings, stale free agents and team-option rejections to normal market decisions", () => {
+    const { state, player } = expiringStarState("pre-market-renewal");
+    const user = structuredClone(state);
+    user.players[player.id].birdTeamId = user.userTeamId;
+    user.players[player.id].contract.signedTeamId = user.userTeamId;
+    expect(enterFreeAgency(user).players[player.id].teamId).toBe("FREE_AGENT");
+    state.contractLifecycle!.renewalEligiblePlayerIds = [];
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("FREE_AGENT");
+    delete state.contractLifecycle!.renewalEligiblePlayerIds;
+    player.contract.optionType = "TEAM";
+    player.contract.optionDecision = "DECLINED";
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("FREE_AGENT");
+    player.contract.optionType = "NONE";
+    player.contract.optionDecision = "NOT_APPLICABLE";
+    player.contract.endSeason = state.league.seasonYear - 2;
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("FREE_AGENT");
+    player.contract.optionType = "PLAYER";
+    player.contract.optionDecision = "DECLINED";
+    player.contract.endSeason = state.league.seasonYear - 1;
+    player.contract.currentYearIndex = 2;
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("FREE_AGENT");
+  });
+
+  it("supports fresh expirings in older saves and own-team RFA renewals", () => {
+    const { state, player } = expiringStarState("pre-market-renewal");
+    delete state.contractLifecycle!.renewalEligiblePlayerIds;
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("ATL");
+    player.contract.optionType = "PLAYER";
+    player.contract.optionDecision = "DECLINED";
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("ATL");
+    player.contract.status = "RFA";
+    player.contract.qualifyingOfferDecision = "PENDING";
+    const next = enterFreeAgency(state);
+    expect(next.players[player.id].teamId).toBe("ATL");
+    expect(Object.values(next.freeAgency!.offers).find((entry) => entry.playerId === player.id)?.kind).toBe("RFA_OWN_TEAM_OFFER");
+  });
+
+  it("allows the current team to retain traded players whose contract was signed elsewhere", () => {
+    const { state, player } = expiringStarState("pre-market-renewal");
+    player.contract.signedTeamId = "BOS";
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("ATL");
+    delete state.contractLifecycle!.renewalEligiblePlayerIds;
+    expect(enterFreeAgency(state).players[player.id].teamId).toBe("ATL");
+  });
+
+  it("makes a roster slot only for a successful upgrade and rolls it back when the cap blocks renewal", () => {
+    const { state, player } = expiringStarState("pre-market-renewal");
+    while (state.teams.ATL.playerIds.length < 15) {
+      const replacement = structuredClone(state.players[state.teams.ATL.playerIds.at(-1)!]);
+      replacement.id = `atl-full-${state.teams.ATL.playerIds.length}`;
+      state.players[replacement.id] = replacement;
+      state.teams.ATL.playerIds.push(replacement.id);
+    }
+    for (const id of state.teams.ATL.playerIds) {
+      state.players[id].contract.salary = 30_000_000;
+      state.players[id].contract.status = "STANDARD";
+    }
+    const next = enterFreeAgency(state);
+    expect(next.players[player.id].teamId).toBe("ATL");
+    expect(next.teams.ATL.playerIds).toHaveLength(15);
+    player.birdYears = 1;
+    const blocked = enterFreeAgency(state);
+    const withoutRenewals = structuredClone(state);
+    withoutRenewals.contractLifecycle!.renewalEligiblePlayerIds = [];
+    const baseline = enterFreeAgency(withoutRenewals);
+    expect(blocked.players[player.id].teamId).toBe("FREE_AGENT");
+    expect(blocked.teams.ATL.playerIds).toEqual(baseline.teams.ATL.playerIds);
+    expect(blocked.capState.deadMoney.filter((entry) => entry.teamId === "ATL")).toEqual(baseline.capState.deadMoney.filter((entry) => entry.teamId === "ATL"));
+  });
+
+  it("substantially reduces high-rated free agents while retaining some star departures", () => {
+    const { state, player } = expiringStarState("pre-market-population");
+    const stars = Object.values(state.teams).filter((team) => team.id !== state.userTeamId).map((team) => {
+      const star = structuredClone(player);
+      star.id = team.playerIds[0];
+      star.personality = "BALANCED";
+      star.birdTeamId = team.id;
+      star.contract.signedTeamId = team.id;
+      state.players[star.id] = star;
+      team.playerIds = team.playerIds.filter((id) => id !== star.id);
+      return star;
+    });
+    state.contractLifecycle!.renewalEligiblePlayerIds = stars.map((star) => star.id);
+    const next = enterFreeAgency(state);
+    const retained = stars.filter((star) => next.players[star.id].teamId === star.birdTeamId);
+    expect(retained.length).toBeGreaterThan(stars.length * 0.6);
+    expect(retained.length).toBeLessThan(stars.length);
+    expect(Object.values(next.teams).filter((team) => team.id !== next.userTeamId).every((team) => team.playerIds.length <= 15)).toBe(true);
+    const middleTier = structuredClone(state);
+    for (const star of stars) {
+      const attributes = middleTier.players[star.id].attributes;
+      for (const key of Object.keys(attributes) as Array<keyof typeof attributes>) attributes[key] = 82;
+    }
+    const middleMarket = enterFreeAgency(middleTier);
+    const retainedMiddle = stars.filter((star) => middleMarket.players[star.id].teamId === star.birdTeamId);
+    expect(retainedMiddle.length).toBeLessThan(retained.length);
+    expect(stars.length - retainedMiddle.length).toBeGreaterThanOrEqual(stars.length * 0.3);
+  });
+});
+
+describe("whole-dollar maximum salaries", () => {
+  const cases = [
+    { seasonYear: 2027, serviceYears: 3, percentage: 0.25 },
+    { seasonYear: 2027, serviceYears: 10, percentage: 0.35 },
+    { seasonYear: 2028, serviceYears: 8, percentage: 0.3 },
+  ];
+
+  function maximumSalaryState(seasonYear: number, serviceYears: number) {
+    const state = createCareer(`rounded-max-${seasonYear}-${serviceYears}`);
+    state.league = { currentPhase: "REGULAR_PRE_DEADLINE", seasonYear, seasonId: `${seasonYear}-${String(seasonYear + 1).slice(-2)}` };
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    player.age = 27;
+    player.serviceYears = serviceYears;
+    for (const key of Object.keys(player.attributes) as Array<keyof typeof player.attributes>) player.attributes[key] = 92;
+    player.contract = { ...player.contract, status: "STANDARD", yearsRemaining: 1,
+      salary: 8_000_000, guaranteedAmount: 8_000_000, salaryByYear: [8_000_000],
+      guaranteedByYear: [8_000_000], optionByYear: ["NONE"], currentYearIndex: 0,
+      startSeason: seasonYear, endSeason: seasonYear };
+    return { state, player };
+  }
+
+  it.each(cases)("submits and settles a rounded maximum UFA offer in $seasonYear with $serviceYears service years", ({ seasonYear, serviceYears, percentage }) => {
+    const { state, player } = maximumSalaryState(seasonYear, serviceYears);
+    const maximum = Math.round(getSeasonFinanceConfig(seasonYear).salaryCap * percentage);
+    state.teams[state.userTeamId].playerIds = state.teams[state.userTeamId].playerIds.filter((id) => id !== player.id);
+    for (const id of state.teams[state.userTeamId].playerIds) state.players[id].contract.salary = 0;
+    player.teamId = "FREE_AGENT";
+    player.contract.status = "UFA";
+    player.contract.yearsRemaining = 0;
+    const recommended = getRecommendedFreeAgentOffer(state, player.id);
+    expect(Number.isInteger(recommended.year1Salary)).toBe(true);
+    expect(getFreeAgentCustomOfferPreview(state, player.id, recommended).valid).toBe(true);
+    const draft = { ...recommended, year1Salary: maximum, guaranteedPercent: 1, rolePromised: "STARTER" as const };
+    const preview = getFreeAgentCustomOfferPreview(state, player.id, draft);
+    expect(preview.valid).toBe(true);
+    expect(preview.salaryByYear[0]).toBe(draft.year1Salary);
+    expect(getFreeAgentCustomOfferPreview(state, player.id, { ...draft, year1Salary: maximum + 1 }).valid).toBe(false);
+    const mismatched = { ...draft, salaryByYear: preview.salaryByYear.map((salary, index) => salary + (index === 0 ? 1 : 0)) };
+    expect(getFreeAgentCustomOfferPreview(state, player.id, mismatched).reason).toBe("首年薪资与逐年薪资表不一致");
+    expect(() => executeFreeAgencyCommand(state, { commandId: "mismatched", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...mismatched } })).toThrow(/Salary schedule/);
+    const command = { commandId: "rounded-max", type: "SUBMIT_FA_OFFER", payload: { playerId: player.id, ...draft } } as const;
+    let next = executeFreeAgencyCommand(state, command);
+    const loaded = JSON.parse(JSON.stringify(next)) as GameState;
+    expect(executeFreeAgencyCommand(loaded, command)).toBe(loaded);
+    for (let day = 0; day < 3 && next.players[player.id].teamId === "FREE_AGENT"; day += 1) next = advanceFreeAgencyDay(next);
+    expect(next.players[player.id].teamId).toBe(state.userTeamId);
+    expect(next.players[player.id].contract.salaryByYear?.[0]).toBe(maximum);
+    expect(next.capState.offerReservations.some((reservation) => reservation.playerId === player.id)).toBe(false);
+  });
+
+  it.each(cases)("submits and settles a rounded maximum extension starting in $seasonYear with $serviceYears service years", ({ seasonYear, serviceYears, percentage }) => {
+    const { state, player } = maximumSalaryState(seasonYear - 1, serviceYears);
+    const maximum = Math.round(getSeasonFinanceConfig(seasonYear).salaryCap * percentage);
+    const recommended = { ...getRecommendedOwnPlayerExtension(state, player.id), guaranteedPercent: 1, rolePromised: "STARTER" as const };
+    expect(Number.isInteger(recommended.year1Salary)).toBe(true);
+    expect(getOwnPlayerExtensionPreview(state, player.id, recommended).valid).toBe(true);
+    const draft = { ...recommended, year1Salary: maximum };
+    const preview = getOwnPlayerExtensionPreview(state, player.id, draft);
+    expect(preview.valid).toBe(true);
+    expect(preview.salaryByYear[0]).toBe(draft.year1Salary);
+    expect(getOwnPlayerExtensionPreview(state, player.id, { ...draft, year1Salary: maximum + 1 }).valid).toBe(false);
+    const command = { commandId: "rounded-extension", type: "SUBMIT_OWN_EXTENSION_OFFER", payload: { playerId: player.id, ...draft } } as const;
+    const submitted = executeFreeAgencyCommand(state, command);
+    expect(submitted.players[player.id].contract.salaryByYear).toEqual([8_000_000]);
+    const loaded = JSON.parse(JSON.stringify(submitted)) as GameState;
+    expect(executeFreeAgencyCommand(loaded, command)).toBe(loaded);
+    const settled = advanceFreeAgencyDay(loaded);
+    expect(settled.players[player.id].contract.salaryByYear?.[1]).toBe(maximum);
+    expect(Object.values(settled.freeAgency!.offers).find((offer) => offer.kind === "OWN_EXTENSION_OFFER")?.status).toBe("ACCEPTED");
+  });
+});
+
+describe("user early extensions", () => {
+  function expiringOwnPlayerState(seed: string) {
+    const state = createCareer(seed);
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    player.contract = {
+      ...player.contract,
+      status: "STANDARD",
+      yearsRemaining: 1,
+      salary: 8_000_000,
+      guaranteedAmount: 8_000_000,
+      salaryByYear: [8_000_000],
+      guaranteedByYear: [8_000_000],
+      optionByYear: ["NONE"],
+      currentYearIndex: 0,
+      startSeason: state.league.seasonYear,
+      endSeason: state.league.seasonYear,
+    };
+    return { state, player };
+  }
+
+  it("submits an offer first and only appends the extension after next-day acceptance", () => {
+    const { state, player } = expiringOwnPlayerState("user-extension-offer-flow");
+    const extension = { ...getRecommendedOwnPlayerExtension(state, player.id), guaranteedPercent: 1, finalYearOption: "NONE" as const, rolePromised: "ROTATION" as const };
+    expect(getOwnPlayerExtensionPreview(state, player.id, extension).valid).toBe(true);
+    const submitted = submitOwnPlayerExtensionOffer(state, { playerId: player.id, ...extension });
+    expect(submitted.players[player.id].contract.salaryByYear).toEqual([8_000_000]);
+    const offer = Object.values(submitted.freeAgency!.offers).find((entry) => entry.kind === "OWN_EXTENSION_OFFER");
+    expect(offer?.status).toBe("ACTIVE");
+    expect(offer?.capReservation).toBe(0);
+    offer!.utility = 100;
+    const settled = advanceFreeAgencyDay(submitted);
+    expect(settled.players[player.id].contract.salaryByYear).toHaveLength(1 + extension.years);
+    expect(settled.freeAgency!.offers[offer!.offerId].status).toBe("ACCEPTED");
+    expect(settled.teamNotifications?.some((entry) => entry.title === "提前续约成功")).toBe(true);
+    expect(settled.contractLifecycle?.transactionLog.some((entry) => entry.includes("提前续约"))).toBe(true);
+  });
+
+  it("keeps the current contract when the player rejects the offer and notifies the team", () => {
+    const { state, player } = expiringOwnPlayerState("user-extension-rejection-flow");
+    const extension = { ...getRecommendedOwnPlayerExtension(state, player.id), guaranteedPercent: 0, finalYearOption: "NONE" as const, rolePromised: "BENCH" as const };
+    const submitted = submitOwnPlayerExtensionOffer(state, { playerId: player.id, ...extension });
+    const offer = Object.values(submitted.freeAgency!.offers).find((entry) => entry.kind === "OWN_EXTENSION_OFFER");
+    if (!offer) throw new Error("extension offer missing");
+    offer.utility = 0;
+    const settled = advanceFreeAgencyDay(submitted);
+    expect(settled.players[player.id].contract.salaryByYear).toEqual([8_000_000]);
+    expect(settled.freeAgency!.offers[offer.offerId].status).toBe("REJECTED");
+    expect(settled.teamNotifications?.some((entry) => entry.title === "提前续约报价被拒绝")).toBe(true);
+  });
+
+  it("appends a legal extension after the current season and removes the player from upcoming expirings", () => {
+    const state = createCareer("user-own-player-extension");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    player.contract = {
+      ...player.contract,
+      status: "STANDARD",
+      yearsRemaining: 1,
+      salary: 8_000_000,
+      guaranteedAmount: 8_000_000,
+      salaryByYear: [8_000_000],
+      guaranteedByYear: [8_000_000],
+      optionByYear: ["NONE"],
+      currentYearIndex: 0,
+      startSeason: state.league.seasonYear,
+      endSeason: state.league.seasonYear,
+    };
+    const extension = getRecommendedOwnPlayerExtension(state, player.id);
+    const next = renewOwnPlayer(state, { playerId: player.id, ...extension });
+    const renewed = next.players[player.id].contract;
+    expect(renewed.salary).toBe(8_000_000);
+    expect(renewed.salaryByYear?.[0]).toBe(8_000_000);
+    expect(renewed.salaryByYear).toHaveLength(1 + extension.years);
+    expect(renewed.yearsRemaining).toBe(1 + extension.years);
+    expect(renewed.endSeason).toBe(state.league.seasonYear + extension.years);
+    expect(next.contractLifecycle?.transactionLog.some((entry) => entry.includes(player.name) && entry.includes("提前续约"))).toBe(true);
+    expect(stableHash(stableSerialize(state))).not.toBe(stableHash(stableSerialize(next)));
+    expect(next.players[player.id].teamId).toBe(state.userTeamId);
+  });
+
+  it("rejects another team's player and non-expiring contracts", () => {
+    const state = createCareer("user-own-player-extension-guards");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    expect(() => renewOwnPlayer(state, { playerId: player.id, years: 2, year1Salary: 5_000_000 })).toThrow("PLAYER_IS_NOT_EXPIRING");
+    player.contract.yearsRemaining = 1;
+    const otherTeamPlayer = state.players[state.teams.BOS.playerIds[0]];
+    expect(() => renewOwnPlayer(state, { playerId: otherTeamPlayer.id, years: 2, year1Salary: 5_000_000 })).toThrow("OWN_PLAYER_RENEWAL_NOT_ALLOWED");
+  });
+});
 
 describe("Stage 4 free agency", () => {
   it("does not repeatedly attempt AI offers when a team has no cap room", () => {

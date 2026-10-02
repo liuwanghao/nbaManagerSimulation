@@ -25,7 +25,7 @@ export function TradeAssetPicker({ state, roster, busy = false, error, selectedP
   const tradeableRoster = roster.filter((player) => !playerTradeWaitingReason(state, player));
   const counts = tradeAssetPositionCounts(tradeableRoster);
   const visiblePlayers = positionFilter === "ALL" ? tradeableRoster : tradeableRoster.filter((player) => player.position === positionFilter);
-  const firstYear = state.league.currentPhase === "OFFSEASON_PRE_DRAFT" ? state.league.seasonYear : state.league.seasonYear + 1;
+  const firstYear = ["ROOKIE_DRAFT_PENDING", "OFFSEASON_PRE_DRAFT"].includes(state.league.currentPhase) ? state.league.seasonYear : state.league.seasonYear + 1;
   const availablePicks = Object.values(state.draftPicks)
     .filter((pick) => pick.ownerTeamId === state.userTeamId && !pick.reservedByCommitmentId && pick.year >= firstYear && pick.year <= state.league.seasonYear + 7)
     .sort((left, right) => left.year - right.year || left.round - right.round || left.id.localeCompare(right.id));

@@ -210,6 +210,23 @@ function createFixturePreview(): GameState {
   return rolloverLeagueYear(state);
 }
 
+function LauncherAnnouncementBody() {
+  return <div className="launcher-announcement-body">
+    <p><strong>致各位玩家：</strong></p>
+    <p>感谢大家自上线以来的体验与反馈，也很抱歉目前游戏中还存在一些影响体验的问题。大家提出的每一条建议我都会认真查看，并积极修复和优化。我会继续努力完善游戏，希望给大家带来更好的游戏体验。</p>
+    <p>针对近期玩家反馈，我对游戏体验进行了集中优化：</p>
+    <ul>
+      <li><strong>伤病与轮换：</strong>伤病后自动调整轮换，仅在可用人数不足时触发紧急补员，减少比赛中断。</li>
+      <li><strong>补员机制：</strong>优化紧急补员与开幕补员逻辑，避免补入过强球员影响阵容平衡。</li>
+      <li><strong>体能系统：</strong>提高休息日体能恢复效果，减少频繁调整轮换的情况。</li>
+      <li><strong>合同与续约：</strong>新增球员提前续约功能，可在合同到期前向本队球员提交续约报价。</li>
+      <li><strong>选秀与交易：</strong>修复选秀前交易中心部分情况下出现黑屏的问题。</li>
+      <li><strong>生涯与通知：</strong>减少里程碑及历史成就的重复通知，修复老存档相关问题。</li>
+    </ul>
+    <p><strong>感谢大家的反馈，我会继续根据实际体验持续调整和优化。</strong></p>
+  </div>;
+}
+
 export default function Bootstrap() {
   const loadingFixture = import.meta.env.DEV && fixtureMode() === "loading";
   const saveSlotsFixture = import.meta.env.DEV && fixtureMode() === "save-slots";
@@ -223,6 +240,7 @@ export default function Bootstrap() {
   const [initialActiveSlot, setInitialActiveSlot] = useState<1 | 2 | 3>(1);
   const [restoredFromLeaderboard, setRestoredFromLeaderboard] = useState(false);
   const [launcherNotice, setLauncherNotice] = useState<string | null>(null);
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [loadMenuOpen, setLoadMenuOpen] = useState(false);
   const [newGameMenuOpen, setNewGameMenuOpen] = useState(false);
   const [pendingOverwriteSlot, setPendingOverwriteSlot] = useState<1 | 2 | 3 | null>(null);
@@ -250,6 +268,15 @@ export default function Bootstrap() {
       }
     })();
   }, [returnSlot, screen]);
+
+  useEffect(() => {
+    if (!announcementOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAnnouncementOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [announcementOpen]);
 
   const runLauncherLoad = async (kind: LauncherLoading, action: () => Promise<void>) => {
     if (launcherLoadInFlight.current) return;
@@ -344,7 +371,16 @@ export default function Bootstrap() {
         <button disabled={Boolean(launcherLoading)} onClick={() => void openLoadMenu()}><svg className="launcher-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M3 7C3 5.89543 3.89543 5 5 5H9.58579C10.1162 5 10.625 5.21071 11 5.58579L12.4142 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z" stroke="currentColor" strokeWidth="2" /><path d="M12 10V15M12 15L9.5 12.5M12 15L14.5 12.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg><span>读取存档</span></button>
         <button className="launcher-dark" disabled={Boolean(launcherLoading)} onClick={() => void launchLatest()}><svg className="launcher-action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false"><path d="M 12 4 A 8 8 0 1 1 5.5 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M 4 4 L 5.5 8 L 9.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><polygon points="10.5,10 14.5,12 10.5,14" fill="currentColor" /></svg><span>继续上次进度</span></button>
       </section>
+      <section className="launcher-announcement" aria-label="更新公告">
+        <div className="launcher-announcement-summary"><span><b>更新公告 · 2026年10月2日</b><small>本次游戏优化和修复内容</small></span><button type="button" onClick={() => setAnnouncementOpen(true)}>查看详情</button></div>
+      </section>
       {launcherNotice && !loadMenuOpen && !newGameMenuOpen && <p className="launcher-notice" role="status">{launcherNotice}</p>}
+      {announcementOpen && <div className="launcher-announcement-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAnnouncementOpen(false); }}>
+        <section className="launcher-announcement-dialog" role="dialog" aria-modal="true" aria-labelledby="launcher-announcement-title">
+          <header><div><b id="launcher-announcement-title">更新公告</b><small>2026年10月2日 · 本次游戏优化和修复内容</small></div><button type="button" onClick={() => setAnnouncementOpen(false)} aria-label="关闭更新公告">×</button></header>
+          <LauncherAnnouncementBody />
+        </section>
+      </div>}
       {loadMenuOpen && <div className="home-load-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !launcherLoading) setLoadMenuOpen(false); }}>
         <section className="home-load-menu" role="dialog" aria-modal="true" aria-label="读取存档">
           <header><div><b>读取存档</b><small>选择一个生涯继续游戏</small></div><button disabled={Boolean(launcherLoading)} onClick={() => setLoadMenuOpen(false)} aria-label="关闭读取存档">×</button></header>

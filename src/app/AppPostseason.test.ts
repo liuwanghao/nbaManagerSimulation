@@ -151,6 +151,29 @@ describe("season home after postseason", () => {
     expect(nextPlayoffUserGame(played)?.game.status).toBe("SCHEDULED");
   });
 
+  it("shows the current series score inside the next-game matchup", () => {
+    const state = createCareer("postseason-series-score");
+    state.schedule.forEach((game) => { game.status = "FINAL"; });
+    state.standings[state.userTeamId].wins = 82;
+    const entered = enterPostseason(state);
+    const afterPlayIn = simulatePostseasonRound(entered);
+    const ready = simulatePostseasonToNextUserGame(afterPlayIn);
+    const markup = renderToStaticMarkup(createElement(App, { initialState: ready }));
+    expect(ready.postseason?.series.some((series) => series.round === "R1" && series.gameIds.some((id) => ready.postseason?.schedule.find((game) => game.id === id)?.status === "SCHEDULED"))).toBe(true);
+    expect(markup).toContain("系列赛胜场 1");
+    const nextGame = nextPlayoffUserGame(ready)?.game;
+    if (!nextGame) throw new Error("Expected the user to have a next playoff game");
+    const series = ready.postseason?.series.find((entry) => entry.gameIds.includes(nextGame.id));
+    if (!series) throw new Error("Expected the next playoff game to belong to a series");
+    const awayCard = markup.match(new RegExp(`<button[^>]*data-venue="away" data-team-id="${nextGame.awayTeamId}"[^>]*>[\\s\\S]*?<\\/button>`))?.[0];
+    const homeCard = markup.match(new RegExp(`<button[^>]*data-venue="home" data-team-id="${nextGame.homeTeamId}"[^>]*>[\\s\\S]*?<\\/button>`))?.[0];
+    const winsFor = (teamId: string) => teamId === series.teamAId ? series.winsA : series.winsB;
+    expect(awayCard).toContain(`系列赛胜场 ${winsFor(nextGame.awayTeamId)}`);
+    expect(homeCard).toContain(`系列赛胜场 ${winsFor(nextGame.homeTeamId)}`);
+    expect(markup).toContain("<small>客场 · 主场</small>");
+    expect(markup).not.toContain("客场 · 主场 · 系列赛");
+  });
+
   it("shows per-game preparation when the next postseason matchup is the user's", () => {
     const state = createCareer("postseason-user-pregame");
     state.schedule.forEach((game) => { game.status = "FINAL"; });

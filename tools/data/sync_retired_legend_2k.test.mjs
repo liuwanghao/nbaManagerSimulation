@@ -10,7 +10,7 @@ test("chooses the highest historical 2K roster rating and reports missing legend
   ];
   const rows = [
     { name: "Michael Jordan", overall: 88, teamType: "class", team: "1985 Bulls" },
-    { name: "Michael Jordan", overall: 99, teamType: "allt", team: "All-Time Bulls" },
+    { name: "Michael Jordan", overall: 99, teamType: "allt", team: "All-Time Bulls", positions: ["SG", "SF"] },
     { name: "Michael Jordan", overall: 98, teamType: "curr", team: "Current Bulls" },
   ];
   const result = buildPeakRatings(templates, rows, {});
@@ -18,7 +18,17 @@ test("chooses the highest historical 2K roster rating and reports missing legend
   assert.equal(result.players[0].peakOverall, 99);
   assert.equal(result.players[0].teamType, "allt");
   assert.equal(result.players[0].peakAttributes, null);
+  assert.deepEqual(result.players[0].positions, ["SG", "SF"]);
   assert.deepEqual(result.unmatched, [{ sourcePlayerId: "nba:977", sourceName: "Kobe Bryant" }]);
+});
+
+test("keeps only valid NBA positions from the API response", () => {
+  const { players } = buildPeakRatings(
+    [{ sourcePlayerId: "nba:893", sourceName: "Michael Jordan" }],
+    [{ name: "Michael Jordan", overall: 99, teamType: "allt", positions: ["SG", "N", "SG"] }],
+    {},
+  );
+  assert.deepEqual(players[0].positions, ["SG"]);
 });
 
 test("maps a complete historical 2K profile to the game's eight abilities", () => {

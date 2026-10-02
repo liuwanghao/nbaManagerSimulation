@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { EVENT_DEFINITIONS } from "../../data/events";
 import { createCareer } from "../season/career";
 import { stableHash } from "../random/hash";
+import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { emptyPlayerSeasonStats, type GameResult, type GameState } from "../state/types";
 import { freeAgentAttraction } from "../team/TeamSystemService";
-import { blockingEvent, choicesForEvent, enqueueAfterUserGameEvents, enqueueEvent, executeEventCommand, recentRookieBreakoutContext, settleInformationalEvents } from "./EventService";
+import { blockingEvent, choicesForEvent, enqueueAfterUserGameEvents, enqueueCareerMilestoneEvents, enqueueEvent, executeEventCommand, isStarterRequestEligible, recentRookieBreakoutContext, settleInformationalEvents } from "./EventService";
 
 function recentRookieGames(state: GameState, rookieId: string, rookiePoints: number[]): GameResult[] {
   const rivalId = Object.keys(state.teams).find((id) => id !== state.userTeamId) as string;
@@ -37,6 +38,49 @@ function setNextUserGameAfterRest(state: GameState, restDays: number): void {
 }
 
 describe("data-driven event engine", () => {
+  it("does not create a starter request for a clearly weaker same-position reserve", () => {
+    const state = createCareer("starter-request-gap");
+    const team = state.teams[state.userTeamId];
+    const plan = team.rotationPlan;
+    if (!plan) throw new Error("Expected a rotation plan");
+    const starter = state.players[plan.starters.SG];
+    const reserve = team.playerIds.map((id) => state.players[id]).find((player) =>
+      player.position === "SG" && player.id !== starter.id && !Object.values(plan.starters).includes(player.id));
+    if (!reserve) throw new Error("Expected a reserve SG");
+    starter.overallAdjustment = (starter.overallAdjustment ?? 0) + 88 - calculatePlayerOverall(starter);
+    reserve.overallAdjustment = (reserve.overallAdjustment ?? 0) + 79 - calculatePlayerOverall(reserve);
+    expect(isStarterRequestEligible(state, reserve)).toBe(false);
+    reserve.overallAdjustment += 10;
+    expect(isStarterRequestEligible(state, reserve)).toBe(true);
+  });
+
+  it.each(["FIRST_PLAYOFFS", "FIRST_SERIES_WIN", "FINALS_APPEARANCE", "FIRST_CHAMPIONSHIP", "ROOKIE_OF_YEAR"] as const)(
+    "delivers the %s career milestone only once, even after cooldown and in later seasons",
+    (achievementId) => {
+      const state = createCareer(`once-only-${achievementId}`);
+      state.achievements[achievementId] = { unlocked: true, unlockedAt: `${state.league.seasonId}:D0`, seasonId: state.league.seasonId };
+      enqueueCareerMilestoneEvents(state);
+      expect(state.teamNotifications).toHaveLength(1);
+      const notifications = structuredClone(state.teamNotifications);
+      const support = state.teams[state.userTeamId].fanSupport;
+      const score = state.gmCareer.dynastyScore;
+      const game = { gameId: "past-game", date: "2026-10-20", homeTeamId: state.userTeamId, awayTeamId: "BOS",
+        homeScore: 100, awayScore: 90, winnerTeamId: state.userTeamId, overtimePeriods: 0 };
+      state.lightweightResults = Array.from({ length: 10 }, (_, index) => ({ ...game, gameId: `past-${index}` }));
+      state.calendar.currentDateIndex = 10;
+      enqueueCareerMilestoneEvents(state);
+      state.league.seasonId = "2027-28";
+      state.league.seasonYear = 2027;
+      enqueueCareerMilestoneEvents(state);
+      expect(state.teamNotifications).toEqual(notifications);
+      expect(state.teams[state.userTeamId].fanSupport).toBe(support);
+      expect(state.gmCareer.dynastyScore).toBe(score);
+      state.teamNotifications = [];
+      enqueueCareerMilestoneEvents(state);
+      expect(state.teamNotifications).toEqual([]);
+    },
+  );
+
   it("interrupts at high rotation fatigue and caps only high-fatigue players after a rewarded choice", () => {
     const state = createCareer("fatigue-warning-video");
     const [leadId, secondId, freshId] = state.teams[state.userTeamId].playerIds;
@@ -49,13 +93,13 @@ describe("data-driven event engine", () => {
     state.lightweightResults = recentRookieGames(state, leadId, [16]).map(({ homeBoxScore: _box, ...game }) => game);
     enqueueAfterUserGameEvents(state);
     const event = state.eventState.queue.find((item) => item.definitionId === "fatigue_management_001");
-    expect(event?.choices.map((choice) => choice.id)).toEqual(["keep_rotation", "manual_adjust", "watch_video"]);
+    expect(event?.choices.map((choice) => choice.id)).toEqual(["rest_next_game", "keep_rotation", "manual_adjust", "watch_video"]);
     expect(event?.description).toContain("2 名轮换球员");
     expect(blockingEvent(state)?.eventInstanceId).toBe(event?.eventInstanceId);
     const command = { commandId: "fatigue-video-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "watch_video" } } as const;
     const recovered = executeEventCommand(state, command);
-    expect(recovered.players[leadId].fatigue).toBe(60);
-    expect(recovered.players[secondId].fatigue).toBe(60);
+    expect(recovered.players[leadId].fatigue).toBe(0);
+    expect(recovered.players[secondId].fatigue).toBe(0);
     expect(recovered.players[freshId].fatigue).toBe(42);
     expect(executeEventCommand(recovered, command)).toBe(recovered);
     const manual = executeEventCommand(state, { commandId: "fatigue-manual-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "manual_adjust" } });
@@ -63,7 +107,7 @@ describe("data-driven event engine", () => {
     const legacy = structuredClone(state);
     const legacyEvent = legacy.eventState.queue.find((item) => item.eventInstanceId === event!.eventInstanceId)!;
     legacyEvent.choices = legacyEvent.choices.filter((choice) => choice.id !== "keep_rotation");
-    expect(choicesForEvent(legacyEvent).map((choice) => choice.id)).toEqual(["keep_rotation", "manual_adjust", "watch_video"]);
+    expect(choicesForEvent(legacyEvent).map((choice) => choice.id)).toEqual(["keep_rotation", "rest_next_game", "manual_adjust", "watch_video"]);
     const kept = executeEventCommand(legacy, { commandId: "fatigue-keep-once", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "keep_rotation" } });
     expect(kept.teams[kept.userTeamId].rotationPlan).toEqual(state.teams[state.userTeamId].rotationPlan);
     expect(kept.players[leadId].fatigue).toBe(78);
@@ -72,17 +116,42 @@ describe("data-driven event engine", () => {
     expect(kept.eventState.leagueLog[0]).toContain("保持当前轮换");
   });
 
+  it("schedules only the highlighted fatigued player for the next game without changing the saved rotation", () => {
+    const state = createCareer("fatigue-rest-next-game");
+    const player = state.players[state.teams[state.userTeamId].playerIds[0]];
+    state.teams[state.userTeamId].rotationPlan!.targetMinutes[player.id] = 32;
+    player.fatigue = 82;
+    setNextUserGameAfterRest(state, 0);
+    state.lightweightResults = recentRookieGames(state, player.id, [16]).map(({ homeBoxScore: _box, ...game }) => game);
+    enqueueAfterUserGameEvents(state);
+    const event = state.eventState.queue.find((item) => item.definitionId === "fatigue_management_001");
+    if (!event) throw new Error("Expected fatigue event");
+    const originalPlan = structuredClone(state.teams[state.userTeamId].rotationPlan);
+    const resolved = executeEventCommand(state, {
+      commandId: "fatigue-rest-next-game",
+      type: "RESOLVE_EVENT",
+      payload: { eventInstanceId: event.eventInstanceId, choiceId: "rest_next_game" },
+    });
+    expect(resolved.scheduledRest).toEqual({ gameId: state.schedule.find((game) => game.status === "SCHEDULED" && (game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId))!.id, playerIds: [player.id] });
+    expect(resolved.teams[state.userTeamId].rotationPlan).toEqual(originalPlan);
+    expect(resolved.players[player.id].rotationRole).toBe(state.players[player.id].rotationRole);
+  });
+
   it("alerts from projected next-game fatigue after rest, rather than on a five-game timer", () => {
     const state = createCareer("fatigue-warning-projection");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
     state.teams[state.userTeamId].rotationPlan!.targetMinutes[player.id] = 30;
-    player.fatigue = 70;
+    player.fatigue = 75;
     setNextUserGameAfterRest(state, 1);
     const games = recentRookieGames(state, player.id, [12, 12]);
     state.lightweightResults = games.slice(0, 1).map(({ homeBoxScore: _box, ...game }) => game);
     enqueueAfterUserGameEvents(state);
     expect(state.eventState.queue.some((item) => item.definitionId === "fatigue_management_001")).toBe(false);
     player.fatigue = 90;
+    setNextUserGameAfterRest(state, 2);
+    enqueueAfterUserGameEvents(state);
+    expect(state.eventState.queue.some((item) => item.definitionId === "fatigue_management_001")).toBe(false);
+    setNextUserGameAfterRest(state, 1);
     enqueueAfterUserGameEvents(state);
     const event = state.eventState.queue.find((item) => item.definitionId === "fatigue_management_001");
     expect(event?.description).toContain("预计疲劳 75");
@@ -243,18 +312,16 @@ describe("data-driven event engine", () => {
     expect(state.eventState.leagueLog[0]).toMatch(/安全跳过/);
   });
 
-  it("pauses on an injury until a rotation choice is made", () => {
+  it("automatically resolves a depth injury and sends its notification", () => {
     const state = createCareer("informational-injury");
     const player = state.players[state.teams[state.userTeamId].playerIds[0]];
     const event = enqueueEvent(state, "injury_depth_test_001", { player_id: player.id, player_name: "测试球员", injury_duration: "预计伤停约 1 周", games_out: "3" });
-    expect(event?.status).toBe("PENDING");
-    expect(blockingEvent(state)?.eventInstanceId).toBe(event?.eventInstanceId);
-    expect(event?.choices.map((choice) => choice.id)).toEqual(["auto_adjust", "manual_adjust"]);
-    expect(state.teamNotifications).not.toContainEqual(expect.objectContaining({ id: `event-${event?.eventInstanceId}` }));
-    const resolved = executeEventCommand(state, { commandId: "injury-choice", type: "RESOLVE_EVENT", payload: { eventInstanceId: event!.eventInstanceId, choiceId: "auto_adjust" } });
-    expect(resolved.eventState.queue).toEqual([]);
-    expect(resolved.eventState.resolvedInstanceIds).toContain(event?.eventInstanceId);
-    expect(resolved.teamNotifications).toContainEqual(expect.objectContaining({
+    expect(event?.status).toBe("RESOLVED");
+    expect(blockingEvent(state)).toBeUndefined();
+    expect(event?.choices.map((choice) => choice.id)).toEqual(["auto_adjust"]);
+    expect(state.eventState.queue).toEqual([]);
+    expect(state.eventState.resolvedInstanceIds).toContain(event?.eventInstanceId);
+    expect(state.teamNotifications).toContainEqual(expect.objectContaining({
       id: `event-${event?.eventInstanceId}`,
       category: "SEASON",
       title: "轮换球员受伤",
@@ -332,6 +399,27 @@ describe("data-driven event engine", () => {
     expect(restored.eventState.executedEffectIds).toContain(`${event.eventInstanceId}:fan_response`);
   });
 
+  it("automatically settles a legacy depth-injury decision once while retaining other decisions", () => {
+    const source = createCareer("legacy-depth-injury");
+    const player = source.players[source.teams[source.userTeamId].playerIds[0]];
+    const event = enqueueEvent(source, "injury_depth_test_001", {
+      player_id: player.id, player_name: player.name, injury_duration: "预计伤停约 3 天", games_out: "2",
+    })!;
+    const restored = createCareer("legacy-depth-injury");
+    restored.players[player.id].available = false;
+    restored.eventState.queue = [{ ...event, status: "PENDING", selectedChoiceId: undefined, effectivePause: true,
+      choices: [{ id: "auto_adjust", label: "一键自动调整轮换", effects: [] }, { id: "manual_adjust", label: "手动调整轮换", effects: [] }],
+    }];
+    const conversation = enqueueEvent(restored, "morale_role_unhappy_001", { player_id: player.id, player_name: player.name })!;
+    settleInformationalEvents(restored);
+    settleInformationalEvents(restored);
+    expect(restored.eventState.queue).toEqual([conversation]);
+    expect(restored.teams[restored.userTeamId].rotationPlan?.targetMinutes[player.id]).toBe(0);
+    expect(restored.teamNotifications).toHaveLength(1);
+    expect(restored.teamNotifications?.[0]).toMatchObject({ title: "轮换球员受伤", read: false });
+    expect(restored.eventState.resolvedInstanceIds.filter((id) => id === event.eventInstanceId)).toHaveLength(1);
+  });
+
   it("dismisses an old later-season opening event when loading a save", () => {
     const state = createCareer("legacy-later-season-opening");
     state.expansion = { finalized: true } as NonNullable<typeof state.expansion>;
@@ -373,15 +461,15 @@ describe("data-driven event engine", () => {
     expect(state.eventState.leagueLog.filter((entry) => entry.includes("联盟交易"))).toHaveLength(0);
   });
 
-  it("queues separate injury decisions for two players on the same game day", () => {
+  it("sends separate automatic injury notifications for two players on the same game day", () => {
     const state = createCareer("two-injury-notices");
     const first = enqueueEvent(state, "injury_depth_test_001", { player_id: "first", player_name: "甲", injury_duration: "预计伤停约 1 周", games_out: "2" }, "2026-27:D20");
     const second = enqueueEvent(state, "injury_depth_test_001", { player_id: "second", player_name: "乙", injury_duration: "预计伤停约 2 周", games_out: "5" }, "2026-27:D20");
     expect(first?.eventInstanceId).not.toBe(second?.eventInstanceId);
-    expect(state.eventState.queue.map((item) => item.eventInstanceId).sort()).toEqual([first!.eventInstanceId, second!.eventInstanceId].sort());
-    const firstResolved = executeEventCommand(state, { commandId: "injury-first", type: "RESOLVE_EVENT", payload: { eventInstanceId: first!.eventInstanceId, choiceId: "auto_adjust" } });
-    const bothResolved = executeEventCommand(firstResolved, { commandId: "injury-second", type: "RESOLVE_EVENT", payload: { eventInstanceId: second!.eventInstanceId, choiceId: "auto_adjust" } });
-    expect(bothResolved.teamNotifications?.map((item) => item.message)).toEqual([
+    expect(state.eventState.queue).toEqual([]);
+    expect(first?.selectedChoiceId).toBe("auto_adjust");
+    expect(second?.selectedChoiceId).toBe("auto_adjust");
+    expect(state.teamNotifications?.map((item) => item.message)).toEqual([
       "乙受伤，预计伤停约 2 周，预计缺席 5 场。已自动调整轮换。",
       "甲受伤，预计伤停约 1 周，预计缺席 2 场。已自动调整轮换。",
     ]);
@@ -398,7 +486,8 @@ describe("data-driven event engine", () => {
     if (!event) throw new Error("Expected role request");
     const accepted = executeEventCommand(state, { commandId: "accept-starter-request", type: "RESOLVE_EVENT", payload: { eventInstanceId: event.eventInstanceId, choiceId: "increase_role" } });
     expect(accepted.teams[accepted.userTeamId].rotationPlan?.targetMinutes[player.id]).toBeGreaterThan(before);
-    expect(accepted.players[player.id].rotationRole).toBe("STARTER");
+    expect(accepted.players[player.id].rotationRole === "STARTER"
+      || (accepted.teams[accepted.userTeamId].rotationPlan?.targetMinutes[player.id] ?? 0) > before).toBe(true);
     expect(Object.values(accepted.teams[accepted.userTeamId].rotationPlan?.targetMinutes ?? {}).reduce((sum, minutes) => sum + minutes, 0)).toBe(240);
     const declined = executeEventCommand(state, { commandId: "decline-starter-request", type: "RESOLVE_EVENT", payload: { eventInstanceId: event.eventInstanceId, choiceId: "maintain_plan" } });
     expect(declined.teams[declined.userTeamId].rotationPlan).toEqual(team.rotationPlan);

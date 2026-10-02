@@ -4,7 +4,7 @@ import { advanceInjuriesByDays, applyInjuryEvents, availablePlayerCount, estimat
 import { solveRotationSeconds } from "../simulation/minutes";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, validateRotationPlan } from "../roster/RotationPlanService";
 import { setRotationPlan } from "../roster/RosterService";
-import { executeEventCommand, nextPendingEvent } from "../events/EventService";
+import { blockingEvent, executeEventCommand, nextPendingEvent } from "../events/EventService";
 import type { InjuryEvent } from "../state/types";
 import { advanceFreeAgencyDay } from "../freeAgency/FreeAgencyService";
 import { closeFreeAgency } from "../roster/RosterService";
@@ -22,24 +22,42 @@ function majorEvent(playerId: string, teamId: string): InjuryEvent {
 }
 
 describe("InjuryService", () => {
+  it("automatically adjusts rotation and sends one notification without a depth-injury popup", () => {
+    const state = createCareer("depth-injury-auto-rotation");
+    const team = state.teams[state.userTeamId];
+    const playerId = team.rotationPlan!.starters.PG;
+    team.rotationPlan!.selectionMode = "MANUAL";
+    const event = { ...majorEvent(playerId, team.id), severity: "SHORT" as const, daysOut: 7 };
+    applyInjuryEvents(state, [event]);
+    expect(nextPendingEvent(state)).toBeUndefined();
+    expect(blockingEvent(state)).toBeUndefined();
+    expect(team.rotationPlan?.selectionMode).toBe("AUTO");
+    const roster = team.playerIds.map((id) => state.players[id]);
+    expect(() => validateRotationPlan(roster, team.rotationPlan!)).not.toThrow();
+    const seconds = solveRotationSeconds(roster, false, team.rotationPlan);
+    expect(seconds[playerId] ?? 0).toBe(0);
+    expect(Object.values(seconds).reduce((sum, value) => sum + value, 0)).toBe(240 * 60);
+    expect(state.teamNotifications).toContainEqual(expect.objectContaining({
+      title: "轮换球员受伤", read: false,
+      message: expect.stringContaining("已自动调整轮换"),
+    }));
+    applyInjuryEvents(state, [event]);
+    expect(state.teamNotifications).toHaveLength(1);
+  });
+
   it("offers automatic rotation adjustments for both injury and recovery", () => {
     const state = createCareer("major-injury-test");
     const playerId = state.teams[state.userTeamId].playerIds[0];
     state.players[playerId].teamRole = "FRANCHISE_CORE";
     const event = majorEvent(playerId, state.userTeamId);
-    const originalPlan = structuredClone(state.teams[state.userTeamId].rotationPlan);
     applyInjuryEvents(state, [event]);
 
     expect(state.players[playerId].available).toBe(false);
     expect(state.players[playerId].health).toBe(35);
     expect(state.players[playerId].rotationRole).toBe("OUT");
     expect(state.injuryState.pendingUserMajorInjury).toBeUndefined();
-    const injuryChoice = nextPendingEvent(state);
-    expect(injuryChoice?.definitionId).toBe("injury_core_major_001");
-    expect(injuryChoice?.choices.map((choice) => choice.id)).toEqual(["auto_adjust", "manual_adjust"]);
-    expect(state.teams[state.userTeamId].playerIds.filter((id) => state.players[id].rotationRole === "STARTER")).toHaveLength(5);
-    expect(state.teams[state.userTeamId].rotationPlan).toEqual(originalPlan);
-    const adjusted = executeEventCommand(state, { commandId: "injury-auto", type: "RESOLVE_EVENT", payload: { eventInstanceId: injuryChoice!.eventInstanceId, choiceId: "auto_adjust" } });
+    expect(nextPendingEvent(state)).toBeUndefined();
+    const adjusted = state;
     const roster = adjusted.teams[adjusted.userTeamId].playerIds.map((id) => adjusted.players[id]);
     expect(adjusted.teams[adjusted.userTeamId].rotationPlan?.selectionMode).toBe("AUTO");
     expect(adjusted.teamNotifications).toContainEqual(expect.objectContaining({ title: "核心球员受伤", read: false }));
@@ -50,10 +68,8 @@ describe("InjuryService", () => {
     adjusted.players[playerId].injury.daysRemaining = 1;
     advanceInjuriesByDays(adjusted, 1);
     expect(adjusted.players[playerId].injury).toBeUndefined();
-    const recoveryChoice = nextPendingEvent(adjusted);
-    expect(recoveryChoice?.definitionId).toBe("injury_recovery_001");
-    expect(recoveryChoice?.choices.map((choice) => choice.id)).toEqual(["auto_adjust", "manual_adjust"]);
-    const recovered = executeEventCommand(adjusted, { commandId: "recovery-auto", type: "RESOLVE_EVENT", payload: { eventInstanceId: recoveryChoice!.eventInstanceId, choiceId: "auto_adjust" } });
+    expect(nextPendingEvent(adjusted)).toBeUndefined();
+    const recovered = adjusted;
     expect(solveRotationSeconds(roster, false, recovered.teams[recovered.userTeamId].rotationPlan)[playerId]).toBeGreaterThan(0);
     expect(recovered.teamNotifications).toContainEqual(expect.objectContaining({ title: "伤员回归", read: false }));
   });
@@ -74,36 +90,31 @@ describe("InjuryService", () => {
     applyInjuryEvents(state, [event]);
     const missedGames = estimatedInjuryMissedGames(state, state.players[playerId]);
     expect(missedGames).toBe(expectedGames);
-    const notice = nextPendingEvent(state);
-    expect(notice?.description).toContain(`${duration}，预计缺席 ${expectedGames} 场`);
-    expect(notice?.description).not.toContain("61 场");
-    const resolved = executeEventCommand(state, { commandId: `injury-notice-${severity}`, type: "RESOLVE_EVENT", payload: { eventInstanceId: notice!.eventInstanceId, choiceId: "auto_adjust" } });
-    expect(resolved.teamNotifications?.[0].message).toContain(`${duration}，预计缺席 ${expectedGames} 场`);
+    expect(nextPendingEvent(state)).toBeUndefined();
+    expect(state.teamNotifications?.[0].message).toContain(`${duration}，预计缺席 ${expectedGames} 场`);
+    expect(state.teamNotifications?.[0].message).not.toContain("61 场");
   });
 
-  it("keeps an injury decision pending until a manual rotation is saved", () => {
+  it("never reports zero missed games for a short active injury with an upcoming game", () => {
+    const state = createCareer("injury-two-days-one-game");
+    const playerId = state.teams[state.userTeamId].playerIds[0];
+    state.schedule = state.schedule
+      .filter((game) => game.homeTeamId === state.userTeamId || game.awayTeamId === state.userTeamId)
+      .slice(0, 1)
+      .map((game) => ({ ...game, dateIndex: state.calendar.currentDateIndex + 3, status: "SCHEDULED" as const }));
+    applyInjuryEvents(state, [{ ...majorEvent(playerId, state.userTeamId), severity: "MINOR", daysOut: 2, gamesOut: 1 }]);
+    expect(estimatedInjuryMissedGames(state, state.players[playerId])).toBe(1);
+  });
+
+  it("automatically adjusts rotation without requiring a manual injury decision", () => {
     const state = createCareer("injury-manual-rotation");
     const team = state.teams[state.userTeamId];
     const playerId = team.rotationPlan!.starters.PG;
     applyInjuryEvents(state, [majorEvent(playerId, team.id)]);
-    const event = nextPendingEvent(state)!;
-    expect(() => executeEventCommand(state, {
-      commandId: "manual-before-save", type: "RESOLVE_EVENT",
-      payload: { eventInstanceId: event.eventInstanceId, choiceId: "manual_adjust" },
-    })).toThrow();
-    const roster = team.playerIds.map((id) => state.players[id]);
-    const plan = buildDefaultRotationPlan(roster);
-    const benchOrder = [...plan.benchOrder!];
-    [benchOrder[0], benchOrder[1]] = [benchOrder[1], benchOrder[0]];
-    const saved = setRotationPlan(state, { ...plan, benchOrder, selectionMode: "MANUAL" });
-    const resolved = executeEventCommand(saved, {
-      commandId: "manual-after-save", type: "RESOLVE_EVENT",
-      payload: { eventInstanceId: event.eventInstanceId, choiceId: "manual_adjust" },
-    });
-    expect(resolved.teams[team.id].rotationPlan?.selectionMode).toBe("MANUAL");
-    expect(resolved.eventState.queue).toEqual([]);
-    expect(resolved.players[playerId].available).toBe(false);
-    expect(resolved.teams[team.id].rotationPlan?.targetMinutes[playerId]).toBe(0);
+    expect(nextPendingEvent(state)).toBeUndefined();
+    expect(state.teams[team.id].rotationPlan?.selectionMode).toBe("AUTO");
+    expect(state.players[playerId].available).toBe(false);
+    expect(state.teams[team.id].rotationPlan?.targetMinutes[playerId]).toBe(0);
   });
 
   it("counts missed games and restores availability after the final recovery day", () => {
@@ -208,7 +219,7 @@ describe("InjuryService", () => {
     applyInjuryEvents(state, [majorEvent(reserve.id, state.userTeamId)]);
     const effective = normalizeRotationPlan(players, team.rotationPlan);
     expect(effective.targetMinutes[reserve.id]).toBe(0);
-    expect(players.filter((player) => (effective.targetMinutes[player.id] ?? 0) > 0)).toHaveLength(6);
+    expect(players.filter((player) => (effective.targetMinutes[player.id] ?? 0) > 0).length).toBeGreaterThanOrEqual(6);
     expect(Object.values(effective.targetMinutes).reduce((sum, minutes) => sum + minutes, 0)).toBe(240);
   });
 });

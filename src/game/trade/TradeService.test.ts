@@ -4,7 +4,7 @@ import { createCareer } from "../season/career";
 import { publicPlayerValue, tradeDraftPickValue } from "../ai/AIValueService";
 import { tradePlayerValue } from "./TradePlayerValue";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
-import { acceptTradeOffer, applyTradePackage, evaluateTradeOffer, executeTradeCommand, generateTargetedTradeOffers, generateTradeOffers, isTradePhaseAllowed, validateTradePackage } from "./TradeService";
+import { acceptTradeOffer, applyTradePackage, evaluateTradeOffer, executeCustomTrade, executeTradeCommand, generateTargetedTradeOffers, generateTradeOffers, isTradePhaseAllowed, validateTradePackage } from "./TradeService";
 import { isUntouchable, untouchablePlayerIds } from "./TradeAvailabilityService";
 import { setTrainingFocus } from "../roster/RosterService";
 import { LEAGUE_FINANCE_CONFIG } from "../../config/leagueFinance";
@@ -16,6 +16,18 @@ function tradeState() {
 }
 
 describe("TradeService", () => {
+  it("executes a player-selected pick swap through the same trade validation path", () => {
+    const state = tradeState();
+    const leftTeamId = state.userTeamId;
+    const rightTeamId = Object.keys(state.teams).find((id) => id !== leftTeamId) as string;
+    const leftPick = Object.values(state.draftPicks).find((pick) => pick.ownerTeamId === leftTeamId && pick.round === 2)!;
+    const rightPick = Object.values(state.draftPicks).find((pick) => pick.ownerTeamId === rightTeamId && pick.round === 2)!;
+    const next = executeCustomTrade(state, { leftTeamId, rightTeamId, leftPlayerIds: [], rightPlayerIds: [], leftPickIds: [leftPick.id], rightPickIds: [rightPick.id] });
+    expect(next.draftPicks[leftPick.id].ownerTeamId).toBe(rightTeamId);
+    expect(next.draftPicks[rightPick.id].ownerTeamId).toBe(leftTeamId);
+    expect(next.gmCareer.tradeHistory.at(-1)?.summary).toContain("签");
+  });
+
   it("releases training slots on either trade side and does not restore a plan after a return trade", () => {
     for (const userOnLeft of [true, false]) {
       let state = createCareer(`trade-training-${userOnLeft}`);

@@ -35,6 +35,7 @@ export interface HistoricalPlayerTemplate {
   peakSeason: string;
   era: string;
   position: Position;
+  secondaryPosition?: Position;
   heightCm: number;
   weightKg: number;
   rookieAttributes: PlayerAttributes;
