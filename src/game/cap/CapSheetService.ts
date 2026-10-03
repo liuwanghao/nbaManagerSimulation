@@ -1,5 +1,5 @@
 import { getSeasonFinanceConfig, type LeagueFinanceConfig } from "../../config/leagueFinance";
-import type { GameState } from "../state/types";
+import type { CapHold, GameState } from "../state/types";
 
 export interface CapSheet {
   teamId: string;
@@ -12,6 +12,14 @@ export interface CapSheet {
   total: number;
   availableCapSpace: number;
   activeStandardContracts: number;
+}
+
+export function getTeamCapHolds(state: GameState, teamId: string): CapHold[] {
+  return (state.capState?.capHolds ?? []).filter((entry) => {
+    const player = state.players[entry.playerId];
+    return entry.teamId === teamId && player?.teamId === "FREE_AGENT" && player.birdTeamId === teamId
+      && (player.contract.status === "UFA" || player.contract.status === "RFA");
+  });
 }
 
 export function getCapSheet(
@@ -32,7 +40,7 @@ export function getCapSheet(
   const activeContractSalary = standardContractSalary + emergencySalary;
   const deadMoney = (state.capState?.deadMoney ?? []).filter((entry) => entry.teamId === teamId)
     .reduce((total, entry) => total + (entry.salaryBySeason[state.league.seasonId] ?? 0), 0);
-  const holds = (state.capState?.capHolds ?? []).filter((entry) => entry.teamId === teamId);
+  const holds = getTeamCapHolds(state, teamId);
   const capHolds = holds.reduce((total, entry) => total + entry.amount, 0);
   const reservations = (state.capState?.offerReservations ?? []).filter((entry) => entry.teamId === teamId);
   const activeOfferReservations = reservations.reduce((total, entry) => {

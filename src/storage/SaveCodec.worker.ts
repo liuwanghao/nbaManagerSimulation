@@ -1,13 +1,15 @@
-import { stableHash, stableSerialize } from "../game/random/hash";
+import { hashSaveValue } from "../game/random/hash";
 import { decodeStoredStringCore, encodeStoredStringCore } from "../platform/storage/StoredStringCodec";
 import type { SaveEnvelope } from "./SaveService";
+import { inspectEncodedSaveEnvelopeCore, inspectValidSaveEnvelopeCore, parseValidSaveEnvelopeCopyCore, parseValidSaveEnvelopeCore, serializeEncodedSaveEnvelopeCore, serializeSaveEnvelopeCore } from "./SaveEnvelopeCodec";
 
 type Request =
   | { id: number; kind: "HASH"; value: unknown }
   | { id: number; kind: "STRINGIFY"; value: unknown }
-  | { id: number; kind: "SERIALIZE_ENVELOPE"; value: SaveEnvelope }
+  | { id: number; kind: "SERIALIZE_ENVELOPE" | "SERIALIZE_ENCODED_ENVELOPE"; value: SaveEnvelope }
   | { id: number; kind: "PARSE_ENVELOPE"; value: string | null; expectedSlotId?: number }
-  | { id: number; kind: "ENCODE_STORED_STRING" | "DECODE_STORED_STRING"; value: string }
+  | { id: number; kind: "PARSE_ENVELOPE_COPY" | "INSPECT_ENVELOPE" | "INSPECT_ENCODED_ENVELOPE"; value: string | null; expectedSlotId?: number }
+  | { id: number; kind: "ENCODE_STORED_STRING" | "DECODE_STORED_STRING" | "VALIDATE_STORED_STRING"; value: string }
   | { id: number; kind: "ENCODE_CHUNK"; chunk: string; final: boolean };
 
 const encodeChunks = new Map<number, string[]>();
@@ -17,24 +19,17 @@ self.onmessage = async (event: MessageEvent<Request>) => {
   try {
     let result: unknown;
     switch (request.kind) {
-      case "HASH": result = stableHash(stableSerialize(request.value)); break;
+      case "HASH": result = hashSaveValue(request.value); break;
       case "STRINGIFY": result = JSON.stringify(request.value); break;
-      case "SERIALIZE_ENVELOPE": {
-        const stateHash = stableHash(stableSerialize(request.value.state));
-        result = { stateHash, serialized: JSON.stringify({ ...request.value, stateHash }) };
-        break;
-      }
-      case "PARSE_ENVELOPE": {
-        try {
-          if (!request.value) { result = null; break; }
-          const envelope = JSON.parse(request.value) as SaveEnvelope;
-          if (!envelope.saveId) envelope.saveId = stableHash(envelope.careerSeed, "save", request.expectedSlotId ?? envelope.slotId);
-          result = stableHash(stableSerialize(envelope.state)) === envelope.stateHash ? envelope : null;
-        } catch { result = null; }
-        break;
-      }
+      case "SERIALIZE_ENVELOPE": result = serializeSaveEnvelopeCore(request.value); break;
+      case "SERIALIZE_ENCODED_ENVELOPE": result = await serializeEncodedSaveEnvelopeCore(request.value); break;
+      case "PARSE_ENVELOPE": result = parseValidSaveEnvelopeCore(request.value, request.expectedSlotId); break;
+      case "PARSE_ENVELOPE_COPY": result = parseValidSaveEnvelopeCopyCore(request.value, request.expectedSlotId); break;
+      case "INSPECT_ENVELOPE": result = inspectValidSaveEnvelopeCore(request.value, request.expectedSlotId); break;
+      case "INSPECT_ENCODED_ENVELOPE": result = await inspectEncodedSaveEnvelopeCore(request.value, request.expectedSlotId); break;
       case "ENCODE_STORED_STRING": result = await encodeStoredStringCore(request.value); break;
       case "DECODE_STORED_STRING": result = await decodeStoredStringCore(request.value); break;
+      case "VALIDATE_STORED_STRING": await decodeStoredStringCore(request.value); break;
       case "ENCODE_CHUNK": {
         const chunks = encodeChunks.get(request.id) ?? [];
         chunks.push(request.chunk);

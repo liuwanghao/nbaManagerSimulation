@@ -8,6 +8,39 @@ import { playerNameZh } from "./playerNameZh";
 import { TradeOfferDetail } from "./TradeOfferDetail";
 
 describe("trade offer detail", () => {
+  it("renders a rejection for a saved quote that would leave only four available players", () => {
+    const state = createCareer("trade-detail-short-handed");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    const quoted = generateTradeOffers(state, state.teams[state.userTeamId].playerIds[5], false);
+    const offer = quoted.tradeDesk.offers.find((entry) => entry.userIncomingPlayerIds.length === 1)!;
+    const healthyIds = new Set([...offer.userOutgoingPlayerIds, ...quoted.teams[quoted.userTeamId].playerIds.filter((id) => !offer.userOutgoingPlayerIds.includes(id)).slice(0, 4)]);
+    for (const id of quoted.teams[quoted.userTeamId].playerIds) quoted.players[id].available = healthyIds.has(id);
+    for (const id of offer.userIncomingPlayerIds) quoted.players[id].available = false;
+    const markup = renderToStaticMarkup(createElement(TradeOfferDetail, {
+      state: quoted, offer, evaluation: evaluateTradeOffer(quoted, offer.offerId), busy: false,
+      onBack: () => {}, onAccept: () => {},
+    }));
+    expect(markup).toContain("交易后任一球队可用球员不能少于 5 人");
+    expect(markup).toMatch(/data-testid="trade-accept"[^>]*disabled/);
+    expect(markup).toContain("返回报价");
+  });
+
+  it("allows accepting a roster-repairing quote even without a before rotation preview", () => {
+    const state = createCareer("trade-impact-preview");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    const quoted = generateTradeOffers(state, state.teams[state.userTeamId].playerIds[5], false);
+    const offer = quoted.tradeDesk.offers[0];
+    quoted.teams[quoted.userTeamId].playerIds.forEach((id, index) => { quoted.players[id].available = index < 4; });
+    const markup = renderToStaticMarkup(createElement(TradeOfferDetail, {
+      state: quoted, offer, evaluation: evaluateTradeOffer(quoted, offer.offerId), busy: false,
+      onBack: () => {}, onAccept: () => {},
+    }));
+    expect(markup).toContain("当前方案无法生成可靠的轮换预览");
+    expect(markup).not.toMatch(/data-testid="trade-accept"[^>]*disabled/);
+  });
+
   it("shows the same season-adjusted player value used by offer evaluation", () => {
     const state = createCareer("trade-detail-performance");
     state.league.currentPhase = "REGULAR_PRE_DEADLINE";

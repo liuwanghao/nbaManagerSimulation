@@ -24,24 +24,32 @@ export function previewTradeImpact(state: GameState, offerId: string): TradeImpa
   if (!offer || !evaluateTradeOffer(state, offerId).legal) return null;
   const team = state.teams[state.userTeamId];
   const beforePlayers = team.playerIds.map((id) => state.players[id]).filter(Boolean);
-  const outgoing = new Set(offer.userOutgoingPlayerIds);
-  const afterIds = team.playerIds.filter((id) => !outgoing.has(id)).concat(offer.userIncomingPlayerIds);
-  const afterPlayers = afterIds.map((id) => structuredClone(state.players[id])).filter(Boolean);
-  const replacements = Object.fromEntries(offer.userOutgoingPlayerIds.map((id, index) => [id, offer.userIncomingPlayerIds[index]]).filter((entry): entry is [string, string] => Boolean(entry[1])));
-  const beforePlan = team.rotationPlan ? normalizeRotationPlan(beforePlayers, team.rotationPlan) : buildDefaultRotationPlan(beforePlayers);
-  const afterPlan = reconcileRotationAfterRosterChange(afterPlayers, team.rotationPlan, replacements);
-  const projectedState = { ...state, teams: { ...state.teams, [team.id]: { ...team, playerIds: afterIds } } };
+  // A legal trade may repair a short-handed roster or only exchange picks.
+  // Keep it executable even when the before rotation cannot be displayed.
+  if (beforePlayers.filter((player) => player.available && !player.injury).length < 5) return null;
+  try {
+    const outgoing = new Set(offer.userOutgoingPlayerIds);
+    const afterIds = team.playerIds.filter((id) => !outgoing.has(id)).concat(offer.userIncomingPlayerIds);
+    const afterPlayers = afterIds.map((id) => structuredClone(state.players[id])).filter(Boolean);
+    const replacements = Object.fromEntries(offer.userOutgoingPlayerIds.map((id, index) => [id, offer.userIncomingPlayerIds[index]]).filter((entry): entry is [string, string] => Boolean(entry[1])));
+    const beforePlan = team.rotationPlan ? normalizeRotationPlan(beforePlayers, team.rotationPlan) : buildDefaultRotationPlan(beforePlayers);
+    const afterPlan = reconcileRotationAfterRosterChange(afterPlayers, team.rotationPlan, replacements);
+    const projectedState = { ...state, teams: { ...state.teams, [team.id]: { ...team, playerIds: afterIds } } };
 
-  return {
-    overallBefore: calculateTeamOverallForPlayers(beforePlayers, beforePlan),
-    overallAfter: calculateTeamOverallForPlayers(afterPlayers, afterPlan),
-    fitBefore: calculateTeamFitForPlayers(beforePlayers),
-    fitAfter: calculateTeamFitForPlayers(afterPlayers),
-    startersBefore: effectiveStarterAssignments(beforePlayers, beforePlan),
-    startersAfter: effectiveStarterAssignments(afterPlayers, afterPlan),
-    minutesBefore: beforePlan.targetMinutes,
-    minutesAfter: afterPlan.targetMinutes,
-    capSpaceBefore: getCapSheet(state, team.id).availableCapSpace,
-    capSpaceAfter: getCapSheet(projectedState, team.id).availableCapSpace,
-  };
+    return {
+      overallBefore: calculateTeamOverallForPlayers(beforePlayers, beforePlan),
+      overallAfter: calculateTeamOverallForPlayers(afterPlayers, afterPlan),
+      fitBefore: calculateTeamFitForPlayers(beforePlayers),
+      fitAfter: calculateTeamFitForPlayers(afterPlayers),
+      startersBefore: effectiveStarterAssignments(beforePlayers, beforePlan),
+      startersAfter: effectiveStarterAssignments(afterPlayers, afterPlan),
+      minutesBefore: beforePlan.targetMinutes,
+      minutesAfter: afterPlan.targetMinutes,
+      capSpaceBefore: getCapSheet(state, team.id).availableCapSpace,
+      capSpaceAfter: getCapSheet(projectedState, team.id).availableCapSpace,
+    };
+  } catch (error) {
+    console.error("TRADE_IMPACT_PREVIEW_FAILED", error);
+    return null;
+  }
 }

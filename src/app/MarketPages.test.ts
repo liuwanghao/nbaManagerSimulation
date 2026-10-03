@@ -15,6 +15,28 @@ import { MarketTradeRecords } from "./MarketTradeRecords";
 import { targetedTradeInquiryCommandId, tradeAssetPositionCounts, tradeInquiryCommandId, tradeOfferPortraitPlayer, tradeOfferStatusLabel, tradePickLabel } from "./tradeView";
 
 describe("regular-season market", () => {
+  it("keeps a quote with a missing counterparty visible as invalid without crashing", () => {
+    const state = createCareer("market-missing-trade-team");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const quoted = generateTradeOffers(state, state.teams[state.userTeamId].playerIds[5], false);
+    quoted.tradeDesk.offers[0].counterpartyTeamId = "MISSING_TEAM";
+    const markup = renderToStaticMarkup(createElement(TradeDesk, { state: quoted, busy: false, onTradeCommand: async () => {} }));
+    expect(markup).toContain("未知球队");
+    expect(markup).toContain("方案失效");
+  });
+
+  it.each(["userIncomingPickIds", "userOutgoingPickIds", "userIncomingPlayerIds", "userOutgoingPlayerIds"] as const)("keeps incomplete %s quote data from crashing the list", (field) => {
+    const state = createCareer("market-incomplete-trade-offer");
+    state.league.currentPhase = "REGULAR_PRE_DEADLINE";
+    const quoted = generateTradeOffers(state, state.teams[state.userTeamId].playerIds[5], false);
+    const count = quoted.tradeDesk.offers.length;
+    Reflect.deleteProperty(quoted.tradeDesk.offers[0], field);
+    const markup = renderToStaticMarkup(createElement(TradeDesk, { state: quoted, busy: false, onTradeCommand: async () => {} }));
+    expect(markup).toContain("部分交易方案数据不完整，请重新获取报价");
+    expect(markup.match(/class="trade-console-offer-card"/g)).toHaveLength(count - 1);
+    expect(quoted.tradeDesk.offers).toHaveLength(count);
+  });
+
   it.each([0, 5])("shows every offseason UFA alongside %i RFAs and reserves own-team renewals for RFAs", (rfaCount) => {
     const state = createCareer(`offseason-all-free-agents-${rfaCount}`);
     state.league.currentPhase = "OFFSEASON_POST_DRAFT";

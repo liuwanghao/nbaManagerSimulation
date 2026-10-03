@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { stableHash, stableSerialize } from "../random/hash";
 import { createCareer } from "../season/career";
 import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
-import { getFreeAgents } from "../freeAgency/FreeAgencyService";
+import { enterFreeAgency, getFreeAgents } from "../freeAgency/FreeAgencyService";
 import { getCapSheet } from "../cap/CapSheetService";
 import { getSeasonFinanceConfig } from "../../config/leagueFinance";
 import { calculatePlayerOverall } from "../player/PlayerRatingService";
 import { SaveService } from "../../storage/SaveService";
 import { MemoryStorageAdapter } from "../../platform/storage/StorageAdapter";
-import { executeRosterCommand, lockOpeningRoster, setTeamRole, setTrainingFocus, waivePlayer } from "./RosterService";
+import { executeRosterCommand, lockOpeningRoster, prepareAiFreeAgencyRosters, setTeamRole, setTrainingFocus, waivePlayer } from "./RosterService";
 
 describe("RosterService", () => {
   it("waives a player into UFA and records guaranteed salary as dead money", () => {
@@ -131,11 +131,39 @@ describe("RosterService", () => {
         : Object.keys(state.teams).find((teamId) => teamId !== state.userTeamId)!;
       player.birdTeamId = originalBirdTeam;
       player.birdYears = 4;
+      state.capState.capHolds.push({ playerId: player.id, teamId: originalBirdTeam, amount: 5_000_000, type: "BIRD_UFA" });
+      const before = stableSerialize(state);
       const opened = lockOpeningRoster(state, true);
       expect(opened.players[player.id]).toMatchObject({
         teamId: state.userTeamId, birdTeamId: state.userTeamId, birdYears: originalTeamIsUser ? 4 : 1,
       });
+      expect(opened.capState.capHolds.some((hold) => hold.playerId === player.id)).toBe(false);
+      expect(stableSerialize(state)).toBe(before);
     }
+  });
+
+  it("clears waived AI players' Bird rights so reopening the market cannot create a new hold", () => {
+    const state = createCareer("ai-waiver-bird-rights");
+    state.league.currentPhase = "OFFSEASON_POST_DRAFT";
+    const teamId = "BOS";
+    const player = structuredClone(state.players[state.teams[teamId].playerIds[0]]);
+    player.id = "ai-waived-bird-player";
+    player.age = 40;
+    for (const key of Object.keys(player.attributes) as Array<keyof typeof player.attributes>) player.attributes[key] = 1;
+    player.birdTeamId = teamId;
+    player.birdYears = 4;
+    player.contract = { salary: 2_000_000, yearsRemaining: 1, guaranteedAmount: 2_000_000, status: "STANDARD", optionType: "NONE", optionDecision: "NOT_APPLICABLE", startSeason: state.league.seasonYear, currentYearIndex: 0, salaryByYear: [2_000_000], guaranteedByYear: [2_000_000] };
+    state.players[player.id] = player;
+    state.teams[teamId].playerIds.push(player.id);
+    prepareAiFreeAgencyRosters(state);
+    expect(state.players[player.id]).toMatchObject({ teamId: "FREE_AGENT", birdTeamId: null, birdYears: 0, contract: { status: "UFA" } });
+    expect(getCapSheet(state, teamId).deadMoney).toBe(2_000_000);
+    state.rookieDraft = { draftSeed: "waiver", classPlayerIds: [], pickOrder: [], currentPickIndex: 0, completed: true, source: "CURATED_2026" };
+    for (const candidate of getFreeAgents(state)) if (candidate.contract.status === "RFA") candidate.contract.qualifyingOfferDecision = "TENDERED";
+    const opened = enterFreeAgency(state);
+    expect(opened.capState.capHolds.some((hold) => hold.playerId === player.id)).toBe(false);
+    expect(opened.freeAgency!.markets[player.id].originalTeamId).toBeUndefined();
+    expect(getCapSheet(opened, teamId).deadMoney).toBe(2_000_000);
   });
 
   it("does not queue the expansion opening screen in a later season", () => {

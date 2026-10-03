@@ -138,7 +138,15 @@ describe("SalaryMatchValidator", () => {
 
   it("does not count free-agent cap holds as apron salary", () => {
     const { state, teamId, outgoingIds, incomingId } = salaryScenario([5_000_000], 9_000_000, 175_000_000);
-    state.capState.capHolds.push({ playerId: "future-free-agent", teamId, amount: 50_000_000, type: "BIRD_UFA" });
+    const freeAgent = structuredClone(state.players[incomingId]);
+    freeAgent.id = "future-free-agent";
+    freeAgent.teamId = "FREE_AGENT";
+    freeAgent.contract.status = "UFA";
+    freeAgent.contract.yearsRemaining = 0;
+    freeAgent.birdTeamId = teamId;
+    freeAgent.birdYears = 3;
+    state.players[freeAgent.id] = freeAgent;
+    state.capState.capHolds.push({ playerId: freeAgent.id, teamId, amount: 50_000_000, type: "BIRD_UFA" });
     expect(getCapSheet(state, teamId).total).toBeGreaterThan(LEAGUE_FINANCE_CONFIG.secondApron);
     expect(() => validateSalaryMatch(state, teamId, outgoingIds, [incomingId])).not.toThrow();
   });

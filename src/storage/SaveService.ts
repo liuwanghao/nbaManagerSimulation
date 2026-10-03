@@ -17,12 +17,15 @@ import { createEventState, settleInformationalEvents } from "../game/events/Even
 import { addTeamNotification, ensureExpansionWelcomeNotification, repairCareerMilestoneNotifications } from "../game/notifications/TeamNotificationService";
 import { EVENT_DEFINITION_BY_ID } from "../data/events";
 import { createAiTeamProfiles } from "../game/ai/AIManagementService";
-import { encodeStoredString, type StorageAdapter } from "../platform/storage/StorageAdapter";
-import { STORED_STRING_CORRUPTION_ERROR } from "../platform/storage/StoredStringCodec";
+import { encodeStoredString, hasEncodedStorage, type StorageAdapter } from "../platform/storage/StorageAdapter";
+import { isStoredStringCorruptionError } from "../platform/storage/StoredStringCodec";
 import { applyRotationPlanToPlayers, buildDefaultRotationPlan, normalizeRotationPlan, upgradeLegacyAutomaticRotationPlan } from "../game/roster/RotationPlanService";
 import { BALANCE_CONFIG } from "../config/balanceConfig";
 import { hasOpeningMipBaselines, seedOpeningMipBaselines } from "../game/awards/OpeningMipBaseline";
-import { hashSaveState, parseValidSaveEnvelope, serializeSaveEnvelope, stringifySaveValue } from "./SaveCodec";
+import {
+  hashSaveState, inspectEncodedSaveEnvelope, inspectValidSaveEnvelope, parseValidSaveEnvelope, parseValidSaveEnvelopeCopy,
+  serializeEncodedSaveEnvelope, serializeSaveEnvelope, stringifySaveValue,
+} from "./SaveCodec";
 
 export interface SaveEnvelope {
   saveId: string;
@@ -61,6 +64,8 @@ export interface SaveOptions {
 }
 
 type SaveCopyDiagnostic = { key: string; error: unknown; kind: "CORRUPTED" | "UNAVAILABLE" };
+type ValidSaveCopy<T> = { serialized: string; envelope: T };
+type SaveCopyParser<T> = (serialized: string | null, expectedSlotId?: number) => Promise<ValidSaveCopy<T> | null>;
 
 export class SaveRecoveryError extends Error {
   readonly canRebuild: boolean;
@@ -351,16 +356,16 @@ export class SaveService {
     return true;
   }
 
-  private async setWithQuotaRecovery(slotId: number, key: string, value: string): Promise<void> {
+  private async setWithQuotaRecovery(slotId: number, key: string, value: string, persistence: StorageAdapter = this.adapter): Promise<void> {
     for (;;) {
       try {
-        await this.adapter.set(key, value);
+        await persistence.set(key, value);
         return;
       } catch (error) {
         if (!isStorageQuotaError(error)) throw error;
         if (await this.evictOldestCheckpoint(slotId)) continue;
-        if (key !== previousKey(slotId) && await this.adapter.get(previousKey(slotId)) !== null) {
-          await this.adapter.remove(previousKey(slotId));
+        if (key !== previousKey(slotId) && await persistence.get(previousKey(slotId)) !== null) {
+          await persistence.remove(previousKey(slotId));
           continue;
         }
         throw error;
@@ -373,15 +378,33 @@ export class SaveService {
   }
 
   private async saveUnlocked(slotId: number, state: GameState, options: SaveOptions = {}): Promise<SaveEnvelope> {
-    let previous: SaveEnvelope | null;
+    const encodedAdapter = hasEncodedStorage(this.adapter) ? this.adapter : null;
+    // The recovery state machine accepts opaque payloads. A raw view reuses it
+    // without decoding large JSON on the main thread or changing queue identity.
+    const persistence: StorageAdapter = encodedAdapter ? {
+      get: (key) => encodedAdapter.getEncoded(key),
+      set: (key, value) => encodedAdapter.setEncoded(key, value),
+      remove: (key) => encodedAdapter.remove(key),
+    } : this.adapter;
+    let previousCopy: ValidSaveCopy<Omit<SaveEnvelope, "state">> | null;
     let rebuilding = false;
     try {
-      previous = await this.loadEnvelope(slotId);
+      // The Worker validates old state but returns only its headers and bytes.
+      // Recovery stays shared with loading without cloning old state here.
+      previousCopy = await this.loadEnvelopeCopy<Omit<SaveEnvelope, "state">>(slotId, persistence, async (serialized, expectedSlotId) => {
+        if (encodedAdapter) {
+          const inspected = await inspectEncodedSaveEnvelope(serialized, expectedSlotId);
+          return inspected ? { envelope: inspected, serialized: inspected.encoded } : null;
+        }
+        const inspected = await inspectValidSaveEnvelope(serialized, expectedSlotId);
+        return inspected ? { envelope: inspected, serialized: inspected.serialized } : null;
+      });
     } catch (error) {
       if (!options.rebuildCorrupted || !(error instanceof SaveRecoveryError) || !error.canRebuild) throw error;
-      previous = null;
+      previousCopy = null;
       rebuilding = true;
     }
+    const previous = previousCopy?.envelope;
     const revision = (previous?.revision ?? 0) + 1;
     const envelope: SaveEnvelope = {
       saveId: previous?.saveId ?? stableHash(state.seeds.careerSeed, "save", slotId),
@@ -399,28 +422,28 @@ export class SaveService {
       pendingSync: true,
       state,
     };
-    const encoded = await serializeSaveEnvelope(envelope);
-    envelope.stateHash = encoded.stateHash;
-    const serialized = encoded.serialized;
-    await this.setWithQuotaRecovery(slotId, tempKey(slotId), serialized);
+    const prepared = encodedAdapter ? await serializeEncodedSaveEnvelope(envelope) : await serializeSaveEnvelope(envelope);
+    envelope.stateHash = prepared.stateHash;
+    const serialized = "encoded" in prepared ? prepared.encoded : prepared.serialized;
+    await this.setWithQuotaRecovery(slotId, tempKey(slotId), serialized, persistence);
     // The encoded envelope was already hashed in the Worker. Exact readback also
     // detects corruption without parsing and hashing the entire state again.
-    if (await this.adapter.get(tempKey(slotId)) !== serialized) {
+    if (await persistence.get(tempKey(slotId)) !== serialized) {
       throw new Error("Temporary save verification failed");
     }
-    const previousSerialized = previous ? await stringifySaveValue(previous) : null;
+    const previousSerialized = previousCopy?.serialized;
     if (previousSerialized) {
       try {
-        await this.setWithQuotaRecovery(slotId, previousKey(slotId), previousSerialized);
+        await this.setWithQuotaRecovery(slotId, previousKey(slotId), previousSerialized, persistence);
       } catch (error) {
         if (!isStorageQuotaError(error)) throw error;
       }
     }
-    await this.setWithQuotaRecovery(slotId, slotKey(slotId), serialized);
-    await this.adapter.remove(tempKey(slotId));
+    await this.setWithQuotaRecovery(slotId, slotKey(slotId), serialized, persistence);
+    await persistence.remove(tempKey(slotId));
     // The healthy primary is committed; stale corrupt backup cleanup can be
     // retried later without reporting that the player's new save failed.
-    if (rebuilding) await this.adapter.remove(previousKey(slotId)).catch(() => undefined);
+    if (rebuilding) await persistence.remove(previousKey(slotId)).catch(() => undefined);
     return envelope;
   }
 
@@ -631,39 +654,41 @@ export class SaveService {
     await adapter.remove(tempKey(slotId));
   }
 
-  private async readEnvelopeCopy(key: string, slotId: number, adapter: StorageAdapter): Promise<{
+  private async readEnvelopeCopy<T>(key: string, slotId: number, adapter: StorageAdapter, parse: SaveCopyParser<T>): Promise<{
     serialized: string | null;
-    envelope: SaveEnvelope | null;
+    copy: ValidSaveCopy<T> | null;
     diagnostic?: SaveCopyDiagnostic;
   }> {
     try {
-      // Adapters decode before returning; decoding must be inside this copy's
-      // boundary so a bad gzip payload cannot prevent trying other copies.
+      // Decoding belongs inside each copy's failure boundary, whether performed
+      // by the normal adapter or the encoded Worker's parser. A bad gzip payload
+      // must not prevent trying the other recoverable copies.
       const serialized = await adapter.get(key);
-      if (serialized === null) return { serialized, envelope: null };
-      const envelope = await parseValidSaveEnvelope(serialized, slotId);
-      if (!envelope || !Number.isInteger(envelope.revision) || envelope.revision < 1
-        || typeof envelope.updatedAt !== "string" || !Number.isFinite(Date.parse(envelope.updatedAt))
-        || !envelope.state?.meta || !envelope.state.seeds || !envelope.state.teams
-        || !envelope.state.standings || !envelope.state.calendar || !envelope.state.league) {
-        return { serialized, envelope: null, diagnostic: { key, error: new Error("Invalid save structure or checksum"), kind: "CORRUPTED" } };
-      }
-      return { serialized, envelope: this.normalizeEnvelopeSlot(slotId, envelope) };
+      if (serialized === null) return { serialized, copy: null };
+      // Both parsers check the same structure/checksum and repair legacy headers.
+      const copy = await parse(serialized, slotId);
+      if (!copy) return { serialized, copy: null, diagnostic: { key, error: new Error("Invalid save structure or checksum"), kind: "CORRUPTED" } };
+      return { serialized, copy };
     } catch (error) {
-      const kind = error instanceof Error && error.message.startsWith(`${STORED_STRING_CORRUPTION_ERROR}:`) ? "CORRUPTED" : "UNAVAILABLE";
-      return { serialized: null, envelope: null, diagnostic: { key, error, kind } };
+      const kind = isStoredStringCorruptionError(error) ? "CORRUPTED" : "UNAVAILABLE";
+      return { serialized: null, copy: null, diagnostic: { key, error, kind } };
     }
   }
 
   private async loadEnvelope(slotId: number, adapter: StorageAdapter = this.adapter): Promise<SaveEnvelope | null> {
+    const copy = await this.loadEnvelopeCopy(slotId, adapter, parseValidSaveEnvelopeCopy);
+    return copy?.envelope ?? null;
+  }
+
+  private async loadEnvelopeCopy<T extends Pick<SaveEnvelope, "revision">>(slotId: number, adapter: StorageAdapter, parse: SaveCopyParser<T>): Promise<ValidSaveCopy<T> | null> {
     const [primaryCopy, pendingCopy] = await Promise.all([
-      this.readEnvelopeCopy(slotKey(slotId), slotId, adapter),
-      this.readEnvelopeCopy(tempKey(slotId), slotId, adapter),
+      this.readEnvelopeCopy(slotKey(slotId), slotId, adapter, parse),
+      this.readEnvelopeCopy(tempKey(slotId), slotId, adapter, parse),
     ]);
-    const primary = primaryCopy.envelope;
-    const pending = pendingCopy.envelope;
-    const previousCopy = !primary && !pending ? await this.readEnvelopeCopy(previousKey(slotId), slotId, adapter) : null;
-    const previous = previousCopy?.envelope;
+    const primary = primaryCopy.copy;
+    const pending = pendingCopy.copy;
+    const previousCopy = !primary && !pending ? await this.readEnvelopeCopy(previousKey(slotId), slotId, adapter, parse) : null;
+    const previous = previousCopy?.copy;
     const hasPending = pendingCopy.serialized !== null || pendingCopy.diagnostic !== undefined;
     if (!primary && !pending && !previous) {
       const diagnostics = [primaryCopy.diagnostic, pendingCopy.diagnostic, previousCopy?.diagnostic]
@@ -671,18 +696,18 @@ export class SaveService {
       if (diagnostics.length) throw new SaveRecoveryError(diagnostics);
       return null;
     }
-    if (pending && (!primary || pending.revision > primary.revision)) {
-      await adapter.set(slotKey(slotId), await stringifySaveValue(pending));
+    if (pending && (!primary || pending.envelope.revision > primary.envelope.revision)) {
+      await adapter.set(slotKey(slotId), pending.serialized);
       await adapter.remove(tempKey(slotId));
       return pending;
     }
     if (!primary && previous) {
-      await adapter.set(slotKey(slotId), await stringifySaveValue(previous));
+      await adapter.set(slotKey(slotId), previous.serialized);
       if (hasPending) await adapter.remove(tempKey(slotId));
       return previous;
     }
     if (hasPending) await adapter.remove(tempKey(slotId));
-    if (primary && primaryCopy.serialized !== await stringifySaveValue(primary)) await adapter.set(slotKey(slotId), await stringifySaveValue(primary));
+    if (primary && primaryCopy.serialized !== primary.serialized) await adapter.set(slotKey(slotId), primary.serialized);
     return primary;
   }
 }

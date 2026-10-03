@@ -51,7 +51,7 @@ import { RotationEditor } from "./RotationEditor";
 import { ManagementOverview, ManagementContracts, ManagementDraftPicks } from "./ManagementPages";
 import { RegularSeasonFreeAgents } from "./RegularSeasonFreeAgents";
 import { GameIssueFeedbackAction } from "./GameIssueFeedbackAction";
-import { buildGameIssueFeedback } from "./issueFeedback";
+import { buildGameIssueFeedback, getContractCommandIssueLabels, type GameIssueContext } from "./issueFeedback";
 import { MarketTradeRecords } from "./MarketTradeRecords";
 import { CustomTradeBuilder } from "./CustomTradeBuilder";
 import { PlayerPortrait } from "./PlayerPortrait";
@@ -145,7 +145,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const coachingActionInProgress = useRef(false);
   useEffect(() => { coachingActionInProgress.current = false; }, [state]);
   const [phaseTransitionLoading, setPhaseTransitionLoading] = useState<"rollover" | "preDraft" | null>(null);
-  const [transitionError, setTransitionError] = useState<string | null>(null);
+  const [transitionError, setTransitionError] = useState<GameIssueContext | null>(null);
   const [transitionStep, setTransitionStep] = useState("准备结算");
   const [transitionSlow, setTransitionSlow] = useState(false);
   useEffect(() => {
@@ -715,7 +715,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       const next = executeFreeAgencyCommand(state, command);
       await persistState(next, targetSlot);
       setState(next);
-      setStatus(command.type === "ADVANCE_FA_DAY" ? `自由市场第 ${next.freeAgency?.currentDay} 天 · 今日结算完成` : "报价事务已原子提交并自动保存");
+      setStatus(command.type === "ADVANCE_FA_DAY" ? `自由市场第 ${next.freeAgency?.currentDay} 天 · 今日结算完成` : command.type === "RENOUNCE_FA_RIGHTS" ? "已放弃签约权，工资帽空间已重新计算并自动保存" : "报价事务已原子提交并自动保存");
     } catch (error) {
       setStatus(error instanceof Error ? humanizeUiText(error.message) : "自由市场操作失败，状态未改变");
     } finally {
@@ -766,6 +766,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
   const runContractCommand = async (command: ContractLifecycleCommand) => {
     if (!saveService || busyInFlight.current) return;
     const targetSlot = activeSlot;
+    const issueLabels = getContractCommandIssueLabels(command.type);
     const isRollover = command.type === "ROLLOVER_LEAGUE_YEAR";
     const isPreDraft = command.type === "FINALIZE_OPTION_PHASE";
     const isPhaseTransition = isRollover || isPreDraft;
@@ -791,19 +792,22 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
           checkpointSkipped = true;
         }
       }
-      step = "计算下一联盟年度";
+      step = issueLabels.computeStep;
       setTransitionStep(step);
       const next = executeContractLifecycleCommand(state, command);
-      step = "保存新赛季存档";
+      step = issueLabels.saveStep;
       setTransitionStep(step);
       await persistState(next, targetSlot);
       if (isPhaseTransition) await new Promise<void>((resolve) => window.setTimeout(resolve, Math.max(0, 350 - (Date.now() - loadingStarted))));
       setState(next);
       setStatus(checkpointSkipped ? "已进入下一联盟年度并保存；年度切换检查点未保存" : next.league.currentPhase === "OFFSEASON_PRE_DRAFT" ? "合同年度结算完成 · 可以进入新秀选秀" : "合同选项已原子提交并自动保存");
     } catch (error) {
-      const message = error instanceof Error ? humanizeUiText(error.message) : "合同年度结算失败，状态未改变";
+      const message = error instanceof Error ? humanizeUiText(error.message) : `${issueLabels.failureKind}，状态未改变`;
       setStatus(message);
-      setTransitionError(`${step}失败：${error instanceof Error ? `${error.name}: ${error.message || "未提供详细错误"}` : String(error)}`);
+      setTransitionError({
+        kind: issueLabels.failureKind, step, phase: state.league.currentPhase, seasonId: state.league.seasonId, slotId: targetSlot,
+        error: `${step}失败：${error instanceof Error ? `${error.name}: ${error.message || "未提供详细错误"}` : String(error)}`,
+      });
     } finally {
       if (isPhaseTransition) setPhaseTransitionLoading(null);
       setBusy(false);
@@ -905,7 +909,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       else void runEventCommand(command);
     }} />
     : null;
-  const transitionErrorDialog = transitionError ? <div className="league-transition-error-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="league-transition-error-title"><div className="league-transition-error-card"><h2 id="league-transition-error-title">年度切换失败</h2><p>当前存档未切换。可以直接反馈此问题，或保留下面的错误信息。</p><code>{transitionError}</code><GameIssueFeedbackAction content={buildGameIssueFeedback({ kind: "年度切换失败", step: transitionStep, phase: state.league.currentPhase, seasonId: state.league.seasonId, slotId: activeSlot, error: transitionError })} /><button type="button" onClick={() => setTransitionError(null)}>关闭并返回</button></div></div> : null;
+  const transitionErrorDialog = transitionError ? <div className="league-transition-error-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="league-transition-error-title"><div className="league-transition-error-card"><h2 id="league-transition-error-title">{transitionError.kind}</h2><p>当前游戏状态未改变。可以直接反馈此问题，或保留下面的错误信息。</p><code>{transitionError.error}</code><GameIssueFeedbackAction content={buildGameIssueFeedback(transitionError)} /><button type="button" onClick={() => setTransitionError(null)}>关闭并返回</button></div></div> : null;
 
   if (["TEAM_CREATION", "EXPANSION_RIGHTS", "OPTION_PHASE", "EXPANSION_TRADE", "EXPANSION_DRAFT"].includes(state.league.currentPhase)
     && !(state.league.currentPhase === "OPTION_PHASE" && state.contractLifecycle)) {
@@ -1017,7 +1021,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
           </> : <div className={`season-command-complete${postseasonSettled ? " postseason-settled" : ""}`}>{postseasonSettled ? <>
             <div className="season-command-honors"><span><small>总冠军</small><strong>{seasonChampion ? state.teams[seasonChampion.teamId]?.fullName ?? seasonChampion.teamId : "待公布"}</strong></span><span><small>总决赛 MVP</small><strong>{seasonFinalsMvp ? playerNameZh(seasonFinalsMvp.name, seasonFinalsMvp.id) : "待公布"}</strong></span></div>
             <button type="button" disabled={busy} onClick={() => runContractCommand({ commandId: `rollover-${state.league.seasonId}`, type: "ROLLOVER_LEAGUE_YEAR", payload: {} })}>进入下一联盟年度</button>
-            {transitionError && <p className="season-transition-error" role="alert">{transitionError}</p>}
+            {transitionError && <p className="season-transition-error" role="alert">{transitionError.error}</p>}
           </> : postseasonQualified ? <><b>常规赛程已经完成</b><p>球队获得季后赛资格。进入后可逐场模拟附加赛和季后赛。</p><button type="button" className="season-enter-postseason" disabled={busy} onClick={() => run("正在进入季后赛…", "ENTER_POSTSEASON")}>进入季后赛</button></> : <><b>常规赛程已经完成</b><p>可以进入附加赛与季后赛结算。</p><button type="button" disabled={busy} onClick={() => run("正在结算附加赛与季后赛…", "POSTSEASON")}>{postseasonRunning ? "正在结算…" : "结算季后赛"}</button></>}</div>}
         </article>
 
@@ -1208,7 +1212,7 @@ function App({ initialState = createExpansionCareer("expansion-era-demo"), initi
       </>}
 
       <SeasonNavigation activeTab={activeTab} onChange={setActiveTab} />
-      {phaseTransitionLoading && <div className="league-rollover-backdrop" role="status" aria-live="assertive" aria-label={phaseTransitionLoading === "preDraft" ? "正在进入选秀前休赛期" : "正在进入下一联盟年度"}><div className="league-rollover-card"><BasketballSeamLoader /><small>SEASON TRANSITION</small><b>{phaseTransitionLoading === "preDraft" ? "正在进入选秀前休赛期" : "正在进入下一联盟年度"}</b><p>{transitionStep}…</p>{transitionSlow && <><p className="league-rollover-slow">处理时间较长，当前步骤：{transitionStep}。</p><GameIssueFeedbackAction content={buildGameIssueFeedback({ kind: "年度切换耗时过长", step: transitionStep, phase: state.league.currentPhase, seasonId: state.league.seasonId, slotId: activeSlot })} /></>}</div></div>}
+      {phaseTransitionLoading && <div className="league-rollover-backdrop" role="status" aria-live="assertive" aria-label={phaseTransitionLoading === "preDraft" ? "正在进入选秀前休赛期" : "正在进入下一联盟年度"}><div className="league-rollover-card"><BasketballSeamLoader /><small>SEASON TRANSITION</small><b>{phaseTransitionLoading === "preDraft" ? "正在进入选秀前休赛期" : "正在进入下一联盟年度"}</b><p>{transitionStep}…</p>{transitionSlow && <><p className="league-rollover-slow">处理时间较长，当前步骤：{transitionStep}。</p><GameIssueFeedbackAction content={buildGameIssueFeedback({ kind: getContractCommandIssueLabels(phaseTransitionLoading === "preDraft" ? "FINALIZE_OPTION_PHASE" : "ROLLOVER_LEAGUE_YEAR").slowKind, step: transitionStep, phase: state.league.currentPhase, seasonId: state.league.seasonId, slotId: activeSlot })} /></>}</div></div>}
       {eventModal}
       {selectedGame && <GameDetailModal key={selectedGame.gameId} game={selectedGame} state={state} onClose={() => setSelectedGameId(null)} />}
       {selectedCareerGame && <GameDetailModal key={selectedCareerGame.gameId} game={selectedCareerGame} state={state} onClose={() => setSelectedCareerGame(null)} />}

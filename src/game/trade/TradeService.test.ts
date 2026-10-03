@@ -16,6 +16,57 @@ function tradeState() {
 }
 
 describe("TradeService", () => {
+  it.each(["user", "counterparty"] as const)("rejects a saved quote leaving the %s with only four available players without transferring assets", (side) => {
+    const state = tradeState();
+    const quoted = generateTradeOffers(state, state.teams[state.userTeamId].playerIds[5], false);
+    const offer = quoted.tradeDesk.offers.find((entry) => entry.userIncomingPlayerIds.length === 1)!;
+    const teamId = side === "user" ? quoted.userTeamId : offer.counterpartyTeamId;
+    const outgoingIds = side === "user" ? offer.userOutgoingPlayerIds : offer.userIncomingPlayerIds;
+    const incomingIds = side === "user" ? offer.userIncomingPlayerIds : offer.userOutgoingPlayerIds;
+    const healthyIds = new Set([...outgoingIds, ...quoted.teams[teamId].playerIds.filter((id) => !outgoingIds.includes(id)).slice(0, 4)]);
+    for (const id of quoted.teams[teamId].playerIds) quoted.players[id].available = healthyIds.has(id);
+    for (const id of incomingIds) quoted.players[id].available = false;
+    const trade = {
+      leftTeamId: quoted.userTeamId, rightTeamId: offer.counterpartyTeamId,
+      leftPlayerIds: offer.userOutgoingPlayerIds, rightPlayerIds: offer.userIncomingPlayerIds,
+      leftPickIds: offer.userOutgoingPickIds, rightPickIds: offer.userIncomingPickIds,
+    };
+    const before = stableHash(stableSerialize(quoted));
+    expect(evaluateTradeOffer(quoted, offer.offerId)).toMatchObject({ legal: false, reason: "交易后任一球队可用球员不能少于 5 人" });
+    expect(() => executeTradeCommand(quoted, { commandId: `unavailable-${side}`, type: "ACCEPT_TRADE_OFFER", payload: { offerId: offer.offerId } })).toThrow("可用球员不能少于 5 人");
+    expect(() => applyTradePackage(quoted, trade)).toThrow("ROSTER_BELOW_AVAILABLE_MINIMUM");
+    expect(() => executeCustomTrade(quoted, trade)).toThrow("ROSTER_BELOW_AVAILABLE_MINIMUM");
+    expect(stableHash(stableSerialize(quoted))).toBe(before);
+  });
+
+  it("does not generate targeted quotes that reduce five available players to four", () => {
+    const state = createCareer("trade-black-screen-generated");
+    state.league.currentPhase = "OFFSEASON_PRE_DRAFT";
+    state.league.seasonYear = 2027;
+    state.league.seasonId = "2027-28";
+    state.teams[state.userTeamId].playerIds.forEach((id, index) => { state.players[id].available = index < 5; });
+    state.players["POR-P04"].available = false;
+    const quoted = generateTargetedTradeOffers(state, ["POR-P04"]);
+    expect(quoted.tradeDesk.offers.length).toBeGreaterThan(0);
+    for (const offer of quoted.tradeDesk.offers) {
+      const remaining = quoted.teams[quoted.userTeamId].playerIds.filter((id) => !offer.userOutgoingPlayerIds.includes(id));
+      const available = remaining.concat(offer.userIncomingPlayerIds).filter((id) => quoted.players[id].available && !quoted.players[id].injury);
+      expect(available.length).toBeGreaterThanOrEqual(5);
+      expect(evaluateTradeOffer(quoted, offer.offerId).legal).toBe(true);
+    }
+  });
+
+  it("rejects incomplete quote assets instead of throwing during evaluation", () => {
+    const state = tradeState();
+    const quoted = generateTradeOffers(state, state.teams[state.userTeamId].playerIds[5], false);
+    const offer = quoted.tradeDesk.offers[0];
+    Reflect.deleteProperty(offer, "userIncomingPickIds");
+    const before = stableHash(stableSerialize(quoted));
+    expect(evaluateTradeOffer(quoted, offer.offerId)).toMatchObject({ legal: false, reason: "交易方案数据不完整，请重新获取报价" });
+    expect(() => acceptTradeOffer(quoted, offer.offerId)).toThrow("交易方案数据不完整");
+    expect(stableHash(stableSerialize(quoted))).toBe(before);
+  });
+
   it("executes a player-selected pick swap through the same trade validation path", () => {
     const state = tradeState();
     const leftTeamId = state.userTeamId;

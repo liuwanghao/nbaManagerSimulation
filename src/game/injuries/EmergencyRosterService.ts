@@ -43,6 +43,7 @@ function signEmergencyPlayer(state: GameState, teamId: string): Player {
     emergencyStatus: "ACTIVE",
     emergencyDailySalary: dailySalary,
   };
+  state.capState.capHolds = state.capState.capHolds.filter((hold) => hold.playerId !== player.id);
   if (!state.teams[teamId].playerIds.includes(player.id)) state.teams[teamId].playerIds.push(player.id);
   return player;
 }

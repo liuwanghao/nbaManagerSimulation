@@ -128,6 +128,7 @@ function signMinimum(state: GameState, teamId: string, player: Player): void {
     signedTeamId: teamId, signedPhase: "PRESEASON",
   };
   if (player.career) { player.career.unemployedGameDays = 0; player.career.unemployedLeagueYears = 0; }
+  state.capState.capHolds = state.capState.capHolds.filter((hold) => hold.playerId !== player.id);
   state.teams[teamId].playerIds.push(player.id);
 }
 
@@ -147,6 +148,8 @@ function trimAiRoster(state: GameState, teamId: string, targetSize: number): voi
     player.teamId = "FREE_AGENT";
     player.freeAgentDemand = { uncontestedDays: 0 };
     player.contract = { salary: 0, yearsRemaining: 0, guaranteedAmount: 0, status: "UFA", optionType: "NONE", optionDecision: "NOT_APPLICABLE" };
+    player.birdTeamId = null;
+    player.birdYears = 0;
   }
 }
 

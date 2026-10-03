@@ -4,6 +4,7 @@ import { getSeasonFinanceConfig, LEAGUE_FINANCE_CONFIG } from "../../config/leag
 import { EXPANSION_BRAND_PRESETS } from "../../data/expansionBrands";
 import { createExpansionCareerFromBundledDataset } from "../../data/hupuRoster";
 import { getCapSheet } from "../cap/CapSheetService";
+import { finalizeOptionPhase, resolveTeamOption, rolloverLeagueYear } from "../contracts/ContractLifecycleService";
 import { executeDraftCommand, getAvailableDraftProspects } from "../draft/DraftService";
 import { executeExpansionCommand, getSelectableExpansionPlayers } from "../expansion/ExpansionService";
 import { stableHash, stableSerialize } from "../random/hash";
@@ -75,6 +76,130 @@ function expiringStarState(seed: string) {
   state.contractLifecycle = { rolloverSeasonId: state.league.seasonId, pendingUserTeamOptionPlayerIds: [], renewalEligiblePlayerIds: [player.id], transactionLog: [], completed: true };
   return { state, player };
 }
+
+function rightsRenunciationState(status: "UFA" | "RFA" = "UFA") {
+  const state = createCareer("renounce-free-agent-rights");
+  state.league = { seasonYear: 2029, seasonId: "2029-30", currentPhase: "OFFSEASON_POST_DRAFT" };
+  const playerId = state.teams[state.userTeamId].playerIds.pop()!;
+  const player = state.players[playerId];
+  player.teamId = "FREE_AGENT";
+  player.age = 19;
+  player.birdTeamId = state.userTeamId;
+  player.birdYears = 4;
+  player.contract = { salary: 20_000_000, yearsRemaining: 0, guaranteedAmount: 0, status, optionType: "NONE", optionDecision: "NOT_APPLICABLE", qualifyingOfferDecision: status === "RFA" ? "PENDING" : undefined };
+  state.capState.capHolds = [{ playerId, teamId: state.userTeamId, amount: 30_000_000, type: status === "RFA" ? "RFA" : "BIRD_UFA" }];
+  state.freeAgency = {
+    opened: true, currentDay: 7, offers: {}, settledPlayerDay: {}, transactionLog: [],
+    markets: { [playerId]: { playerId, originalTeamId: state.userTeamId, marketWindowStartDay: 7, decisionDeadline: 7, marketWindowStatus: "OPEN" } },
+  };
+  const command = { commandId: "renounce-rights", type: "RENOUNCE_FA_RIGHTS", payload: { playerId } } as const;
+  return { state, player, command };
+}
+
+describe("free-agent rights renunciation", () => {
+  it.each(["UFA", "RFA"] as const)("releases %s rights and recalculates net space with incomplete-roster charges", (status) => {
+    const { state, player, command } = rightsRenunciationState(status);
+    state.teams[state.userTeamId].playerIds = state.teams[state.userTeamId].playerIds.slice(0, 11);
+    for (const id of state.teams[state.userTeamId].playerIds) state.players[id].contract.salary = 10_000_000;
+    const before = getCapSheet(state, state.userTeamId);
+    const unchanged = stableSerialize(state);
+    const next = executeFreeAgencyCommand(state, command);
+    const after = getCapSheet(next, state.userTeamId);
+    expect(next.players[player.id]).toMatchObject({ teamId: "FREE_AGENT", birdTeamId: null, birdYears: 0, contract: { status: "UFA" } });
+    if (status === "RFA") expect(next.players[player.id].contract.qualifyingOfferDecision).toBe("DECLINED");
+    expect(next.capState.capHolds).toHaveLength(0);
+    expect(after.activeContractSalary).toBe(before.activeContractSalary);
+    expect(after.incompleteRosterCharges).toBe(getSeasonFinanceConfig(2029).rookieMinimumSalary);
+    expect(after.availableCapSpace - before.availableCapSpace).toBe(30_000_000 - after.incompleteRosterCharges);
+    expect(next.freeAgency!.markets[player.id].originalTeamId).toBeUndefined();
+    expect(next.freeAgency!.transactionLog.some((line) => line.includes(player.name) && line.includes("放弃"))).toBe(true);
+    expect(getPendingUserQualifyingOfferPlayers({ ...next, freeAgency: undefined })).toHaveLength(0);
+    expect(stableSerialize(state)).toBe(unchanged);
+  });
+
+  it.each(["OFFSEASON_PRE_DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON"] as const)("allows renouncing rights during %s", (phase) => {
+    const { state, command } = rightsRenunciationState();
+    state.league.currentPhase = phase;
+    expect(executeFreeAgencyCommand(state, command).capState.capHolds).toHaveLength(0);
+  });
+
+  it("records a receipt and remains idempotent after reloading", () => {
+    const { state, command } = rightsRenunciationState();
+    const next = executeFreeAgencyCommand(state, command);
+    expect(executeFreeAgencyCommand(next, command)).toBe(next);
+    const loaded = JSON.parse(JSON.stringify(next)) as GameState;
+    expect(executeFreeAgencyCommand(loaded, command)).toBe(loaded);
+    expect(() => executeFreeAgencyCommand(loaded, { ...command, payload: { playerId: "different-player" } })).toThrow(/不同 Payload/);
+  });
+
+  it.each(["other-team", "other-bird-team", "cleared-bird", "signed-player", "missing-player", "regular-season", "active-own-offer", "rfa-matching", "pending-rfa"] as const)("rejects %s atomically", (scenario) => {
+    const { state, player, command } = rightsRenunciationState("RFA");
+    if (scenario === "other-team") state.capState.capHolds[0].teamId = "ATL";
+    if (scenario === "other-bird-team") player.birdTeamId = "ATL";
+    if (scenario === "cleared-bird") { player.birdTeamId = null; player.birdYears = 0; }
+    if (scenario === "signed-player") { player.teamId = state.userTeamId; player.contract.status = "STANDARD"; }
+    if (scenario === "missing-player") delete state.players[player.id];
+    if (scenario === "regular-season") state.league.currentPhase = "REGULAR_SEASON";
+    if (scenario === "active-own-offer") {
+      state.freeAgency!.offers.own = { offerId: "own", playerId: player.id, teamId: state.userTeamId, createdDay: 7, expiresDay: 7, years: 1, year1Salary: 20_000_000, totalValue: 20_000_000, guaranteedValue: 20_000_000, rolePromised: "BENCH", capReservation: 20_000_000, utility: 100, status: "ACTIVE", kind: "RFA_OWN_TEAM_OFFER" };
+      state.capState.offerReservations.push({ offerId: "own", playerId: player.id, teamId: state.userTeamId, amount: 20_000_000 });
+    }
+    if (scenario === "rfa-matching") state.freeAgency!.markets[player.id].marketWindowStatus = "RFA_MATCHING";
+    if (scenario === "pending-rfa") state.freeAgency!.pendingUserRfaDecision = { playerId: player.id, offerId: "sheet", originalTeamId: state.userTeamId, deadline: 9 };
+    const unchanged = stableSerialize(state);
+    const reason = scenario === "regular-season" ? "not allowed during REGULAR_SEASON"
+      : scenario === "active-own-offer" ? "请先撤回本队对该球员的有效报价"
+        : ["rfa-matching", "pending-rfa"].includes(scenario) ? "请先处理该球员的 RFA 匹配决定"
+          : "只能放弃本队自由球员的签约权";
+    expect(() => executeFreeAgencyCommand(state, command)).toThrow(reason);
+    expect(stableSerialize(state)).toBe(unchanged);
+    expect(state.commandReceipts[command.commandId]).toBeUndefined();
+  });
+
+  it("drops the former team's five-year and 8% contract privileges", () => {
+    const { state, player, command } = rightsRenunciationState();
+    const draft = { years: 5, year1Salary: 5_000_000, annualRaiseRate: 0.08, guaranteedPercent: 1, rolePromised: "BENCH" as const };
+    expect(getFreeAgentCustomOfferPreview(state, player.id, draft).valid).toBe(true);
+    const next = executeFreeAgencyCommand(state, command);
+    expect(getFreeAgentCustomOfferPreview(next, player.id, draft).valid).toBe(false);
+    expect(getFreeAgentCustomOfferPreview(next, player.id, { ...draft, years: 4 }).valid).toBe(false);
+    expect(getFreeAgentCustomOfferPreview(next, player.id, { ...draft, years: 4, annualRaiseRate: 0.05 }).valid).toBe(true);
+  });
+
+  it("keeps external active RFA offers and lets the proposal sign without a matching period", () => {
+    const { state, player, command } = rightsRenunciationState("RFA");
+    const bidder = "ATL";
+    state.teams[bidder].playerIds = state.teams[bidder].playerIds.slice(0, 14);
+    for (const team of Object.values(state.teams)) for (const id of team.playerIds) state.players[id].contract.salary = 100_000_000;
+    const salary = getSeasonFinanceConfig(2029).minimumSalary;
+    state.freeAgency!.offers.sheet = { offerId: "sheet", playerId: player.id, teamId: bidder, createdDay: 7, expiresDay: 7, years: 1, year1Salary: salary, totalValue: salary, guaranteedValue: salary, rolePromised: "BENCH", capReservation: salary, utility: 100, status: "ACTIVE", kind: "RFA_OFFER_PROPOSAL" };
+    state.capState.offerReservations.push({ offerId: "sheet", playerId: player.id, teamId: bidder, amount: salary });
+    const next = executeFreeAgencyCommand(state, command);
+    expect(next.freeAgency!.offers.sheet).toEqual(state.freeAgency!.offers.sheet);
+    expect(next.capState.offerReservations).toEqual(state.capState.offerReservations);
+    const settled = advanceFreeAgencyDay(next);
+    expect(settled.players[player.id].teamId).toBe(bidder);
+    expect(settled.freeAgency!.offers.sheet.status).toBe("ACCEPTED");
+    expect(settled.freeAgency!.pendingUserRfaDecision).toBeUndefined();
+    expect(settled.capState.offerReservations.some((offer) => offer.offerId === "sheet")).toBe(false);
+  });
+
+  it("does not recreate renounced holds when opening the market or rolling into another year", () => {
+    const { state, player, command } = rightsRenunciationState("RFA");
+    state.freeAgency = undefined;
+    let next = executeFreeAgencyCommand(state, command);
+    next.rookieDraft = { draftSeed: "rights", classPlayerIds: [], pickOrder: [], currentPickIndex: 0, completed: true, source: "PROCEDURAL_FUTURE" };
+    next = enterFreeAgency(next);
+    expect(next.capState.capHolds.some((hold) => hold.playerId === player.id)).toBe(false);
+    expect(next.freeAgency!.markets[player.id].originalTeamId).toBeUndefined();
+    next.league.currentPhase = "OFFSEASON";
+    next = rolloverLeagueYear(next);
+    for (const id of [...(next.contractLifecycle?.pendingUserTeamOptionPlayerIds ?? [])]) next = resolveTeamOption(next, id, "DECLINE");
+    next = finalizeOptionPhase(next);
+    expect(next.capState.capHolds.some((hold) => hold.playerId === player.id)).toBe(false);
+    expect(next.players[player.id]).toMatchObject({ birdTeamId: null, birdYears: 0 });
+  });
+});
 
 describe("AI renewals before the public market", () => {
   it("retains a willing expiring star at market salary with Bird rights and deterministic atomic settlement", () => {

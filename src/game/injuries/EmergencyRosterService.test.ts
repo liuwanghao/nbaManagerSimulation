@@ -52,6 +52,21 @@ function emergencyPlayers(state: ReturnType<typeof createCareer>, teamId = state
 }
 
 describe("emergency active roster", () => {
+  it("releases the former team's cap hold when recruiting an emergency free agent", () => {
+    const state = createCareer("emergency-release-old-cap-hold");
+    reduceAvailableRoster(state, state.userTeamId, 7);
+    const [replacementId, otherPlayerId] = setFreeAgentPool(state, [55, 75]);
+    const oldTeamId = "BOS";
+    state.players[replacementId].birdTeamId = oldTeamId;
+    state.players[replacementId].birdYears = 4;
+    state.capState.capHolds.push({ playerId: replacementId, teamId: oldTeamId, amount: 5_000_000, type: "BIRD_UFA" });
+    state.capState.capHolds.push({ playerId: otherPlayerId, teamId: oldTeamId, amount: 3_000_000, type: "BIRD_UFA" });
+    fillEmergencyRoster(state, state.userTeamId);
+    expect(state.players[replacementId]).toMatchObject({ teamId: state.userTeamId, birdTeamId: null, birdYears: 0, contract: { contractType: "EMERGENCY" } });
+    expect(state.capState.capHolds.some((hold) => hold.playerId === replacementId)).toBe(false);
+    expect(state.capState.capHolds).toContainEqual({ playerId: otherPlayerId, teamId: oldTeamId, amount: 3_000_000, type: "BIRD_UFA" });
+  });
+
   it("recruits only low-ability free agents even when 90+ stars are available", () => {
     const state = createCareer("emergency-low-ability-pool");
     reduceAvailableRoster(state, state.userTeamId, 6);

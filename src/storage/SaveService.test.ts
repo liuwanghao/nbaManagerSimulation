@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createExpansionCareerFromBundledDataset } from "../data/hupuRoster";
 import { createCareer, simulateNextGameDay } from "../game/season/career";
 import { executeDraftCommand } from "../game/draft/DraftService";
@@ -8,9 +8,288 @@ import { addTeamNotification, executeTeamNotificationCommand } from "../game/not
 import { enqueueCareerMilestoneEvents, enqueueEvent, executeEventCommand } from "../game/events/EventService";
 import { LocalStorageAdapter, MemoryStorageAdapter, MigratingIndexedDbStorageAdapter } from "../platform/storage/StorageAdapter";
 import type { StorageAdapter } from "../platform/storage/StorageAdapter";
-import { SaveService } from "./SaveService";
+import { SaveService, type SaveEnvelope } from "./SaveService";
+import { decodeStoredStringCore, encodeStoredStringCore } from "../platform/storage/StoredStringCodec";
+import { stableHash } from "../game/random/hash";
+import * as SaveCodec from "./SaveCodec";
+
+describe("SaveService encoded pipeline", () => {
+  const key = "basketball-manager:career:1";
+  function localStore() {
+    const values = new Map<string, string>();
+    const setItem = vi.fn((name: string, value: string) => { values.set(name, value); });
+    const removeItem = vi.fn((name: string) => { values.delete(name); });
+    vi.stubGlobal("window", { localStorage: { getItem: (name: string) => values.get(name) ?? null, setItem, removeItem } });
+    return { values, setItem, removeItem, adapter: new LocalStorageAdapter() };
+  }
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it("prepares the new envelope once and reuses its encoded bytes without decoded APIs", async () => {
+    const store = localStore();
+    const state = createCareer("encoded-new-envelope");
+    const serialize = vi.spyOn(SaveCodec, "serializeEncodedSaveEnvelope");
+    const oldSerialize = vi.spyOn(SaveCodec, "serializeSaveEnvelope");
+    const get = vi.spyOn(store.adapter, "get");
+    const set = vi.spyOn(store.adapter, "set");
+    const saved = await new SaveService(store.adapter).save(1, state);
+    expect(saved.state).toBe(state);
+    expect(serialize).toHaveBeenCalledOnce();
+    const prepared = await serialize.mock.results[0].value;
+    expect(Object.keys(prepared).sort()).toEqual(["encoded", "stateHash"]);
+    expect(oldSerialize).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+    expect(store.setItem.mock.calls).toEqual([[`${key}:pending`, prepared.encoded], [key, prepared.encoded]]);
+    expect(JSON.parse(await decodeStoredStringCore(store.values.get(key)!))).toEqual(saved);
+    expect((await new SaveService(store.adapter).load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
+  });
+
+  it.each(["primary", "pending", "previous"] as const)("retains exact valid %s encoding and revision metadata as backup", async (source) => {
+    const store = localStore();
+    const state = createCareer(`encoded-recovery-${source}`);
+    const old = await new SaveService(new MemoryStorageAdapter()).save(1, state);
+    const original = await encodeStoredStringCore(`\n${JSON.stringify({ ...old, revision: 4, parentRevision: 3, syncBaseRevision: 2 }, null, 2)}\n`);
+    if (source === "primary") store.values.set(key, original);
+    if (source === "pending") store.values.set(`${key}:pending`, original);
+    if (source === "previous") {
+      store.values.set(key, "gz:!!!!");
+      store.values.set(`${key}:previous-valid`, original);
+    }
+    const inspect = vi.spyOn(SaveCodec, "inspectEncodedSaveEnvelope");
+    const saved = await new SaveService(store.adapter).save(1, state);
+    expect(saved).toMatchObject({ saveId: old.saveId, revision: 5, parentRevision: 4, syncBaseRevision: 2 });
+    expect(store.values.get(`${key}:previous-valid`)).toBe(original);
+    expect(store.values.has(`${key}:pending`)).toBe(false);
+    const replies = await Promise.allSettled(inspect.mock.results.map(({ value }) => value));
+    for (const result of replies) {
+      if (result.status !== "fulfilled" || !result.value) continue;
+      const reply = result.value;
+      expect(reply).not.toHaveProperty("state");
+      expect(reply).not.toHaveProperty("serialized");
+    }
+  });
+
+  it.each(["changed", "unavailable"] as const)("preserves the primary and backup when encoded pending readback is %s", async (failure) => {
+    const store = localStore();
+    const state = createCareer(`encoded-readback-${failure}`);
+    const service = new SaveService(store.adapter);
+    await service.save(1, state);
+    const original = store.values.get(key)!;
+    store.values.set(`${key}:previous-valid`, original);
+    store.setItem.mockClear();
+    const getEncoded = store.adapter.getEncoded.bind(store.adapter);
+    vi.spyOn(store.adapter, "getEncoded").mockImplementation(async (name) => {
+      if (name === `${key}:pending` && store.values.has(name)) {
+        if (failure === "unavailable") throw new Error("Storage unavailable");
+        return "raw:changed";
+      }
+      return getEncoded(name);
+    });
+    await expect(service.save(1, state)).rejects.toThrow(failure === "unavailable" ? "Storage unavailable" : "verification failed");
+    expect(store.values.get(key)).toBe(original);
+    expect(store.values.get(`${key}:previous-valid`)).toBe(original);
+    expect(store.setItem.mock.calls.every(([name]) => name === `${key}:pending`)).toBe(true);
+  });
+
+  it("cannot rebuild valid encoded copies when inspection runs out of memory", async () => {
+    const store = localStore();
+    const state = createCareer("encoded-allocation-failure");
+    await new SaveService(store.adapter).save(1, state);
+    const original = store.values.get(key)!;
+    store.values.set(`${key}:pending`, original);
+    store.values.set(`${key}:previous-valid`, original);
+    store.setItem.mockClear(); store.removeItem.mockClear();
+    vi.spyOn(SaveCodec, "inspectEncodedSaveEnvelope").mockRejectedValue(new RangeError("Invalid string length"));
+    await expect(new SaveService(store.adapter).save(1, state, { rebuildCorrupted: true })).rejects.toMatchObject({ name: "SaveRecoveryError", canRebuild: false });
+    expect(store.setItem).not.toHaveBeenCalled();
+    expect(store.removeItem).not.toHaveBeenCalled();
+    expect([...store.values.values()]).toEqual([original, original, original]);
+  });
+
+  it("evicts a checkpoint for quota recovery while preserving the same prepared save bytes", async () => {
+    const store = localStore();
+    const state = createCareer("encoded-quota-checkpoint");
+    const service = new SaveService(store.adapter);
+    await service.save(1, state);
+    const checkpoint = `${key}:checkpoint:first`;
+    store.values.set(`${key}:checkpoint-index`, 'raw:["first"]');
+    store.values.set(checkpoint, "raw:checkpoint");
+    const write = store.adapter.setEncoded.bind(store.adapter);
+    const attempted: string[] = [];
+    vi.spyOn(store.adapter, "setEncoded").mockImplementation(async (name, value) => {
+      if (name === `${key}:pending`) {
+        attempted.push(value);
+        if (store.values.has(checkpoint)) throw new DOMException("Full", "QuotaExceededError");
+      }
+      await write(name, value);
+    });
+    expect((await service.save(1, state)).revision).toBe(2);
+    expect(store.values.has(checkpoint)).toBe(false);
+    expect(attempted).toHaveLength(2);
+    expect(attempted[0]).toBe(attempted[1]);
+    expect(store.values.get(key)).toBe(attempted[0]);
+    expect(await store.adapter.get(`${key}:checkpoint-index`)).toBe("[]");
+  });
+
+  it("commits the new encoded primary when a previous backup cannot fit", async () => {
+    const store = localStore();
+    const state = createCareer("encoded-quota-backup");
+    const service = new SaveService(store.adapter);
+    await service.save(1, state);
+    const original = store.values.get(key)!;
+    store.values.set(`${key}:previous-valid`, original);
+    const write = store.adapter.setEncoded.bind(store.adapter);
+    vi.spyOn(store.adapter, "setEncoded").mockImplementation(async (name, value) => {
+      if (name === `${key}:previous-valid`) throw new DOMException("Full", "QuotaExceededError");
+      await write(name, value);
+    });
+    const saved = await service.save(1, state);
+    expect(saved.revision).toBe(2);
+    expect(JSON.parse(await decodeStoredStringCore(store.values.get(key)!))).toEqual(saved);
+    expect(store.values.get(`${key}:previous-valid`)).toBe(original);
+    expect(store.values.has(`${key}:pending`)).toBe(false);
+  });
+});
 
 describe("SaveService", () => {
+  it.each(["primary", "pending", "previous"] as const)("preserves revision headers and the exact recovered %s backup on the next save", async (source) => {
+    const adapter = new MemoryStorageAdapter();
+    const service = new SaveService(adapter);
+    const state = createCareer(`save-headers-${source}`);
+    const key = "basketball-manager:career:1";
+    await service.save(1, state);
+    const original = JSON.parse(await adapter.get(key) as string) as SaveEnvelope;
+    const recovered = {
+      ...original, saveId: `preserved-save-id-${source}`, revision: 4,
+      parentRevision: 3, syncBaseRevision: 2, updatedAt: "2026-10-02T08:00:00.000Z",
+    };
+    const recoveredSerialized = JSON.stringify(recovered);
+    if (source === "primary") await adapter.set(key, recoveredSerialized);
+    if (source === "pending") await adapter.set(`${key}:pending`, recoveredSerialized);
+    if (source === "previous") {
+      await adapter.set(key, "broken-primary");
+      await adapter.set(`${key}:pending`, "broken-pending");
+      await adapter.set(`${key}:previous-valid`, recoveredSerialized);
+    }
+    const nextState = structuredClone(state);
+    nextState.calendar.currentDateIndex = 1;
+
+    expect(await service.save(1, nextState)).toMatchObject({
+      saveId: recovered.saveId, slotId: 1, revision: 5, parentRevision: 4,
+      syncBaseRevision: 2, pendingSync: true, state: nextState,
+    });
+    expect(await adapter.get(`${key}:previous-valid`)).toBe(recoveredSerialized);
+    expect(await adapter.get(`${key}:pending`)).toBeNull();
+    expect((await service.load(1))?.calendar.currentDateIndex).toBe(1);
+  });
+
+  it.each(["primary", "pending", "previous"] as const)("normalizes legacy slot and saveId headers in a recovered %s backup before saving", async (source) => {
+    const adapter = new MemoryStorageAdapter();
+    const service = new SaveService(adapter);
+    const state = createCareer(`save-legacy-headers-${source}`);
+    const key = "basketball-manager:career:2";
+    await service.save(2, state);
+    const legacy = JSON.parse(await adapter.get(key) as string) as Partial<SaveEnvelope>;
+    legacy.slotId = 3;
+    legacy.revision = 4;
+    legacy.syncBaseRevision = 2;
+    delete legacy.saveId;
+    const legacySerialized = JSON.stringify(legacy);
+    if (source === "primary") await adapter.set(key, legacySerialized);
+    if (source === "pending") await adapter.set(`${key}:pending`, legacySerialized);
+    if (source === "previous") {
+      await adapter.set(key, "broken-primary");
+      await adapter.set(`${key}:previous-valid`, legacySerialized);
+    }
+    const saveId = stableHash(state.seeds.careerSeed, "save", 2);
+    const normalizedSerialized = JSON.stringify({ ...legacy, slotId: 2, saveId });
+
+    expect(await service.save(2, state)).toMatchObject({ saveId, slotId: 2, revision: 5, parentRevision: 4, syncBaseRevision: 2 });
+    expect(await adapter.get(`${key}:previous-valid`)).toBe(normalizedSerialized);
+    expect(await adapter.get(`${key}:pending`)).toBeNull();
+    expect(await service.load(3)).toBeNull();
+  });
+
+  it("validates the previous save through metadata without reparsing or serializing its full state", async () => {
+    const adapter = new MemoryStorageAdapter();
+    const service = new SaveService(adapter);
+    const state = createCareer("metadata-only-previous-save");
+    const key = "basketball-manager:career:1";
+    await service.save(1, state);
+    const original = ` \n${await adapter.get(key)}\n `;
+    await adapter.set(key, original);
+    const inspect = vi.spyOn(SaveCodec, "inspectValidSaveEnvelope");
+    const parse = vi.spyOn(SaveCodec, "parseValidSaveEnvelope");
+    const parseCopy = vi.spyOn(SaveCodec, "parseValidSaveEnvelopeCopy");
+    const stringify = vi.spyOn(SaveCodec, "stringifySaveValue");
+    try {
+      expect((await service.save(1, state)).revision).toBe(2);
+      expect(inspect).toHaveBeenCalledWith(original, 1);
+      expect(await inspect.mock.results[0].value).not.toHaveProperty("state");
+      expect(parse).not.toHaveBeenCalled();
+      expect(parseCopy).not.toHaveBeenCalled();
+      expect(stringify).not.toHaveBeenCalled();
+      expect(await adapter.get(`${key}:previous-valid`)).toBe(original);
+    } finally {
+      inspect.mockRestore();
+      parse.mockRestore();
+      parseCopy.mockRestore();
+      stringify.mockRestore();
+    }
+  });
+
+  it("loads a healthy primary without serializing or rewriting the validated stored bytes", async () => {
+    const adapter = new MemoryStorageAdapter();
+    const service = new SaveService(adapter);
+    const state = createCareer("healthy-save-without-canonical-roundtrip");
+    await service.save(1, state);
+    const key = "basketball-manager:career:1";
+    const stored = ` \n${await adapter.get(key)}\n `;
+    await adapter.set(key, stored);
+    const stringify = vi.spyOn(SaveCodec, "stringifySaveValue");
+    const set = vi.spyOn(adapter, "set");
+    try {
+      expect((await service.load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
+      expect(stringify).not.toHaveBeenCalled();
+      expect(set).not.toHaveBeenCalled();
+      expect(await adapter.get(key)).toBe(stored);
+    } finally {
+      stringify.mockRestore();
+      set.mockRestore();
+    }
+  });
+
+  it("preserves valid save copies when metadata validation is temporarily unavailable", async () => {
+    const adapter = new MemoryStorageAdapter();
+    const service = new SaveService(adapter);
+    const state = createCareer("metadata-validation-resource-failure");
+    const key = "basketball-manager:career:1";
+    await service.save(1, state);
+    const stored = await adapter.get(key) as string;
+    await adapter.set(`${key}:pending`, stored);
+    await adapter.set(`${key}:previous-valid`, stored);
+    const inspect = vi.spyOn(SaveCodec, "inspectValidSaveEnvelope").mockRejectedValue(new RangeError("Invalid string length"));
+    const set = vi.spyOn(adapter, "set");
+    const remove = vi.spyOn(adapter, "remove");
+    try {
+      await expect(service.save(1, state, { rebuildCorrupted: true })).rejects.toMatchObject({
+        name: "SaveRecoveryError", canRebuild: false,
+        diagnostics: [
+          { key, kind: "UNAVAILABLE" },
+          { key: `${key}:pending`, kind: "UNAVAILABLE" },
+          { key: `${key}:previous-valid`, kind: "UNAVAILABLE" },
+        ],
+      });
+      expect(set).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      for (const suffix of ["", ":pending", ":previous-valid"]) expect(await adapter.get(`${key}${suffix}`)).toBe(stored);
+    } finally {
+      inspect.mockRestore();
+      set.mockRestore();
+      remove.mockRestore();
+    }
+  });
+
   it("queues same-slot saves in invocation order while other slots remain available", async () => {
     const backing = new MemoryStorageAdapter();
     const primaryKey = "basketball-manager:career:1";
@@ -212,6 +491,68 @@ describe("SaveService", () => {
     expect((await service.save(1, state, { rebuildCorrupted: true })).revision).toBe(1);
     expect((await service.load(1))?.seeds.careerSeed).toBe(state.seeds.careerSeed);
     expect(await service.listSlotSummaries()).toEqual([expect.objectContaining({ slotId: 1, revision: 1 })]);
+  });
+
+  it.each([
+    new Error("Out of memory"),
+    new TypeError("Out of memory"),
+    new DOMException("The I/O read operation failed.", "NotReadableError"),
+    new RangeError("Invalid string length"),
+  ])("preserves every valid compressed copy and blocks rebuilding after %s", async (failure) => {
+    const backing = new MemoryStorageAdapter();
+    const original = createCareer("resource-failure-is-not-corruption");
+    await new SaveService(backing).save(1, original);
+    const key = "basketball-manager:career:1";
+    const encoded = await encodeStoredStringCore(await backing.get(key) as string);
+    const values = new Map([key, `${key}:pending`, `${key}:previous-valid`].map((name) => [name, encoded]));
+    const before = [...values.entries()];
+    const setItem = vi.fn((name: string, value: string) => { values.set(name, value); });
+    const removeItem = vi.fn((name: string) => { values.delete(name); });
+    vi.stubGlobal("window", { localStorage: {
+      getItem: (name: string) => values.get(name) ?? null, setItem, removeItem,
+    } });
+    const read = vi.spyOn(Response.prototype, "text").mockImplementation(async function (this: Response) {
+      await this.body?.cancel();
+      throw failure;
+    });
+    try {
+      const service = new SaveService(new LocalStorageAdapter());
+      await expect(service.load(1)).rejects.toMatchObject({
+        name: "SaveRecoveryError", canRebuild: false,
+        diagnostics: [
+          { key, kind: "UNAVAILABLE" },
+          { key: `${key}:pending`, kind: "UNAVAILABLE" },
+          { key: `${key}:previous-valid`, kind: "UNAVAILABLE" },
+        ],
+      });
+      expect(await service.listSlotSummaries()).toEqual([expect.objectContaining({ status: "UNAVAILABLE" })]);
+      await expect(service.save(1, original, { rebuildCorrupted: true })).rejects.toMatchObject({ canRebuild: false });
+      expect(setItem).not.toHaveBeenCalled();
+      expect(removeItem).not.toHaveBeenCalled();
+      expect([...values.entries()]).toEqual(before);
+      read.mockRestore();
+      expect((await service.load(1))?.seeds.careerSeed).toBe(original.seeds.careerSeed);
+    } finally {
+      read.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    "INVALID_COMPRESSED_SAVE: Out of memory",
+    "INVALID_COMPRESSED_SAVE: NotReadableError: The I/O read operation failed.",
+  ])("does not offer rebuilding when a runtime failure arrives wrapped as %s", async (message) => {
+    const failure = new Error(message);
+    const key = "basketball-manager:career:1";
+    const adapter: StorageAdapter = {
+      async get(name) { if ([key, `${key}:pending`, `${key}:previous-valid`].includes(name)) throw failure; return null; },
+      set: vi.fn(), remove: vi.fn(),
+    };
+    const service = new SaveService(adapter);
+    expect(await service.listSlotSummaries()).toEqual([expect.objectContaining({ status: "UNAVAILABLE" })]);
+    await expect(service.save(1, createCareer("blocked-resource-rebuild"), { rebuildCorrupted: true })).rejects.toMatchObject({ canRebuild: false });
+    expect(adapter.set).not.toHaveBeenCalled();
+    expect(adapter.remove).not.toHaveBeenCalled();
   });
 
   it("classifies actual gzip corruption as rebuildable while unsupported gzip remains unavailable", async () => {

@@ -1,7 +1,7 @@
 import { BALANCE_CONFIG } from "../../config/balanceConfig";
 import { LEAGUE_FINANCE_CONFIG, getSeasonFinanceConfig } from "../../config/leagueFinance";
 import { publicPlayerValue } from "../ai/AIValueService";
-import { getAvailableCapSpace, getCapSheet } from "../cap/CapSheetService";
+import { getAvailableCapSpace, getCapSheet, getTeamCapHolds } from "../cap/CapSheetService";
 import { assertPhaseAllowed, getRosterLimit } from "../policy/TransactionPolicyService";
 import { stableHash } from "../random/hash";
 import { createRng } from "../random/xoshiro";
@@ -19,6 +19,7 @@ import { tradeCalendarDate } from "../trade/TradeTimingPolicy";
 export type FreeAgencyCommand =
   | { commandId: string; type: "ENTER_FREE_AGENCY"; payload: Record<string, never> }
   | { commandId: string; type: "RESOLVE_QUALIFYING_OFFER"; payload: { playerId: string; decision: "TENDER" | "DECLINE" } }
+  | { commandId: string; type: "RENOUNCE_FA_RIGHTS"; payload: { playerId: string } }
   | { commandId: string; type: "RENEW_OWN_PLAYER"; payload: { playerId: string; years: number; year1Salary: number; annualRaiseRate?: number } }
   | { commandId: string; type: "SUBMIT_OWN_EXTENSION_OFFER"; payload: { playerId: string; years: number; year1Salary: number; annualRaiseRate?: number; salaryByYear?: number[]; finalYearOption?: ContractYearOption; guaranteedPercent: number; rolePromised: PromisedRole } }
   | { commandId: string; type: "SUBMIT_FA_OFFER"; payload: { playerId: string; years: number; year1Salary: number; annualRaiseRate?: number; salaryByYear?: number[]; finalYearOption?: ContractYearOption; guaranteedPercent: number; rolePromised: PromisedRole } }
@@ -583,6 +584,38 @@ export function getPendingUserQualifyingOfferPlayers(state: GameState): Player[]
       && player.birdTeamId === state.userTeamId
       && !["TENDERED", "DECLINED"].includes(player.contract.qualifyingOfferDecision ?? "PENDING"))
     .sort((left, right) => publicPlayerValue(right) - publicPlayerValue(left) || left.id.localeCompare(right.id));
+}
+
+export function renounceFreeAgentRights(input: GameState, playerId: string): GameState {
+  assertPhaseAllowed(input, "Renounce free-agent rights", ["OFFSEASON_PRE_DRAFT", "OFFSEASON_POST_DRAFT", "PRESEASON"]);
+  const player = input.players[playerId];
+  if (!player || player.teamId !== "FREE_AGENT" || !["UFA", "RFA"].includes(player.contract.status)
+    || !getTeamCapHolds(input, input.userTeamId).some((hold) => hold.playerId === playerId)) {
+    throw new Error("只能放弃本队自由球员的签约权");
+  }
+  if (input.freeAgency?.markets[playerId]?.marketWindowStatus === "RFA_MATCHING"
+    || input.freeAgency?.pendingUserRfaDecision?.playerId === playerId) {
+    throw new Error("请先处理该球员的 RFA 匹配决定");
+  }
+  if (Object.values(input.freeAgency?.offers ?? {}).some((offer) => offer.playerId === playerId
+    && offer.teamId === input.userTeamId && offer.status === "ACTIVE")) {
+    throw new Error("请先撤回本队对该球员的有效报价");
+  }
+  const state = structuredClone(input);
+  const freeAgent = state.players[playerId];
+  state.capState.capHolds = state.capState.capHolds.filter((hold) => hold.playerId !== playerId || hold.teamId !== state.userTeamId);
+  freeAgent.birdTeamId = null;
+  freeAgent.birdYears = 0;
+  if (freeAgent.contract.status === "RFA") {
+    freeAgent.contract.status = "UFA";
+    freeAgent.contract.qualifyingOfferDecision = "DECLINED";
+  }
+  const market = state.freeAgency?.markets[playerId];
+  if (market) delete market.originalTeamId;
+  const log = `${state.teams[state.userTeamId].fullName} 放弃 ${freeAgent.name} 的签约权，释放薪资占位`;
+  state.contractLifecycle?.transactionLog.push(log);
+  state.freeAgency?.transactionLog.unshift(log);
+  return state;
 }
 
 export function resolveQualifyingOffer(input: GameState, playerId: string, decision: "TENDER" | "DECLINE"): GameState {
@@ -1157,6 +1190,7 @@ export function executeFreeAgencyCommand(state: GameState, command: FreeAgencyCo
   switch (command.type) {
     case "ENTER_FREE_AGENCY": next = enterFreeAgency(state); break;
     case "RESOLVE_QUALIFYING_OFFER": next = resolveQualifyingOffer(state, command.payload.playerId, command.payload.decision); break;
+    case "RENOUNCE_FA_RIGHTS": next = renounceFreeAgentRights(state, command.payload.playerId); break;
     case "RENEW_OWN_PLAYER": next = submitOwnPlayerExtensionOffer(state, { ...command.payload, guaranteedPercent: 1, finalYearOption: "NONE", rolePromised: "ROTATION" }); break;
     case "SUBMIT_OWN_EXTENSION_OFFER": next = submitOwnPlayerExtensionOffer(state, command.payload); break;
     case "SUBMIT_FA_OFFER": next = submitFreeAgentOffer(state, command.payload); break;

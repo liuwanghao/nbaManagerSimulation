@@ -31,7 +31,11 @@ function calendarDateAtIndex(openingDate: string, dateIndex: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function executeSimulationTask(request: SimulationRequest, onProgress?: (completed: number, total: number) => void): SimulationResult {
+export function executeSimulationTask(
+  request: SimulationRequest,
+  onProgress?: (completed: number, total: number) => void,
+  options: { ownsState?: boolean } = {},
+): SimulationResult {
   const { action } = request;
   if (action.kind === "OPERATION") {
     const prepared = action.usePregameSelection ? applyRegularPregameSelection(request.state, request.pregameSelection) : request.state;
@@ -49,6 +53,7 @@ export function executeSimulationTask(request: SimulationRequest, onProgress?: (
     return { kind: "OPERATION", state };
   }
 
+  const initialDateIndex = request.state.calendar.currentDateIndex;
   let next = applyRegularPregameSelection(request.state, request.pregameSelection);
   const frames: CalendarFrame[] = [];
   let completedGames = 0;
@@ -56,13 +61,14 @@ export function executeSimulationTask(request: SimulationRequest, onProgress?: (
     && !next.injuryState.pendingUserMajorInjury && !next.injuryState.pendingEmergencyRoster && !blockingEvent(next)) {
     const dateIndex = next.calendar.currentDateIndex;
     const knownGames = new Set(Object.keys(next.userGameDetails));
-    const day = simulateLeagueDay(next);
-    if (day === next) break;
+    const day = simulateLeagueDay(next, dateIndex, { mutate: options.ownsState });
+    // A Worker owns its input: both a simulated day and a newly queued interruption can update it in place.
+    if (!options.ownsState && day === next) break;
     const game = Object.values(day.userGameDetails).find((entry) => !knownGames.has(entry.gameId));
     frames.push({ date: calendarDateAtIndex(next.calendar.openingDate, dateIndex), game, injuries: userInjuryList(day) });
     if (game) completedGames += 1;
     next = day;
-    onProgress?.(frames.length, action.target.kind === "ONE_GAME" ? 1 : action.target.kind === "FIVE_GAMES" ? 5 : Math.max(1, next.calendar.finalDateIndex - request.state.calendar.currentDateIndex));
+    onProgress?.(frames.length, action.target.kind === "ONE_GAME" ? 1 : action.target.kind === "FIVE_GAMES" ? 5 : Math.max(1, next.calendar.finalDateIndex - initialDateIndex));
     if (action.target.kind === "ONE_GAME" && completedGames >= 1
       || action.target.kind === "FIVE_GAMES" && completedGames >= 5
       || action.target.kind === "DATE" && calendarDateAtIndex(next.calendar.openingDate, next.calendar.currentDateIndex) > action.target.date) break;

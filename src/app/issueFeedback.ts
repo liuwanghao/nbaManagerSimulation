@@ -1,10 +1,33 @@
+import type { ContractLifecycleCommand } from "../game/contracts/ContractLifecycleService";
+
+type ContractIssueOperation = "年度切换" | "球队选项处理" | "进入选秀前休赛期";
+
 export interface GameIssueContext {
-  kind: "年度切换失败" | "年度切换耗时过长";
+  kind: `${ContractIssueOperation}失败` | `${ContractIssueOperation}耗时过长`;
   step: string;
   phase: string;
   seasonId: string;
   slotId: number;
   error?: string;
+}
+
+const contractCommandIssueLabels = {
+  ROLLOVER_LEAGUE_YEAR: {
+    computeStep: "计算下一联盟年度", saveStep: "保存新赛季存档",
+    failureKind: "年度切换失败", slowKind: "年度切换耗时过长",
+  },
+  RESOLVE_TEAM_OPTION: {
+    computeStep: "处理球队选项", saveStep: "保存球队选项存档",
+    failureKind: "球队选项处理失败", slowKind: "球队选项处理耗时过长",
+  },
+  FINALIZE_OPTION_PHASE: {
+    computeStep: "完成合同选项结算", saveStep: "保存选秀前休赛期存档",
+    failureKind: "进入选秀前休赛期失败", slowKind: "进入选秀前休赛期耗时过长",
+  },
+} as const;
+
+export function getContractCommandIssueLabels(type: ContractLifecycleCommand["type"]) {
+  return contractCommandIssueLabels[type];
 }
 
 export function buildGameIssueFeedback(context: GameIssueContext): string {
